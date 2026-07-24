@@ -1,0 +1,12 @@
+{
+  "name": "sticker-probability-dashboard",
+  "version": "1.0.0",
+  "description": "表情包生成概率控制台 — 实时查看和调整 config.yaml 中的各种概率参数",
+  "scripts": {
+    "start": "node server.js",
+    "preview:local": "node server.js"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

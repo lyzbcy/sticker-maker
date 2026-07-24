@@ -1,0 +1,19 @@
+{
+  "name": "lyzbcy-sticker-shelf-scripts",
+  "version": "1.0.0",
+  "description": "自动上架微信表情开放平台「审核通过」的专辑",
+  "main": "shelf.js",
+  "type": "commonjs",
+  "scripts": {
+    "inspect": "node inspect_home.js",
+    "inspect-detail": "node inspect_detail.js",
+    "shelf": "node shelf.js"
+  },
+  "keywords": ["wechat", "sticker", "shelf", "上架", "审核通过"],
+  "author": "捞鱼",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.0.0",
+    "puppeteer-core": "^25.1.0"
+  }
+}

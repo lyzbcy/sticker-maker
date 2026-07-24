@@ -1,0 +1,8 @@
+node_modules/
+.env
+.browser-data/
+.browser-data-test*/
+*.log
+_shelf_result.json
+screenshot_*.png
+inspect_*.json

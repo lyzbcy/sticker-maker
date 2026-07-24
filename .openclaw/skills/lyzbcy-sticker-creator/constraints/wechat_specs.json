@@ -1,0 +1,108 @@
+{
+  "_description": "微信表情平台规范约束 JSON — AI 和脚本共用",
+  "_version": "1.0.0",
+  "_updated": "2026-06-12",
+
+  "wechat_specs": {
+    "sticker": {
+      "width": 240,
+      "height": 240,
+      "format": ["PNG"],
+      "must_have_alpha": true,
+      "max_size_kb": 500,
+      "min_count": 16,
+      "max_count": 24
+    },
+    "banner": {
+      "width": 750,
+      "height": 400,
+      "format": ["PNG", "JPG", "JPEG"],
+      "max_size_kb": 500,
+      "notes": "横图，色调活泼，避免白色背景，无文字"
+    },
+    "cover": {
+      "width": 240,
+      "height": 240,
+      "format": ["PNG"],
+      "must_have_alpha": true,
+      "max_size_kb": 500,
+      "notes": "半身/全身正面像，透明背景，无白色描边"
+    },
+    "icon": {
+      "width": 50,
+      "height": 50,
+      "format": ["PNG"],
+      "must_have_alpha": true,
+      "max_size_kb": 100,
+      "notes": "头部正面，透明背景，无正方形边框"
+    },
+    "meaning": {
+      "max_chars": 4,
+      "min_chars": 1,
+      "no_duplicates": true,
+      "notes": "中文含义词，描述表情表达的情绪/动作"
+    }
+  },
+
+  "folder_structure": {
+    "required": ["原图", "最终版"],
+    "recommended": ["横幅", "封面", "图标"],
+    "optional": ["参考图", "原图_透明ChromaKey", "帧图"]
+  },
+
+  "file_required": [
+    {
+      "path": "横幅/横幅.png",
+      "spec": "banner",
+      "notes": "微信发布用横幅"
+    },
+    {
+      "path": "封面/封面.png",
+      "spec": "cover",
+      "notes": "微信发布用封面"
+    },
+    {
+      "path": "图标/图标.png",
+      "spec": "icon",
+      "notes": "微信发布用图标"
+    },
+    {
+      "path": "本次制作角色.md",
+      "spec": null,
+      "notes": "供发布脚本读取角色信息"
+    }
+  ],
+
+  "checkpoints": {
+    "pre_generate": {
+      "description": "生成前检查",
+      "checks": [
+        { "name": "base_images_exist", "level": "error", "desc": "所有 base 图文件存在" },
+        { "name": "reference_library_available", "level": "warn", "desc": "参考图库存 ≥ 4" },
+        { "name": "codex_cli_available", "level": "error", "desc": "Codex CLI 可用" }
+      ]
+    },
+    "post_generate": {
+      "description": "生成后检查",
+      "checks": [
+        { "name": "folder_structure", "level": "error", "desc": "文件夹结构完整" },
+        { "name": "sticker_count", "level": "error", "desc": "16-24张表情" },
+        { "name": "sticker_dimensions", "level": "error", "desc": "每张240×240 PNG RGBA" },
+        { "name": "meanings_valid", "level": "error", "desc": "含义词合格无重复" }
+      ]
+    },
+    "pre_publish": {
+      "description": "发布前最终检查",
+      "checks": [
+        { "name": "sticker_count", "level": "error", "desc": "16-24张表情" },
+        { "name": "sticker_dimensions", "level": "error", "desc": "每张240×240 PNG RGBA" },
+        { "name": "meanings_valid", "level": "error", "desc": "含义词合格无重复" },
+        { "name": "banner_exists_750x400", "level": "error", "desc": "横幅存在且750×400" },
+        { "name": "cover_exists_240x240_rgba", "level": "error", "desc": "封面存在且240×240 RGBA" },
+        { "name": "icon_exists_50x50_rgba", "level": "error", "desc": "图标存在且50×50 RGBA" },
+        { "name": "role_card_exists", "level": "warn", "desc": "本次制作角色.md 存在" },
+        { "name": "appreciation_assets", "level": "error", "desc": "赞赏引导图+致谢图存在" }
+      ]
+    }
+  }
+}

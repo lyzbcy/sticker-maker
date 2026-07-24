@@ -1,0 +1,537 @@
+{
+  "episodes": {
+    "6": {
+      "name": "周三涵做表情6",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-12T11:37:29.399709"
+    },
+    "7": {
+      "name": "周三涵做表情7",
+      "mode": "single",
+      "characters": [
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-12T16:50:29.044912"
+    },
+    "8": {
+      "name": "周三涵做表情8",
+      "mode": "single",
+      "characters": [
+        "星星布丁"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-15T18:20:35.214413"
+    },
+    "9": {
+      "name": "周三涵做表情9",
+      "mode": "single",
+      "characters": [
+        "星星布丁"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-17T16:56:21.729891"
+    },
+    "10": {
+      "name": "周三涵做表情10",
+      "mode": "quad",
+      "characters": [
+        "星星布丁",
+        "捞鱼",
+        "周三涵",
+        "周五涵"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-20T18:08:32.082886"
+    },
+    "11": {
+      "name": "周三涵做表情11",
+      "mode": "single",
+      "characters": [
+        "星星布丁"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-20T18:47:26.272267"
+    },
+    "12": {
+      "name": "周三涵做表情12",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-21T02:13:42.147691"
+    },
+    "13": {
+      "name": "周三涵做表情13",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-21T02:40:33.911472"
+    },
+    "14": {
+      "name": "周三涵做表情14",
+      "mode": "single",
+      "characters": [
+        "星星布丁"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-21T15:30:31.708856"
+    },
+    "15": {
+      "name": "周三涵做表情15",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "published",
+      "created_at": "2026-06-21T18:41:08.662103",
+      "published_at": "2026-06-21T18:47:00"
+    },
+    "16": {
+      "name": "周三涵做表情16",
+      "mode": "single",
+      "characters": [
+        "星星布丁"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-21T23:57:08.318356"
+    },
+    "17": {
+      "name": "周三涵做表情17",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-22T00:22:32.979703"
+    },
+    "18": {
+      "name": "周三涵做表情18",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-22T13:56:44.726348"
+    },
+    "19": {
+      "name": "周三涵做表情19",
+      "mode": "single",
+      "characters": [
+        "星星布丁"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-23T23:39:02.050224"
+    },
+    "20": {
+      "name": "周三涵做表情20",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-23T23:40:26.497750"
+    },
+    "21": {
+      "name": "周三涵做表情21",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-25T11:10:37.510377"
+    },
+    "22": {
+      "name": "周三涵做表情22",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-25T14:05:39.701316"
+    },
+    "23": {
+      "name": "周三涵做表情23",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-25T15:03:35.550428"
+    },
+    "24": {
+      "name": "周三涵做表情24",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-25T15:53:24.114961"
+    },
+    "25": {
+      "name": "周三涵做表情25",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-25T16:01:09.991588"
+    },
+    "26": {
+      "name": "周三涵做表情26",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-25T16:08:07.543223"
+    },
+    "27": {
+      "name": "周三涵做表情27",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-25T16:15:40.570096"
+    },
+    "28": {
+      "name": "周三涵做表情28",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-25T16:22:42.311562"
+    },
+    "29": {
+      "name": "周三涵做表情29",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-25T16:27:29.688063"
+    },
+    "30": {
+      "name": "周三涵做表情30",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-25T16:34:13.040823"
+    },
+    "31": {
+      "name": "周三涵做表情31",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-25T16:42:31.571824"
+    },
+    "32": {
+      "name": "周三涵做表情32",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-25T16:49:39.608051"
+    },
+    "33": {
+      "name": "周三涵做表情33",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-25T16:54:09.139866"
+    },
+    "34": {
+      "name": "周三涵做表情34",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-25T19:42:17.943908"
+    },
+    "35": {
+      "name": "周三涵做表情35",
+      "mode": "single",
+      "characters": [
+        "星星布丁"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-25T19:53:19.226498"
+    },
+    "36": {
+      "name": "周三涵做表情36",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-26T13:25:06.924587"
+    },
+    "37": {
+      "name": "周三涵做表情37",
+      "mode": "single",
+      "characters": [
+        "星星布丁"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-26T13:35:58.905801"
+    },
+    "38": {
+      "name": "周三涵做表情38",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-26T13:39:03.339646"
+    },
+    "39": {
+      "name": "周三涵做表情39",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-26T13:42:26.344607"
+    },
+    "40": {
+      "name": "周三涵做表情40",
+      "mode": "single",
+      "characters": [
+        "星星布丁"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-26T13:46:09.493227"
+    },
+    "41": {
+      "name": "周三涵做表情41",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-26T13:51:16.559545"
+    },
+    "42": {
+      "name": "周三涵做表情42",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-26T13:55:32.322308"
+    },
+    "43": {
+      "name": "周三涵做表情43",
+      "mode": "single",
+      "characters": [
+        "星星布丁"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-26T13:59:35.909583"
+    },
+    "44": {
+      "name": "周三涵做表情44",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-26T14:04:54.868829"
+    },
+    "45": {
+      "name": "周三涵做表情45",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-26T14:12:23.569195"
+    },
+    "46": {
+      "name": "周三涵做表情46",
+      "mode": "single",
+      "characters": [
+        "星星布丁"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-27T21:25:30.710300"
+    },
+    "47": {
+      "name": "周三涵做表情47",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-27T21:32:06.866329"
+    },
+    "48": {
+      "name": "周三涵做表情48",
+      "mode": "single",
+      "characters": [
+        "星星布丁"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-27T21:37:30.525397"
+    },
+    "49": {
+      "name": "周三涵做表情49",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-27T21:54:38.473757"
+    },
+    "50": {
+      "name": "周三涵做表情50",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-27T22:00:16.790523"
+    },
+    "51": {
+      "name": "周三涵做表情51",
+      "mode": "single",
+      "characters": [
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-27T22:05:56.884701"
+    },
+    "52": {
+      "name": "周三涵做表情52",
+      "mode": "single",
+      "characters": [
+        "星星布丁"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-27T22:08:21.827337"
+    },
+    "53": {
+      "name": "周三涵做表情53",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-28T19:14:49.583251"
+    },
+    "54": {
+      "name": "周三涵做表情54",
+      "mode": "duo",
+      "characters": [
+        "星星布丁",
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-06-28T19:42:50.203123"
+    },
+    "55": {
+      "name": "周三涵做表情55",
+      "mode": "single",
+      "characters": [
+        "星星布丁"
+      ],
+      "status": "prepared",
+      "created_at": "2026-07-06T21:28:43.774132"
+    },
+    "56": {
+      "name": "周三涵做表情56",
+      "mode": "single",
+      "characters": [
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-07-06T23:58:43.496598"
+    },
+    "57": {
+      "name": "周三涵做表情57",
+      "mode": "single",
+      "characters": [
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-07-06T23:58:43.623493"
+    },
+    "58": {
+      "name": "周三涵做表情58",
+      "mode": "single",
+      "characters": [
+        "捞鱼"
+      ],
+      "status": "prepared",
+      "created_at": "2026-07-06T23:58:43.747401"
+    },
+    "59": {
+      "name": "周三涵做表情59",
+      "mode": "single",
+      "characters": [
+        "星星布丁"
+      ],
+      "status": "prepared",
+      "created_at": "2026-07-06T23:58:43.878463"
+    },
+    "60": {
+      "name": "周三涵做表情60",
+      "mode": "single",
+      "characters": [
+        "星星布丁"
+      ],
+      "status": "prepared",
+      "created_at": "2026-07-06T23:58:44.006323"
+    }
+  },
+  "last_episode": 60
+}

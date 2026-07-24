@@ -1,0 +1,77 @@
+# ============================================
+# 表情包一键制作 · Git 仓库忽略规则
+# 策略：排除所有大体积表情素材/产出，只追踪代码+文档+skill定义+配置
+# ============================================
+
+# === 系统杂项 ===
+.DS_Store
+nul
+Thumbs.db
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+
+# === 虚拟环境 ===
+.venv/
+venv/
+env/
+
+# === 表情包素材（大体积，不入库） ===
+# base 角色图
+*base*.png
+*base*.jpg
+*base*.jpeg
+
+# 所有弹次产出目录（周三涵做表情N / 星星布丁第N弹 等）
+周三涵做表情*/
+星星布丁第*弹/
+抖音特供/
+
+# 表情合集与图库
+所有表情/
+参考图库/
+封面页/
+ico/
+赞赏页/
+
+# === 运行时产出（不入库）===
+pet-runs/
+
+# === 但保留这些（覆盖上面的排除）===
+# 注意：base 图需要进 sticker_engine/resources/，用完整路径白名单
+!sticker_engine/**/*base*
+!sticker_engine/sticker_engine/resources/base_images/**
+
+# === codex/Node 缓存 ===
+node_modules/
+.codex/
+.browser-data/
+
+# === 调试/临时产出 ===
+*_debug.png
+screenshot_*.png
+timeout_login_page.html
+*.bak
+*备份*
+
+# === 日志/结果文件 ===
+_batch_result.json
+_batch_total.json
+_batch_result*.json
+_shelf_result.json
+batch_publish_results.json
+inspect_*_result.json
+used_combinations.txt
+used_linkages.txt
+temp_prompt.txt

@@ -1,0 +1,1000 @@
+# 微信表情包自动化配置
+
+# 项目配置
+project:
+  name: 星星布丁
+  output_dir: E:/星星布丁/微信表情包
+
+# Base 图配置
+base_images:
+  星星布丁:
+    base3: E:/星星布丁/微信表情包/星星布丁base3.png
+    base4: E:/星星布丁/微信表情包/星星布丁base4.jpg
+    base5: E:/星星布丁/微信表情包/星星布丁base5.png
+    base1: E:/星星布丁/微信表情包/星星布丁base1.jpg
+    base6: E:/星星布丁/微信表情包/星星布丁base6.png
+  捞鱼:
+    base1: E:/星星布丁/微信表情包/捞鱼base1.png
+    base2: E:/星星布丁/微信表情包/捞鱼base2.png
+    base3: E:/星星布丁/微信表情包/捞鱼base3.png
+    base4: E:/星星布丁/微信表情包/捞鱼base4.png
+  周三涵:
+    base1: E:/星星布丁/微信表情包/周三涵base1.png
+    base2: E:/星星布丁/微信表情包/周三涵base2.png
+  周五涵:
+    base1: E:/星星布丁/微信表情包/周五涵base1.png
+
+# 服装概率
+character_costume_probabilities:
+  星星布丁:
+    base1: 0.00
+    base3: 0.15
+    base4: 0.35
+    base5: 0.25
+    base6: 0.25
+  捞鱼:
+    base1: 0.10
+    base2: 0.40
+    base3: 0.20
+    base4: 0.30
+  周三涵:
+    base1: 0.20
+    base2: 0.80
+  周五涵:
+    base1: 1.00
+
+# 参考图概率
+reference_probabilities:
+  "【双人】亲亲.png": 1.00
+  "【双人】吃掉你.png": 1.00
+  "【双人】抱.png": 1.00
+  "【双人】晚安吻.png": 1.00
+  "中指.png": 1.00
+  "为了我.png": 1.00
+  "举手.png": 1.00
+  "休息.png": 1.00
+  "写作业.png": 1.00
+  "可怜.png": 1.00
+  "可恶.png": 1.00
+  "可爱.png": 1.00
+  "吐舌头.png": 1.00
+  "哼.png": 1.00
+  "嘶.png": 1.00
+  "嘿嘿.png": 1.00
+  "大眼镜.png": 1.00
+  "天塌了.png": 1.00
+  "委屈巴巴.png": 1.00
+  "小螳螂.png": 1.00
+  "工作.png": 1.00
+  "干嘛.png": 1.00
+  "干嘛啊.png": 1.00
+  "恶心.png": 1.00
+  "想你.png": 1.00
+  "愤怒.png": 1.00
+  "我的天.png": 0.00
+  "挠头.png": 1.00
+  "捂嘴笑.png": 1.00
+  "探头.png": 1.00
+  "无语.png": 1.00
+  "来啦.png": 1.00
+  "比耶.png": 1.00
+  "灵机一动.png": 1.00
+  "献花.png": 1.00
+  "王从天降.png": 1.00
+  "疯狂杀手.png": 1.00
+  "疲惫.png": 1.00
+  "皱眉.png": 1.00
+  "盯着.png": 1.00
+  "看.png": 1.00
+  "真棒.png": 1.00
+  "给我.png": 1.00
+  "美女受伤.png": 1.00
+  "脸红.png": 1.00
+  "萌萌.png": 1.00
+  "诶.png": 1.00
+  "飞吻.png": 1.00
+  "？.png": 1.00
+
+current_base: 星星布丁
+duo_bases:
+  - 星星布丁
+  - 捞鱼
+quad_bases:
+  - 星星布丁
+  - 捞鱼
+  - 周三涵
+  - 周五涵
+
+mode_probabilities:
+  single: 0.5
+  duo: 0.3
+  quad: 0.2
+
+single_character_probabilities:
+  星星布丁: 0.7
+  捞鱼: 0.3
+  周三涵: 0
+  周五涵: 0
+
+reference_library: E:/星星布丁/微信表情包/参考图库
+
+# AI 模板设置
+ai_template:
+  background_mode: transparent
+  background_prompts: backgrounds.json
+  keywords_file: keywords.json
+  used_combinations: used_combinations.txt
+quota:
+  thresholds:
+  - min: 50
+    local_prob: 0.95
+  - min: 20
+    local_prob: 0.9
+  - min: 10
+    local_prob: 0.7
+  - min: 4
+    local_prob: 0.5
+  - min: 0
+    local_prob: 0.0
+generation:
+  mode: single
+  quad_count: 3
+  dynamic: false
+  frame_duration: 100
+  default_grid: 4
+publish:
+  auto_publish: false
+  copyright: 捞鱼真不吃鱼
+  type: 卡通表情/其他
+  style: 日常
+  theme: 万能通用
+  region: 全球
+quality_style:
+  character:
+    style: Q版可爱风格，大头小身（1:1.2头身比）
+    line_art: 干净描边，粗细适中，边缘清晰
+    features: 标志性元素突出（眼镜、发型等）
+  expression:
+    clarity: 情绪传达明确，一眼就能看懂
+    action: 动作夸张但可爱，配合表情
+    body_language: 肢体语言丰富（举手、比心、捂脸等）
+  color:
+    tone: 柔和温暖，不刺眼
+    skin: 自然白皙，带轻微红润
+    shadow: 禁止投射阴影(drop/contact/ground shadow)，否则洋红背景抠不干净；立体感靠材质本身明暗渐变
+    background: 干净简洁，突出角色
+  composition:
+    position: 角色居中或略偏上
+    whitespace: 适当留白，不拥挤
+    balance: 画面平衡
+crop:
+  grid_4_padding: 10
+  grid_3_padding: 3
+  grid_2_padding: 5
+  note: '宫格裁剪内缩边距(像素)，main.py 从此读取并传 --padding。grid_4 由 2 提至 10 以兜底邻格渗入。'
+chroma_key:
+  background_color: '#ff00ff'
+  key_color_rgb:
+  - 255
+  - 0
+  - 255
+  fallback_color: '#00ff00'
+  auto_key: border
+  tolerance: 150
+  edge_feather: 0
+  edge_contract: 1
+  soft_matte: true
+  transparent_threshold: 150
+  opaque_threshold: 155
+  note: '色度键参数（main.py 全部从此读取，单一来源）。2026-06 优化：原先 tolerance=85
+    + soft_matte=false 会导致角色边缘洋红阴影残留（粉色边）+ 锯齿。经实测验证修正：
+    周三涵粉肤色到洋红(255,0,255)的通道距离 min=156（远大于阈值），因此把阈值提到
+    150 完全不会误伤肤色。关键数据：距离86-150的像素是洋红投影阴影（平均RGB 216,22,203，
+    R/B高G低=洋红偏暗），必须抠掉；肤色距离≥156，安全。新方案 soft_matte=true +
+    transparent_threshold=150 + opaque_threshold=155：阴影区(≤150)全透明，过渡区(150-155)
+    半透明渐变消除锯齿，≥155全保留。比旧方案（硬阈值85）粉边几乎消除、边缘明显平滑。
+    edge_contract 1 仍保留用于收缩洋红混色边。auto-key=border(NOT corners)避免角色占角采样污染。
+    🔴 2026-06 源头治理：生图端 prompt 已全面禁止生成投影阴影（drop/contact/ground/cast
+    shadow，改 flat front lighting）。投影阴影本质是「洋红背景调暗」，与洋红重叠抠不干净，
+    是粉边问题根因。禁阴影后新弹次不再产生阴影残留；本阈值150仅用于兜底历史已生成的带阴影图。
+    🔴 2026-06-26 hue-guard 修正（重要）：上述"阈值150不会误伤肤色"的论断只对肤色成立，
+    对红色/粉红色衣服失效——红衣色相H≈335°距洋红H≈300°仅35°，通道距离落在86-150阴影区
+    被误抠（32/41弹"衣服染色"故事衣服被抠成破洞）。根因：同类色在RGB通道距离上必然重叠。
+    修复方案：remove_chroma_key.py 加 HSV 双判据 hue-guard（默认开启）：只有色相距300°≤20°
+    且饱和度S≥0.85才判为洋红可抠，否则强制保护。物理依据：洋红背景S≈0.98（纯色填充）vs
+    黏土哑光角色S≈0.6（漫反射），饱和度几乎不重叠是材质本质差异。详见 troubleshooting 第7坑。
+    回归验证：正常图额外丢失0像素（零退化），红衣误伤率16-23%→2%，真洋红残留<25px不变。'
+prompts:
+  reference: 'Generate a 4-panel plush doll style image.
+
+
+    For each panel, use the reference image as template for POSE AND COMPOSITION ONLY.
+    The expression/action this panel should convey is noted below, COMPLETELY replace
+    ALL characters with the character from image 1:
+
+    - Top-left: Use image 2 (expression: {ref2_name}), COMPLETELY replace characters
+    with image 1, keep the pose.
+
+    - Top-right: Use image 3 (expression: {ref3_name}), COMPLETELY replace characters
+    with image 1, keep the pose.
+
+    - Bottom-left: Use image 4 (expression: {ref4_name}), COMPLETELY replace characters
+    with image 1, keep the pose.
+
+    - Bottom-right: Use image 5 (expression: {ref5_name}), COMPLETELY replace characters
+    with image 1, keep the pose.
+
+
+    CRITICAL RULES:
+
+    - DO NOT include ANY original characters from reference images. Only the character
+    from image 1 must appear.
+
+    - The character MUST be cute, adorable, well-proportioned. NO ugly, grotesque,
+    malformed, or distorted faces.
+
+    - Maintain kawaii/chibi aesthetic: large round eyes, small nose, soft expressions,
+    pleasant colors.
+
+
+    BACKGROUND (mandatory): Perfectly flat solid #ff00ff chroma-key magenta background
+    (RGB 255,0,255), filling the entire image with no shadows, gradients, or texture.
+    Do NOT use #ff00ff anywhere on the character.
+    The character must NOT cast any shadow (drop/contact/ground shadow) onto the magenta
+    background - use flat front lighting; volume comes from material shading, not projected shadows.
+
+    Style: Plush doll / soft toy texture (soft fuzzy fabric surface, gentle stuffing
+    volume, subtle seam stitching, matte felt-like material), cute chibi expressions,
+    soft warm colors.
+
+    IMPORTANT: All 4 panels must be exactly the same size, evenly distributed, no
+    gaps, no grid lines.
+
+    '
+  reference_duo: 'Generate a 4-panel plush doll style image featuring TWO characters
+    interacting.
+
+    Character A: Use image 1 as the first character reference.
+
+    Character B: Use image 2 as the second character reference.
+
+
+    For each panel, use the reference image as template for POSE AND COMPOSITION ONLY.
+    The expression/action this panel should convey is noted below:
+
+    - Top-left panel: Use image 3 (expression: {ref3_name}), COMPLETELY replace ALL
+    characters with Character A and Character B.
+
+    - Top-right panel: Use image 4 (expression: {ref4_name}), COMPLETELY replace ALL
+    characters with Character A and Character B.
+
+    - Bottom-left panel: Use image 5 (expression: {ref5_name}), COMPLETELY replace
+    ALL characters with Character A and Character B.
+
+    - Bottom-right panel: Use image 6 (expression: {ref6_name}), COMPLETELY replace
+    ALL characters with Character A and Character B.
+
+
+    CRITICAL RULES:
+
+    - DO NOT include ANY characters from the reference images. Only Character A and
+    Character B must appear.
+
+    - The characters MUST be cute, adorable, and well-proportioned. NO ugly, grotesque,
+    malformed, or distorted faces.
+
+    - The expression/action should match the hint provided for each panel.
+
+    - Maintain kawaii/chibi aesthetic: large round eyes, small nose, soft expressions,
+    pleasant colors.
+
+    - Keep the pose and composition from templates, but draw ONLY our two characters.
+
+
+    BACKGROUND (mandatory): Perfectly flat solid #ff00ff chroma-key magenta background
+    (RGB 255,0,255), filling the entire image with no shadows, gradients, or texture.
+    Do NOT use #ff00ff anywhere on the characters.
+    The characters must NOT cast any shadow (drop/contact/ground shadow) onto the magenta
+    background - use flat front lighting; volume comes from material shading, not projected shadows.
+
+    Style: Plush doll / soft toy texture (soft fuzzy fabric surface, gentle stuffing
+    volume, subtle seam stitching, matte felt-like material), cute chibi expressions,
+    soft warm colors.
+
+    IMPORTANT: All 4 panels must be exactly the same size, evenly distributed, no
+    gaps, no grid lines.
+
+    '
+  ai_transparent: 'Generate a 4-panel plush doll style image, featuring the character
+    from image 1.
+
+    BACKGROUND (mandatory): Perfectly flat solid #ff00ff chroma-key magenta background
+    (RGB 255,0,255), filling the entire image with no shadows, gradients, or texture.
+    Do NOT use #ff00ff anywhere on the character.
+    The character must NOT cast any shadow (drop/contact/ground shadow) onto the magenta
+    background - use flat front lighting; volume comes from material shading, not projected shadows.
+
+    Top-left: {emotion_1}
+
+    Top-right: {emotion_2}
+
+    Bottom-left: {emotion_3}
+
+    Bottom-right: {emotion_4}
+
+    '
+  ai_with_background: 'Generate a 4-panel plush doll style image, featuring the character
+    from image 1.
+
+    Background: {background}
+
+    Top-left: {emotion_1}
+
+    Top-right: {emotion_2}
+
+    Bottom-left: {emotion_3}
+
+    Bottom-right: {emotion_4}
+
+    '
+  ai_high_quality: 'Create a 4-panel cute sticker image.
+
+    Character: Use image 1 as reference. Chibi style (large head, small body, 1:1.2
+    ratio).
+
+    Style: Plush doll / soft toy texture (soft fuzzy fabric surface, gentle stuffing
+    volume, subtle seam stitching, matte felt-like material), soft warm colors, simple
+    but effective shading.
+
+    Expression guidelines:
+
+    - Each panel should clearly convey one specific emotion
+
+    - Exaggerated but cute poses and facial expressions
+
+    - Include body language (raised hands, heart gestures, face-covering, etc.)
+
+    - Add slight blush on cheeks for cuteness
+
+    BACKGROUND (mandatory): Perfectly flat solid #ff00ff chroma-key magenta background
+    (RGB 255,0,255), filling the entire image with no shadows, gradients, or texture.
+    Do NOT use #ff00ff anywhere on the character.
+    The character must NOT cast any shadow (drop/contact/ground shadow) onto the magenta
+    background - use flat front lighting; volume comes from material shading, not projected shadows.
+
+    Composition: Character centered with proper whitespace, balanced layout.
+
+    Panel emotions:
+
+    Top-left: {emotion_1}
+
+    Top-right: {emotion_2}
+
+    Bottom-left: {emotion_3}
+
+    Bottom-right: {emotion_4}
+
+    '
+  ai_duo: 'Create a 4-panel cute sticker image featuring TWO characters.
+
+    Character A: Use image 1 as reference.
+
+    Character B: Use image 2 as reference.
+
+    Style: Plush doll / soft toy texture (soft fuzzy fabric surface, gentle stuffing
+    volume, subtle seam stitching, matte felt-like material), soft warm colors.
+
+
+    Expression guidelines:
+
+    - Both characters should interact with each other
+
+    - Exaggerated but cute poses and facial expressions
+
+    - Show their relationship through body language (hugging, holding hands, bumping
+    fists, etc.)
+
+
+    BACKGROUND (mandatory): Perfectly flat solid #ff00ff chroma-key magenta background
+    (RGB 255,0,255), filling the entire image with no shadows, gradients, or texture.
+    Do NOT use #ff00ff anywhere on the characters.
+    The characters must NOT cast any shadow (drop/contact/ground shadow) onto the magenta
+    background - use flat front lighting; volume comes from material shading, not projected shadows.
+
+    Panel emotions:
+
+    Top-left: {emotion_1}
+
+    Top-right: {emotion_2}
+
+    Bottom-left: {emotion_3}
+
+    Bottom-right: {emotion_4}
+
+    '
+  reference_quad: 'Generate a 4-panel plush doll style image featuring FOUR characters
+    (a family/group).
+
+    Character A: Use image 1 as reference.
+
+    Character B: Use image 2 as reference.
+
+    Character C: Use image 3 as reference.
+
+    Character D: Use image 4 as reference.
+
+
+    For each panel, use the reference image as template, show all four characters
+    interacting:
+
+    - Top-left panel: Use image 5 as template, show Characters A, B, C, D together.
+
+    - Top-right panel: Use image 6 as template, show Characters A, B, C, D together.
+
+    - Bottom-left panel: Use image 7 as template, show Characters A, B, C, D together.
+
+    - Bottom-right panel: Use image 8 as template, show Characters A, B, C, D together.
+
+
+    BACKGROUND (mandatory): Perfectly flat solid #ff00ff chroma-key magenta background
+    (RGB 255,0,255), filling the entire image with no shadows, gradients, or texture.
+    Do NOT use #ff00ff anywhere on the characters.
+    The characters must NOT cast any shadow (drop/contact/ground shadow) onto the magenta
+    background - use flat front lighting; volume comes from material shading, not projected shadows.
+
+    Style: Plush doll / soft toy texture, cute chibi style.
+
+    IMPORTANT: All 4 panels must be exactly the same size, evenly distributed, no
+    gaps, no grid lines.
+
+    '
+  ai_quad: 'Create a 4-panel cute sticker image featuring FOUR characters (a family/group).
+
+    Character A: Use image 1 as reference.
+
+    Character B: Use image 2 as reference.
+
+    Character C: Use image 3 as reference.
+
+    Character D: Use image 4 as reference.
+
+
+    Style: Plush doll / soft toy texture (soft fuzzy fabric surface, gentle stuffing
+    volume, subtle seam stitching, matte felt-like material), soft warm colors.
+
+
+    Expression guidelines:
+
+    - All four characters should appear in each panel
+
+    - Show family/group activities (eating together, celebrating, group hug, etc.)
+
+    - Each character should have distinct expressions
+
+
+    BACKGROUND (mandatory): Perfectly flat solid #ff00ff chroma-key magenta background
+    (RGB 255,0,255), filling the entire image with no shadows, gradients, or texture.
+    Do NOT use #ff00ff anywhere on the characters.
+    The characters must NOT cast any shadow (drop/contact/ground shadow) onto the magenta
+    background - use flat front lighting; volume comes from material shading, not projected shadows.
+
+    Panel emotions:
+
+    Top-left: {emotion_1}
+
+    Top-right: {emotion_2}
+
+    Bottom-left: {emotion_3}
+
+    Bottom-right: {emotion_4}
+
+    '
+  grid: 'Plush doll style, 3x3 grid layout, no gaps, no grid lines, no numbers.
+
+    Each cell is exactly the same size.
+
+    All cells show the same character (from image 1).
+
+    From left to right, top to bottom: animation frames 1 to 9, smooth transitions
+    between frames.
+
+    Center composition, proper margins around the character.
+
+    BACKGROUND (mandatory): Perfectly flat solid #ff00ff chroma-key magenta background
+    (RGB 255,0,255), filling the entire image with no shadows, gradients, or texture.
+    Do NOT use #ff00ff anywhere on the character.
+    The character must NOT cast any shadow (drop/contact/ground shadow) onto the magenta
+    background - use flat front lighting; volume comes from material shading, not projected shadows.
+
+    Keep the original background only if it is already pure #ff00ff magenta.
+
+    '
+  reference_9grid: '<page_layout>
+
+    Generate a SINGLE image containing exactly a 3x3 grid (9 equal panels, 3 columns
+    x 3 rows).
+
+    Each panel is exactly the same size with equal spacing.
+
+    Magenta (#ff00ff, RGB 255,0,255) separator lines of 2px thickness divide all panels.
+
+    ALL panel backgrounds: EXACTLY #ff00ff magenta - RGB(255,0,255), pure magenta,
+    maximum saturation, NO deviation, NO gradients, NO variation. This exact color
+    is critical - the chroma-key removal script will key on this specific RGB value.
+
+    </page_layout>
+
+
+    <character_lock>
+
+    Image 1 (first attached image) is the ONLY character to use in ALL 9 panels.
+
+    COMPLETELY replace ALL characters with image 1. PRESERVE ALL text from the reference
+    image - captions, funny lines, sound effects, onomatopoeia. If the reference has
+    text, reproduce it. If the reference has NO text, add none.
+
+    CHARACTER CONSISTENCY RULES:
+
+    - Same face, same hairstyle, same body proportions in every panel
+
+    - Same outfit/color palette (from image 1) across all panels
+
+    - Same art style, same rendering across all panels
+
+    - The character image 1 is the ONLY character reference; images 2-10 are ONLY
+    for pose/expression/action inspiration
+
+    - DO NOT copy the original characters from images 2-10, only copy their poses,
+    expressions, and composition
+
+    DO NOT use #ff00ff, RGB(255,0,255), or any magenta/pink/purple tones on the character
+    itself - character colors must be far from magenta to survive chroma-key removal.
+
+    </character_lock>
+
+
+    <per_panel_composition>
+
+    Each panel: half-body portrait of the character, filling 60-70% of panel area,
+    with equal margins on all 4 sides.
+
+    Character must NOT touch panel edges - leave at least 15% margin on each side.
+
+    NO watermark, NO signatures. PRESERVE ALL text from reference images that enhances
+    the expression, mood, or adds humor/meaning - this includes sound effects, onomatopoeia,
+    captions, funny lines, and any meaningful text. If the reference image has text,
+    reproduce it faithfully. If the reference image has NO text, do NOT add any. Chinese
+    characters are prone to distortion in image generation - carefully verify every
+    Chinese character is correctly formed, clearly readable, and accurately reproduced.
+    NO random text or numbers unrelated to the expression.
+
+    NO floating, no cut-off body parts, no awkward cropping.
+
+    </per_panel_composition>
+
+
+    <style>
+
+    3D clay-rendered cute chibi (C4D/Blender 3D style), shiny glossy smooth clay/plasticine
+    texture, warm studio lighting, depth and volume, subsurface scattering on skin.
+
+    LIGHTING (critical for chroma-key cutout): Use flat even FRONT lighting - the light
+    source faces the character directly. The character must NOT cast ANY shadow onto the
+    magenta background: NO drop shadow, NO contact shadow, NO ground/floor shadow, NO cast
+    shadow. Shadows projected onto the magenta background blend into the background color
+    and CANNOT be removed cleanly by chroma-key. Form and volume must come from the clay
+    material own shading, NOT from projected shadows.
+
+    </style>
+
+
+    <panel_mapping>
+
+    Use images 2-10 as pose/expression reference only (character from image 1):
+
+    - Panel 1 (top-left): reference pose from image 2 ({ref2_name})
+
+    - Panel 2 (top-center): reference pose from image 3 ({ref3_name})
+
+    - Panel 3 (top-right): reference pose from image 4 ({ref4_name})
+
+    - Panel 4 (middle-left): reference pose from image 5 ({ref5_name})
+
+    - Panel 5 (middle-center): reference pose from image 6 ({ref6_name})
+
+    - Panel 6 (middle-right): reference pose from image 7 ({ref7_name})
+
+    - Panel 7 (bottom-left): reference pose from image 8 ({ref8_name})
+
+    - Panel 8 (bottom-center): reference pose from image 9 ({ref9_name})
+
+    - Panel 9 (bottom-right): reference pose from image 10 ({ref10_name})
+
+    </panel_mapping>
+
+
+    <checklist_before_output>
+
+    - ALL 9 panels use image 1 character identically
+
+    - NO shadows on the magenta background (no drop/contact/ground/cast shadows) - flat
+    front lighting only; volume comes from material shading, not projected shadows
+
+    - ALL panels have perfectly flat #ff00ff background
+
+    - NO magenta/pink/purple tones on any character
+
+    - Magenta separator lines are exactly 2px thick
+
+    - NO content crosses magenta separator lines
+
+    - Panels are equal size with even spacing
+
+    - Each character is 60-70% of panel area with equal margins
+
+    - All reference text (captions/sound effects/lines) is correctly rendered and
+    readable
+
+    - 3D clay C4D/Blender style with glossy smooth texture
+
+    </checklist_before_output>'
+  ai_9grid: '<page_layout>
+
+    Generate a SINGLE image containing exactly a 3x3 grid (9 equal panels, 3 columns
+    x 3 rows).
+
+    Each panel is exactly the same size with equal spacing.
+
+    Magenta (#ff00ff, RGB 255,0,255) separator lines of 2px thickness divide all panels.
+
+    ALL panel backgrounds: EXACTLY #ff00ff magenta - RGB(255,0,255), pure magenta,
+    maximum saturation, NO deviation, NO gradients, NO variation. This exact color
+    is critical - the chroma-key removal script will key on this specific RGB value.
+
+    </page_layout>
+
+
+    <character_lock>
+
+    Generate a cute chibi character with the following locked identity across ALL
+    9 panels:
+
+    - Same face, same hairstyle, same body proportions in every panel
+
+    - Same outfit and color palette across all panels
+
+    - Same rendering and art style consistently
+
+    DO NOT use #ff00ff, RGB(255,0,255), or any magenta/pink/purple tones on the character
+    itself - character colors must be far from magenta to survive chroma-key removal.
+
+    </character_lock>
+
+
+    <per_panel_composition>
+
+    Each panel: half-body portrait, filling 60-70% of panel area, equal margins on
+    all 4 sides.
+
+    Character must NOT touch panel edges - at least 15% margin each side.
+
+    NO watermark, NO signatures, NO random text.
+
+    NO floating, no cut-off body parts, no awkward cropping.
+
+    </per_panel_composition>
+
+
+    <style>
+
+    3D clay-rendered cute chibi (C4D/Blender 3D style), shiny glossy smooth clay/plasticine
+    texture, warm studio lighting, depth and volume, subsurface scattering on skin.
+
+    LIGHTING (critical for chroma-key cutout): Use flat even FRONT lighting - the light
+    source faces the character directly. The character must NOT cast ANY shadow onto the
+    magenta background: NO drop shadow, NO contact shadow, NO ground/floor shadow, NO cast
+    shadow. Shadows projected onto the magenta background blend into the background color
+    and CANNOT be removed cleanly by chroma-key. Form and volume must come from the clay
+    material own shading, NOT from projected shadows.
+
+    </style>
+
+
+    <panel_emotions>
+
+    Generate 9 distinct expressions/poses:
+
+    - Panel 1: {emotion_1}
+
+    - Panel 2: {emotion_2}
+
+    - Panel 3: {emotion_3}
+
+    - Panel 4: {emotion_4}
+
+    - Panel 5: {emotion_5}
+
+    - Panel 6: {emotion_6}
+
+    - Panel 7: {emotion_7}
+
+    - Panel 8: {emotion_8}
+
+    - Panel 9: {emotion_9}
+
+    Each expression must be clearly distinct from all others. Include appropriate
+    hand gestures, body language, and facial expressions to convey each emotion.
+
+    </panel_emotions>
+
+
+    <checklist_before_output>
+
+    - ALL 9 panels share identical character identity
+
+    - NO shadows on the magenta background (no drop/contact/ground/cast shadows) - flat
+    front lighting only; volume comes from material shading, not projected shadows
+
+    - ALL panels have perfectly flat #ff00ff background
+
+    - NO magenta/pink/purple tones on any character
+
+    - Magenta separator lines are exactly 2px thick
+
+    - NO content crosses magenta separator lines
+
+    - Panels are equal size with even spacing
+
+    - Each character is 60-70% of panel area with equal margins
+
+    - All 9 expressions are visually distinct
+
+    - 3D clay C4D/Blender style with glossy smooth texture
+
+    </checklist_before_output>'
+  reference_16grid: '<page_layout>
+
+    Generate a SINGLE image containing exactly a 4x4 grid (16 equal panels, 4 columns
+    x 4 rows).
+
+    Each panel is exactly the same size with equal spacing.
+
+    Magenta (#ff00ff, RGB 255,0,255) separator lines of 2px thickness divide all panels.
+
+    ALL panel backgrounds: EXACTLY #ff00ff magenta - RGB(255,0,255), pure magenta,
+    maximum saturation, NO deviation, NO gradients, NO variation.
+
+    </page_layout>
+
+
+    <character_lock>
+
+    Image 1 (first attached image) is the ONLY character to use in ALL 16 panels.
+
+    COMPLETELY replace ALL characters with image 1. PRESERVE ALL text from the reference
+    image - captions, funny lines, sound effects, onomatopoeia. If the reference has
+    text, reproduce it. If the reference has NO text, add none.
+
+    CHARACTER CONSISTENCY RULES:
+
+    - Same face, same hairstyle, same body proportions in every panel
+
+    - Same outfit/color palette (from image 1) across all panels
+
+    - Same art style, same rendering across all panels
+
+    - The character image 1 is the ONLY character reference; images 2-17 are ONLY
+    for pose/expression/action inspiration
+
+    - DO NOT copy the original characters from images 2-17, only copy their poses,
+    expressions, and composition
+
+    DO NOT use #ff00ff, RGB(255,0,255), or any magenta/pink/purple tones on the character
+    itself.
+
+    </character_lock>
+
+
+    <per_panel_composition>
+
+    Each panel: half-body portrait of the character, filling 60-70% of panel area,
+    with equal margins on all 4 sides.
+
+    Character must NOT touch panel edges - leave at least 15% margin on each side.
+
+    NO watermark, NO signatures. PRESERVE ALL text from reference images that enhances
+    the expression, mood, or adds humor/meaning. If the reference image has text,
+    reproduce it faithfully. If the reference image has NO text, do NOT add any. Chinese
+    characters are prone to distortion - carefully verify every Chinese character
+    is correctly formed and readable. NO random text or numbers unrelated to the expression.
+
+    NO floating, no cut-off body parts, no awkward cropping.
+
+    </per_panel_composition>
+
+
+    <style>
+
+    3D clay-rendered cute chibi (C4D/Blender 3D style), shiny glossy smooth clay/plasticine
+    texture, warm studio lighting, depth and volume, subsurface scattering on skin.
+
+    LIGHTING (critical for chroma-key cutout): Use flat even FRONT lighting - the light
+    source faces the character directly. The character must NOT cast ANY shadow onto the
+    magenta background: NO drop shadow, NO contact shadow, NO ground/floor shadow, NO cast
+    shadow. Shadows projected onto the magenta background blend into the background color
+    and CANNOT be removed cleanly by chroma-key. Form and volume must come from the clay
+    material own shading, NOT from projected shadows.
+
+    </style>
+
+
+    <panel_mapping>
+
+    Use images 2-17 as pose/expression reference only (character from image 1):
+
+    Row 1: Panel 1=image 2 ({ref2_name}), Panel 2=image 3 ({ref3_name}), Panel 3=image
+    4 ({ref4_name}), Panel 4=image 5 ({ref5_name})
+
+    Row 2: Panel 5=image 6 ({ref6_name}), Panel 6=image 7 ({ref7_name}), Panel 7=image
+    8 ({ref8_name}), Panel 8=image 9 ({ref9_name})
+
+    Row 3: Panel 9=image 10 ({ref10_name}), Panel 10=image 11 ({ref11_name}), Panel
+    11=image 12 ({ref12_name}), Panel 12=image 13 ({ref13_name})
+
+    Row 4: Panel 13=image 14 ({ref14_name}), Panel 14=image 15 ({ref15_name}), Panel
+    15=image 16 ({ref16_name}), Panel 16=image 17 ({ref17_name})
+
+    </panel_mapping>
+
+
+    <checklist_before_output>
+
+    - ALL 16 panels use image 1 character identically
+
+    - NO shadows on the magenta background (no drop/contact/ground/cast shadows) - flat
+    front lighting only; volume comes from material shading, not projected shadows
+
+    - ALL panels have perfectly flat #ff00ff background
+
+    - NO magenta/pink/purple tones on any character
+
+    - Magenta separator lines are exactly 2px thick
+
+    - NO content crosses magenta separator lines
+
+    - Panels are equal size with even spacing
+
+    - Each character is 60-70% of panel area with equal margins
+
+    - All reference text (captions/sound effects/lines) is correctly rendered and
+    readable
+
+    - 3D clay C4D/Blender style with glossy smooth texture
+
+    </checklist_before_output>'
+  ai_16grid: '<page_layout>
+
+    Generate a SINGLE image containing exactly a 4x4 grid (16 equal panels, 4 columns
+    x 4 rows).
+
+    Each panel is exactly the same size with equal spacing.
+
+    Magenta (#ff00ff, RGB 255,0,255) separator lines of 2px thickness divide all panels.
+
+    ALL panel backgrounds: EXACTLY #ff00ff magenta - RGB(255,0,255), pure magenta,
+    maximum saturation, NO deviation, NO gradients, NO variation. This exact color
+    is critical - the chroma-key removal script will key on this specific RGB value.
+
+    </page_layout>
+
+
+    <character_lock>
+
+    Generate a cute chibi character with the following locked identity across ALL
+    16 panels:
+
+    - Same face, same hairstyle, same body proportions in every panel
+
+    - Same outfit and color palette across all panels
+
+    - Same rendering and art style consistently
+
+    DO NOT use #ff00ff, RGB(255,0,255), or any magenta/pink/purple tones on the character
+    itself - character colors must be far from magenta to survive chroma-key removal.
+
+    </character_lock>
+
+
+    <per_panel_composition>
+
+    Each panel: half-body portrait, filling 60-70% of panel area, equal margins on
+    all 4 sides.
+
+    Character must NOT touch panel edges - at least 15% margin each side.
+
+    NO watermark, NO signatures, NO random text.
+
+    NO floating, no cut-off body parts, no awkward cropping.
+
+    </per_panel_composition>
+
+
+    <style>
+
+    3D clay-rendered cute chibi (C4D/Blender 3D style), shiny glossy smooth clay/plasticine
+    texture, warm studio lighting, depth and volume, subsurface scattering on skin.
+
+    LIGHTING (critical for chroma-key cutout): Use flat even FRONT lighting - the light
+    source faces the character directly. The character must NOT cast ANY shadow onto the
+    magenta background: NO drop shadow, NO contact shadow, NO ground/floor shadow, NO cast
+    shadow. Shadows projected onto the magenta background blend into the background color
+    and CANNOT be removed cleanly by chroma-key. Form and volume must come from the clay
+    material own shading, NOT from projected shadows.
+
+    </style>
+
+
+    <panel_emotions>
+
+    Generate 16 distinct expressions/poses:
+
+    Row 1: Panel 1={emotion_1}, Panel 2={emotion_2}, Panel 3={emotion_3}, Panel 4={emotion_4}
+
+    Row 2: Panel 5={emotion_5}, Panel 6={emotion_6}, Panel 7={emotion_7}, Panel 8={emotion_8}
+
+    Row 3: Panel 9={emotion_9}, Panel 10={emotion_10}, Panel 11={emotion_11}, Panel
+    12={emotion_12}
+
+    Row 4: Panel 13={emotion_13}, Panel 14={emotion_14}, Panel 15={emotion_15}, Panel
+    16={emotion_16}
+
+    Each expression must be clearly distinct from all others. Include appropriate
+    hand gestures, body language, and facial expressions to convey each emotion.
+
+    </panel_emotions>
+
+
+    <checklist_before_output>
+
+    - ALL 16 panels share identical character identity
+
+    - NO shadows on the magenta background (no drop/contact/ground/cast shadows) - flat
+    front lighting only; volume comes from material shading, not projected shadows
+
+    - ALL panels have perfectly flat #ff00ff background
+
+    - NO magenta/pink/purple tones on any character
+
+    - Magenta separator lines are exactly 2px thick
+
+    - NO content crosses magenta separator lines
+
+    - Panels are equal size with even spacing
+
+    - Each character is 60-70% of panel area with equal margins
+
+    - All 16 expressions are visually distinct
+
+    - 3D clay C4D/Blender style with glossy smooth texture
+
+    </checklist_before_output>'
+  grid_2x2: 'Plush doll style, 2x2 grid layout, no gaps, no grid lines, no numbers.
+
+    Each cell is exactly the same size.
+
+    All cells show the same character (from image 1).
+
+    From left to right, top to bottom: animation frames 1 to 4, smooth transitions
+    between frames.
+
+    Center composition, proper margins around the character.
+
+    BACKGROUND (mandatory): Perfectly flat solid #ff00ff chroma-key magenta background
+    (RGB 255,0,255), filling the entire image with no shadows, gradients, or texture.
+    Do NOT use #ff00ff anywhere on the character.
+    The character must NOT cast any shadow (drop/contact/ground shadow) onto the magenta
+    background - use flat front lighting; volume comes from material shading, not projected shadows.
+
+    Keep the original background only if it is already pure #ff00ff magenta.
+
+    '

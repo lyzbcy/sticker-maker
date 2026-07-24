@@ -1,0 +1,8 @@
+# 敏感信息
+.env
+
+# 浏览器数据（包含登录状态）
+.browser-data/
+
+# 依赖
+node_modules/

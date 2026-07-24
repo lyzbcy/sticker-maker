@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎨 表情包概率控制台</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Inter:wght@500;600;700&display=swap');
+  :root {
+    --y50:#fffef7;--y100:#fff9db;--y200:#fff3b0;--y300:#ffec85;--y400:#ffe059;--y500:#f5d442;
+    --y600:#e0c230;--y700:#b89e1e;--w:#fff;--g50:#fafafa;--g100:#f5f5f5;--g200:#eee;
+    --g300:#e0e0e0;--g600:#757575;--g800:#424242;--g900:#212121;
+    --green:#4caf50;--red:#ef5350;--blue:#42a5f5;--purple:#ab47bc;
+    --rad:12px;--rad-sm:8px;--rad-xs:5px;
+    --font:'Noto Sans SC',-apple-system,sans-serif;
+    --font-mono:'Inter','Noto Sans SC',monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:var(--font);background:linear-gradient(165deg,var(--y100)0%,var(--y50)30%,var(--w)70%,#fefce8 100%);min-height:100vh;color:var(--g900);}
+  .wrap{max-width:1200px;margin:0 auto;padding:0 16px 40px;}
+
+  .header{text-align:center;padding:36px 16px 20px;}
+  .header .icon{font-size:42px;animation:bob 3s infinite;}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+  .header h1{font-family:var(--font-mono);font-size:24px;font-weight:700;margin:4px 0 2px;}
+  .header .sub{font-size:12px;color:var(--g600);}
+
+  /* Strategy bar */
+  .strat-bar{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;margin-bottom:16px;padding:8px 16px;background:var(--w);border-radius:var(--rad);border:1px solid var(--y200);}
+  .strat-bar span{font-size:12px;font-weight:600;color:var(--g600);}
+  .strat-btn{padding:4px 14px;border-radius:var(--rad-xs);font-size:11px;font-weight:600;border:1px solid var(--g300);background:var(--w);cursor:pointer;transition:all .15s;}
+  .strat-btn:hover{background:var(--y100);border-color:var(--y400);}
+  .strat-btn.active{background:var(--y300);border-color:var(--y500);}
+  .strat-btn.save{background:var(--y200);}
+  .strat-btn.load{border-color:var(--blue);color:var(--blue);}
+
+  /* Grid */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+
+  /* Card */
+  .card{background:var(--w);border-radius:var(--rad);border:1px solid var(--y200);padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,.04);}
+  .card:hover{box-shadow:0 4px 12px rgba(0,0,0,.06);}
+  .card.span-2{grid-column:span 2;}
+  .card.span-3{grid-column:span 3;}
+  .card.span-full{grid-column:1/-1;}
+
+  .card-head{display:flex;align-items:center;gap:6px;margin-bottom:10px;}
+  .card-head .ico{width:26px;height:26px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
+  .ico.mode{background:var(--y200)}.ico.char{background:#e8f5e9}.ico.costume{background:#fce4ec}
+  .ico.ref{background:#e3f2fd}.ico.prompt{background:#fff3e0}
+  .card-head h3{font-size:12px;font-weight:600;}
+  .card-head .note{font-size:10px;color:var(--g600);display:block;}
+
+  /* Horizontal slider */
+  .h-slider{display:grid;grid-template-columns:80px 1fr 48px;align-items:center;gap:8px;padding:4px 0;}
+  .h-slider .hl{font-size:12px;font-weight:500;display:flex;align-items:center;gap:4px;}
+  .h-slider .hd{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+  .h-slider input[type=range]{-webkit-appearance:none;width:100%;height:6px;border-radius:3px;background:var(--y200);outline:none;cursor:pointer;}
+  .h-slider input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--y500);border:2px solid var(--w);box-shadow:0 1px 3px rgba(0,0,0,.1);cursor:pointer;}
+  .h-slider .hp{text-align:right;font-family:var(--font-mono);font-size:13px;font-weight:700;}
+
+  /* Variant card */
+  .variant-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .vc{background:var(--g50);border-radius:6px;padding:6px;text-align:center;border:2px solid transparent;position:relative;}
+  .vc:hover{border-color:var(--y300);}.vc.new{border-color:var(--green);border-style:dashed;background:#f1f8e9;}
+  .vc.new::after{content:'🆕';position:absolute;top:-5px;right:-3px;font-size:10px;pointer-events:none;}
+  .vc .thumb{width:50px;height:50px;border-radius:4px;object-fit:contain;background:var(--w);border:1px solid var(--g200);margin:0 auto 4px;}
+  .vc .vl{font-size:10px;font-weight:600;color:var(--g800);margin-bottom:3px;}
+  .vc .vl em{font-style:normal;color:var(--green);font-size:9px;border:1px solid var(--green);border-radius:3px;padding:0 2px;margin-left:2px;}
+  .vc input[type=range]{-webkit-appearance:none;width:100%;height:4px;border-radius:2px;background:var(--y200);outline:none;cursor:pointer;margin:0;}
+  .vc input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--y500);border:2px solid var(--w);cursor:pointer;}
+  .vc .vp{font-family:var(--font-mono);font-size:11px;font-weight:700;margin-top:1px;}
+
+  /* Sum bar */
+  .prob-bar{height:4px;background:var(--g100);border-radius:2px;overflow:hidden;display:flex;margin-top:8px;}
+  .prob-bar .seg{height:100%;transition:width .3s;}
+  .sum-row{display:flex;justify-content:space-between;padding:6px 10px;background:var(--g50);border-radius:4px;margin-top:8px;font-size:11px;font-weight:500;}
+  .sum-row .sv{font-family:var(--font-mono);font-weight:700;}.sv.ok{color:var(--green)}.sv.warn{color:var(--orange)}.sv.err{color:var(--red)}
+
+  /* Prompt match game */
+  .prompt-table{display:flex;gap:8px;overflow-x:auto;}
+  .prompt-col{flex:1;min-width:100px;background:var(--g50);border-radius:6px;padding:6px;display:flex;flex-direction:column;gap:4px;max-height:240px;overflow-y:auto;}
+  .prompt-col .col-title{font-size:11px;font-weight:700;text-align:center;padding:2px 0;border-bottom:1px solid var(--g200);margin-bottom:2px;}
+  .prompt-tag{display:flex;align-items:center;gap:3px;font-size:11px;padding:3px 6px;background:var(--w);border-radius:4px;border:1px solid var(--g200);cursor:pointer;transition:all .12s;}
+  .prompt-tag:hover{background:var(--y100);border-color:var(--y400);}
+  .prompt-tag .rm{width:14px;height:14px;border-radius:50%;background:var(--red);color:#fff;font-size:9px;line-height:14px;text-align:center;cursor:pointer;flex-shrink:0;margin-left:auto;}
+  .prompt-tag .rm:hover{background:#d32f2f;}
+  .prompt-add{font-size:10px;padding:4px;border:1px dashed var(--g300);border-radius:4px;text-align:center;cursor:pointer;color:var(--g600);}
+  .prompt-add:hover{background:var(--y100);border-color:var(--y400);}
+  .add-col-btn{padding:4px 10px;font-size:10px;border:1px dashed var(--g300);border-radius:4px;cursor:pointer;white-space:nowrap;background:var(--w);margin-top:4px;}
+  .add-col-btn:hover{background:var(--y100);}
+
+  /* Buttons */
+  .actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:16px;}
+  .btn{padding:8px 20px;border-radius:6px;font-family:var(--font);font-size:13px;font-weight:600;border:none;cursor:pointer;transition:all .15s;}
+  .btn-primary{background:var(--y500);color:var(--g900);}.btn-primary:hover{background:var(--y600);transform:translateY(-1px);}
+  .btn-secondary{background:var(--w);color:var(--g800);border:1px solid var(--g300);}.btn-secondary:hover{background:var(--g50);}
+  .btn-danger{background:var(--w);color:var(--red);border:1px solid var(--red);}.btn-danger:hover{background:#fce4ec;}
+
+  .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);padding:8px 20px;border-radius:6px;font-size:13px;font-weight:600;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:1000;opacity:0;transition:opacity .3s;pointer-events:none;}
+  .toast.show{opacity:1}.toast.ok{background:var(--green)}.toast.err{background:var(--red)}.toast.inf{background:var(--blue)}
+  .loading{position:fixed;inset:0;background:rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;z-index:999;opacity:0;pointer-events:none;transition:opacity .2s;}
+  .loading.on{opacity:1;pointer-events:all}.spinner{width:32px;height:32px;border:3px solid var(--y200);border-top-color:var(--y500);border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .footer{text-align:center;padding:16px;font-size:10px;color:var(--g400);}
+
+  /* Dirty indicator */
+  .dirty-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-left:4px;vertical-align:middle;animation:pulse 1.5s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+  /* Strategy diff modal */
+  .diff-modal{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1001;display:flex;align-items:center;justify-content:center;}
+  .diff-box{background:var(--w);border-radius:var(--rad);padding:20px;max-width:500px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,.15);}
+  .diff-box h3{font-size:14px;margin-bottom:12px;}
+  .diff-row{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--g100);}
+  .diff-row .old{color:var(--g600)}.diff-row .new{font-weight:600;color:var(--blue)}
+  .diff-row .same{color:var(--g400)}
+  .diff-btns{display:flex;gap:8px;margin-top:16px;justify-content:center;}
+
+  @media(max-width:800px){
+    .grid{grid-template-columns:repeat(2,1fr)}
+    .card.span-2,.card.span-3{grid-column:span 2}
+    .save-slots{grid-template-columns:1fr!important}
+  }
+  @media(max-width:500px){
+    .grid{grid-template-columns:1fr}
+    .card.span-2,.card.span-3{grid-column:span 1}
+    .variant-grid{grid-template-columns:repeat(2,1fr)}
+    .prompt-table{flex-direction:column}
+    .ref-gallery-grid{grid-template-columns:repeat(auto-fill,minmax(70px,1fr))!important}
+    .strat-bar{flex-direction:column;align-items:stretch}
+  }
+</style>
+</head>
+<body>
+<div class="header"><div class="icon">🎨</div><h1>表情包概率控制台</h1><p class="sub">策略存档 · 服装 · 参考图 · AI Prompt 配方</p></div>
+<div class="wrap" id="app">
+  <div class="loading" id="loading"><div class="spinner"></div></div>
+  <div class="toast" id="toast"></div>
+</div>
+<div class="footer">周三涵 · 概率控制台 v3 · 端口 3412</div>
+
+<script>
+let state = null;
+const MODE_COLORS = ['#f5d442','#42a5f5','#ab47bc'];
+const CHAR_COLORS = ['#f5d442','#4fc3f7','#76d275','#ce93d8'];
+const CHAR_ICONS = {'星星布丁':'⭐','捞鱼':'🐟','周三涵':'🤖','周五涵':'🎀'};
+const MODE_LABELS = {single:'👤单人',duo:'👫双人',quad:'👨‍👩‍👧‍👦四人'};
+
+function toast(m,c='inf'){const t=document.getElementById('toast');t.textContent=m;t.className='toast '+c;requestAnimationFrame(()=>t.classList.add('show'));setTimeout(()=>t.classList.remove('show'),2000)}
+function loading(v){document.getElementById('loading').className='loading'+(v?' on':'')}
+
+function collect(name,selector,transform){
+  const r={};document.querySelectorAll(selector).forEach(s=>{
+    const k=s.dataset[name];if(k)r[k]=transform?transform(s):parseInt(s.value)/100;
+  });return r;
+}
+
+function onSlider(){
+  const s=this;
+  const pct=s.closest('.vc')?.querySelector('.vp')||s.closest('.h-slider')?.querySelector('.hp');
+  if(pct)pct.textContent=s.value+'%';
+  
+  const group=s.closest('.variant-grid')||s.closest('.card');
+  if(group){
+    const inputs=Array.from(group.querySelectorAll('input[type=range]'));
+    if(inputs.length>1){
+      const targetVal=parseInt(s.value)/100;
+      const otherInputs=inputs.filter(inp=>inp!==s);
+      const otherVals=otherInputs.map(inp=>({el:inp,val:parseInt(inp.value)/100}));
+      const nonZeroOthers=otherVals.filter(v=>v.val>0.001);
+      
+      const sumOthers=nonZeroOthers.reduce((sum,v)=>sum+v.val,0);
+      const targetOthers=1.0-targetVal;
+      
+      if(targetOthers<=0){
+        inputs.forEach(inp=>{
+          if(inp!==s){
+            inp.value=0;
+            const p=inp.closest('.vc')?.querySelector('.vp')||inp.closest('.h-slider')?.querySelector('.hp');
+            if(p)p.textContent='0%';
+          }
+        });
+      }else if(sumOthers>0){
+        let newSumOthers=0;
+        nonZeroOthers.forEach(v=>{
+          v.newVal=Math.round((v.val*targetOthers/sumOthers)*100)/100;
+          newSumOthers+=v.newVal;
+        });
+        let diff=targetOthers-newSumOthers;
+        if(Math.abs(diff)>0.001&&nonZeroOthers.length>0){
+          let maxVal=-1,maxIdx=0;
+          nonZeroOthers.forEach((v,idx)=>{
+            if(v.newVal>maxVal){maxVal=v.newVal;maxIdx=idx;}
+          });
+          nonZeroOthers[maxIdx].newVal=Math.round((nonZeroOthers[maxIdx].newVal+diff)*100)/100;
+        }
+        otherVals.forEach(v=>{
+          const finalVal=v.newVal||0;
+          v.el.value=Math.round(finalVal*100);
+          const p=v.el.closest('.vc')?.querySelector('.vp')||v.el.closest('.h-slider')?.querySelector('.hp');
+          if(p)p.textContent=Math.round(finalVal*100)+'%';
+        });
+      }else{
+        s.value=100;
+        if(pct)pct.textContent='100%';
+      }
+    }
+  }
+  updateAllBars();
+  markDirty(s.closest('.card'));
+}
+
+// Dirty tracking
+let isDirty=false;
+function markDirty(card){
+  isDirty=true;
+  if(card){
+    const h3=card.querySelector('.card-head h3');
+    if(h3&&!h3.querySelector('.dirty-dot')){
+      const dot=document.createElement('span');dot.className='dirty-dot';h3.appendChild(dot);
+    }
+  }
+}
+function clearDirty(){
+  isDirty=false;
+  document.querySelectorAll('.dirty-dot').forEach(d=>d.remove());
+}
+
+function updateAllBars(){
+  // Mode bar
+  const mb=document.querySelector('#mode-bar');if(mb){const d=collect('mode','[data-mode]');mb.innerHTML='';if(Object.keys(d).length){for(const[k,v]of Object.entries(d)){const seg=document.createElement('div');seg.className='seg';seg.style.width=(v*100)+'%';seg.style.background=MODE_COLORS[Object.keys(d).indexOf(k)];mb.appendChild(seg)}}}
+  // Char bar
+  const cb=document.querySelector('#char-bar');if(cb){const d=collect('charprob','[data-charprob]');cb.innerHTML='';if(Object.keys(d).length){for(const[k,v]of Object.entries(d)){const seg=document.createElement('div');seg.className='seg';seg.style.width=(v*100)+'%';seg.style.background=CHAR_COLORS[Object.keys(d).indexOf(k)];cb.appendChild(seg)}}}
+  // Costume bars
+  document.querySelectorAll('[data-char]').forEach(card=>{const char=card.dataset.char;const d=collect('variant','[data-variant]');const probs={};card.querySelectorAll('[data-variant]').forEach(s=>probs[s.dataset.variant]=parseInt(s.value)/100);const cb2=card.querySelector('.card-bar');if(!cb2)return;cb2.innerHTML='';const keys=Object.keys(probs);const cols=['#f5d442','#42a5f5','#ab47bc','#4caf50','#ff9800','#ec407a'];keys.forEach((k,i)=>{const seg=document.createElement('div');seg.className='seg';seg.style.width=(probs[k]*100)+'%';seg.style.background=cols[i%cols.length];cb2.appendChild(seg)});const sum=Object.values(probs).reduce((a,b)=>a+b,0);const sel=card.querySelector('.sv');if(sel){sel.textContent=sum.toFixed(2);sel.className='sv '+(Math.abs(sum-1)<.005?'ok':sum>0.985&&sum<1.015?'warn':'err')}});
+  // Ref bar
+  // 参考图已改为画廊模式，不需要概率条和合计
+
+  // Sums
+  const ids = { mode: 'mode-sum', charprob: 'char-sum' };
+  ['mode','charprob'].forEach(g=>{const el=document.getElementById(ids[g]);if(!el)return;let d={};if(g==='mode')d=collect('mode','[data-mode]');else if(g==='charprob')d=collect('charprob','[data-charprob]');else d=collect('ref','[data-ref]');const s=Object.values(d).reduce((a,b)=>a+b,0);el.textContent=s.toFixed(2);el.className='sv '+(Math.abs(s-1)<.005?'ok':s>0.985&&s<1.015?'warn':'err')});
+}
+
+function render(data){
+  const app=document.getElementById('app');
+  const {mode_probabilities:mp,single_character_probabilities:scp,costumes,references,keywords}=data;
+
+  // ===== 策略存档面板（游戏风格卡片） =====
+  let html='<div class="card span-full" style="margin-bottom:4px;"><div class="card-head"><div class="ico mode">💾</div><div><h3>策略存档</h3><span class="note">保存当前配置到自定义的策略存档，支持一键切换</span></div><button class="strat-btn save" onclick="createNewStrat()" style="margin-left:auto;font-size:11px;padding:6px 14px;background:var(--y200);">➕ 新增策略</button></div>';
+  html+='<div class="save-slots" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;" id="save-slots">';
+  html+='</div></div>';
+  // 加载存档状态
+  setTimeout(loadSlotStatus,200);
+
+  html+='<div class="grid">';
+
+  // === 模式概率 ===
+  html+='<div class="card"><div class="card-head"><div class="ico mode">🎯</div><div><h3>模式概率</h3><span class="note">单人/双人/四人比例</span></div></div>';
+  for(const[k,v]of Object.entries(mp))html+=`<div class="h-slider"><div class="hl"><span class="hd" style="background:${MODE_COLORS[Object.keys(mp).indexOf(k)]}"></span>${MODE_LABELS[k]||k}</div><input type="range" min="0" max="100" value="${Math.round(v*100)}" data-mode="${k}" oninput="onSlider.call(this)"><div class="hp">${Math.round(v*100)}%</div></div>`;
+  html+='<div class="prob-bar"><span id="mode-bar"></span></div><div class="sum-row"><span>合计</span><span class="sv ok" id="mode-sum">1.00</span></div></div>';
+
+  // === 角色概率 ===
+  html+='<div class="card"><div class="card-head"><div class="ico char">👤</div><div><h3>角色选择概率</h3><span class="note">单人模式角色权重</span></div></div>';
+  for(const[k,v]of Object.entries(scp))html+=`<div class="h-slider"><div class="hl"><span class="hd" style="background:${CHAR_COLORS[Object.keys(scp).indexOf(k)]}"></span>${CHAR_ICONS[k]||''}${k}</div><input type="range" min="0" max="100" value="${Math.round(v*100)}" data-charprob="${k}" oninput="onSlider.call(this)"><div class="hp">${Math.round(v*100)}%</div></div>`;
+  html+='<div class="prob-bar"><span id="char-bar"></span></div><div class="sum-row"><span>合计</span><span class="sv ok" id="char-sum">1.00</span></div></div>';
+
+  // === 参考图（画廊模式：勾选=纳入，无概率） ===
+  const refEntries=Object.entries(references||{});
+  const usedCount=refEntries.filter(([,v])=>v.used).length;
+  html+='<div class="card span-3"><div class="card-head"><div class="ico ref">🖼️</div><div><h3>参考图管理</h3><span class="note">勾选纳入使用 · '+refEntries.length+' 张'+(usedCount>0?' · 已用 '+usedCount+' 张':'')+'</span></div></div>';
+  // 筛选按钮
+  html+='<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">';
+  html+='<button class="strat-btn" onclick="filterRef(\'all\')">全部</button>';
+  html+='<button class="strat-btn" onclick="filterRef(\'unused\')">仅未用</button>';
+  html+='<button class="strat-btn" onclick="filterRef(\'used\')">仅已用</button>';
+  html+='<button class="strat-btn" onclick="toggleAllRef(true)">全选</button>';
+  html+='<button class="strat-btn" onclick="toggleAllRef(false)">全不选</button>';
+  html+='</div>';
+  html+='<div class="variant-grid ref-gallery-grid" style="grid-template-columns:repeat(auto-fill,minmax(90px,1fr));">';
+  for(const[k,v]of refEntries){const imgUrl='/api/image?path='+encodeURIComponent(v.path);
+    const checked=v.probability>0?'checked':'';
+    const usedBadge=v.used?'<span class="used-badge">已用</span>':'';
+    const usedClass=v.used?' ref-used':'';
+    html+=`<div class="vc ref-gallery${checked?'':' excluded'}${usedClass}" data-ref-name="${k}"><img class="thumb" src="${imgUrl}" alt="${k}" loading="lazy" onerror="this.style.display='none'">${usedBadge}<div class="vl" title="${k}">${k.length>10?k.substring(0,9)+'…':k}</div><label class="ref-check"><input type="checkbox" data-ref="${k}" ${checked} onchange="toggleRef(this)"> 使用</label><div class="ref-actions"><span class="rm mark-used" onclick="markUsed(this,'${k.replace(/'/g,"\\'")}')" title="移入已用">✓</span><span class="rm del-ref" onclick="delRef(this,'${k.replace(/'/g,"\\'")}')" title="删除">×</span></div></div>`;
+  }
+  html+='</div></div>';
+  // 内联样式
+  html+=`<style>
+  .ref-gallery{position:relative}.ref-gallery:hover .ref-actions{display:flex!important}
+  .ref-gallery.excluded{opacity:.35}
+  .ref-gallery.ref-used{border-color:#ff9800;background:#fff8e1}
+  .ref-check{font-size:10px;display:flex;align-items:center;gap:2px;justify-content:center;cursor:pointer}
+  .ref-check input{width:12px;height:12px;cursor:pointer}
+  .used-badge{position:absolute;top:2px;left:2px;font-size:9px;background:#ff9800;color:#fff;padding:1px 4px;border-radius:3px;font-weight:600}
+  .ref-actions{position:absolute;top:4px;right:4px;display:none;flex-direction:column;gap:3px;}
+  .ref-actions .rm{width:16px;height:16px;border-radius:50%;color:#fff;font-size:10px;line-height:16px;text-align:center;cursor:pointer;}
+  .ref-actions .mark-used{background:#ff9800}.ref-actions .mark-used:hover{background:#f57c00}
+  .ref-actions .del-ref{background:var(--red)}.ref-actions .del-ref:hover{background:#d32f2f}
+  </style>`;
+
+  // === 服装卡片 ===
+  for(const[char,variants]of Object.entries(costumes||{})){
+    const vEntries=Object.entries(variants).sort((a,b)=>parseInt(a[0].replace('base',''))-parseInt(b[0].replace('base','')));
+    html+=`<div class="card" data-char="${char}"><div class="card-head"><div class="ico costume">${CHAR_ICONS[char]||'🎭'}</div><div><h3>${char} · 服装</h3><span class="note">${vEntries.length}套</span></div></div>`;
+    html+='<div class="variant-grid">';
+    for(const[vn,vd]of vEntries){const isNew=vd.source==='disk';const imgUrl='/api/image?path='+encodeURIComponent(vd.path);
+      html+=`<div class="vc${isNew?' new':''}"><img class="thumb" src="${imgUrl}" alt="${vn}" loading="lazy" onerror="this.style.display='none'"><div class="vl">${vn}${isNew?' <em>新</em>':''}</div><input type="range" min="0" max="100" value="${Math.round(vd.probability*100)}" data-variant="${vn}" oninput="onSlider.call(this)"><div class="vp">${Math.round(vd.probability*100)}%</div></div>`;
+    }
+    html+='</div><div class="prob-bar card-bar"></div><div class="sum-row"><span>合计</span><span class="sv ok">1.00</span></div></div>';
+  }
+
+  html+='</div>'; // end grid
+
+  // === AI Prompt 配方 ===
+  if(keywords){
+    html+='<div style="margin-top:16px;"><div class="card span-full"><div class="card-head"><div class="ico prompt">🧩</div><div><h3>AI Prompt 配方</h3><span class="note">连连看：动作 + 情绪 + 背景 → 生成 prompt</span></div></div>';
+    html+='<div class="prompt-table" id="prompt-table">';
+    const cols=[{key:'actions',title:'🎬 动作',items:keywords.actions||[]},{key:'emotions',title:'😊 情绪',items:keywords.emotions||[]},{key:'backgrounds',title:'🏠 背景',items:keywords.backgrounds||[]}];
+    // 如果有额外列
+    if(keywords.extra_cols){for(const ec of keywords.extra_cols)cols.push(ec);}
+    for(const col of cols){
+      const isExtra=col.key.startsWith('extra_');
+      html+=`<div class="prompt-col" data-col="${col.key}"><div class="col-title">${col.title}${isExtra?' <span onclick="delColumn(\''+col.key+'\')" style="display:inline-flex;width:14px;height:14px;border-radius:50%;background:var(--red);color:#fff;font-size:9px;line-height:14px;text-align:center;cursor:pointer;">×</span>':''}</div>`;
+      for(const item of col.items)html+=`<div class="prompt-tag"><span>${item}</span><span class="rm" onclick="rmTag(this,'${col.key}','${item.replace(/'/g,"\\'").replace(/"/g,"&quot;")}')">×</span></div>`;
+      html+=`<div class="prompt-add" onclick="addTag('${col.key}')">+ 添加</div></div>`;
+    }
+    html+=`<div style="display:flex;align-items:center;"><button class="add-col-btn" onclick="addColumn()">+ 加列</button></div>`;
+    html+='</div></div></div>';
+    // === emotion_action_pairs 卡片 ===
+    if(keywords.emotion_action_pairs && Object.keys(keywords.emotion_action_pairs).length>0){
+      html+='<div class="card span-full" style="margin-top:12px;"><div class="card-head"><div class="ico prompt">🔗</div><div><h3>情绪×动作配对</h3><span class="note">已定义的配对映射 · '+Object.keys(keywords.emotion_action_pairs).length+' 组</span></div></div>';
+      html+='<div class="pairs-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px;">';
+      for(const[key,val]of Object.entries(keywords.emotion_action_pairs)){
+        html+=`<div class="prompt-tag pair-tag" style="justify-content:space-between;"><span style="font-size:10px;color:var(--g600);">${key}</span><span style="font-weight:500;">${val}</span><span class="rm" onclick="rmPair(this,'${key.replace(/'/g,"\\'")}')" title="删除配对">×</span></div>`;
+      }
+      html+='</div>';
+      html+='<div style="display:flex;gap:6px;margin-top:8px;"><input id="new-pair-key" placeholder="emotion_action" style="flex:1;padding:4px 8px;border:1px solid var(--g300);border-radius:4px;font-size:11px;"><input id="new-pair-val" placeholder="描述" style="flex:2;padding:4px 8px;border:1px solid var(--g300);border-radius:4px;font-size:11px;"><button class="strat-btn" onclick="addPair()" style="font-size:11px;padding:4px 12px;">+ 添加</button></div>';
+      html+='</div>';
+    }
+  }
+
+  // === 按钮 ===
+  html+='<div class="actions" style="margin-top:16px;"><button class="btn btn-primary" onclick="saveAll()">💾 保存全部</button><button class="btn btn-secondary" onclick="loadData()">🔄 重新加载</button><button class="btn btn-danger" onclick="resetAll()">↩️ 重置</button></div>';
+
+  // === 高级配置折叠面板 ===
+  html+='<div style="margin-top:20px;">';
+  html+='<div class="card span-full" style="cursor:pointer;" onclick="toggleAdvanced()">';
+  html+='<div class="card-head"><div class="ico" style="background:#e8eaf6">⚙️</div><div><h3>高级配置</h3><span class="note">生成配置 · 背景模式 · 动态阈值 · 发布设置</span></div></div>';
+  html+='<div id="adv-arrow" style="text-align:center;font-size:14px;color:var(--g600);">▼ 展开</div>';
+  html+='</div>';
+  html+='<div id="adv-panel" style="display:none;margin-top:8px;">';
+  html+='<div class="grid" id="adv-grid"></div>';
+  html+='</div></div>';
+
+  app.innerHTML=html;
+  updateAllBars();
+  // 异步加载高级配置
+  loadAdvanced();
+}
+
+// 高级配置
+let advState=null;
+async function loadAdvanced(){
+  try{
+    const r=await fetch('/api/advanced');const j=await r.json();
+    if(j.success){advState=j.data;renderAdvanced();}
+  }catch(e){}
+}
+function renderAdvanced(){
+  if(!advState)return;
+  const g=advState.generation||{};
+  const at=advState.ai_template||{};
+  const q=advState.quota||{};
+  const p=advState.publish||{};
+  let h='';
+  // 生成配置
+  h+='<div class="card"><div class="card-head"><div class="ico mode">🏭</div><div><h3>生成配置</h3></div></div>';
+  h+=`<div class="h-slider"><div class="hl">模式</div><select id="adv-gen-mode" style="padding:4px;border:1px solid var(--g300);border-radius:4px;font-size:12px;"><option value="single"${g.mode==='single'?' selected':''}>单人</option><option value="duo"${g.mode==='duo'?' selected':''}>双人</option></select><span></span></div>`;
+  h+=`<div class="h-slider"><div class="hl">四宫格组数</div><input type="number" id="adv-gen-quad" value="${g.quad_count||3}" min="1" max="20" style="width:60px;padding:4px;border:1px solid var(--g300);border-radius:4px;font-size:12px;"><span></span></div>`;
+  h+=`<div class="h-slider"><div class="hl">动态表情</div><label style="font-size:12px;"><input type="checkbox" id="adv-gen-dynamic" ${g.dynamic?'checked':''}> 启用</label><span></span></div>`;
+  h+=`<div class="h-slider"><div class="hl">帧时长(ms)</div><input type="number" id="adv-gen-frame" value="${g.frame_duration||100}" min="50" max="500" step="10" style="width:60px;padding:4px;border:1px solid var(--g300);border-radius:4px;font-size:12px;"><span></span></div>`;
+  h+='</div>';
+  // 背景模式
+  h+='<div class="card"><div class="card-head"><div class="ico ref">🎨</div><div><h3>背景模式</h3></div></div>';
+  h+='<div style="display:flex;gap:10px;padding:6px 0;">';
+  h+=`<label style="font-size:12px;cursor:pointer;"><input type="radio" name="adv-bg-mode" value="transparent" ${at.background_mode==='transparent'?'checked':''}> 透明底</label>`;
+  h+=`<label style="font-size:12px;cursor:pointer;"><input type="radio" name="adv-bg-mode" value="with_background" ${at.background_mode==='with_background'?'checked':''}> 有背景</label>`;
+  h+='</div></div>';
+  // 发布配置
+  h+='<div class="card"><div class="card-head"><div class="ico prompt">📤</div><div><h3>发布设置</h3></div></div>';
+  h+=`<div style="display:grid;gap:6px;font-size:12px;">`;
+  h+=`<label>版权: <input id="adv-pub-copyright" value="${p.copyright||''}" style="flex:1;padding:3px 6px;border:1px solid var(--g300);border-radius:4px;font-size:11px;width:100%;"></label>`;
+  h+=`<label>类型: <input id="adv-pub-type" value="${p.type||''}" style="padding:3px 6px;border:1px solid var(--g300);border-radius:4px;font-size:11px;width:100%;"></label>`;
+  h+=`<label>风格: <input id="adv-pub-style" value="${p.style||''}" style="padding:3px 6px;border:1px solid var(--g300);border-radius:4px;font-size:11px;width:100%;"></label>`;
+  h+=`<label>主题: <input id="adv-pub-theme" value="${p.theme||''}" style="padding:3px 6px;border:1px solid var(--g300);border-radius:4px;font-size:11px;width:100%;"></label>`;
+  h+=`<label>地区: <input id="adv-pub-region" value="${p.region||''}" style="padding:3px 6px;border:1px solid var(--g300);border-radius:4px;font-size:11px;width:100%;"></label>`;
+  h+='</div></div>';
+  // 动态阈值
+  h+='<div class="card span-full"><div class="card-head"><div class="ico char">📊</div><div><h3>动态比例阈值</h3><span class="note">库存量 → 参考图概率</span></div></div>';
+  h+='<table style="width:100%;font-size:12px;border-collapse:collapse;">';
+  h+='<tr style="background:var(--g50);"><th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--g200);">最低库存</th><th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--g200);">参考图概率</th></tr>';
+  const thresholds=q.thresholds||[];
+  for(let i=0;i<thresholds.length;i++){
+    h+=`<tr><td style="padding:3px 8px;"><input type="number" class="adv-quota-min" value="${thresholds[i].min}" min="0" style="width:50px;padding:2px 4px;border:1px solid var(--g300);border-radius:3px;font-size:11px;"></td>`;
+    h+=`<td style="padding:3px 8px;"><input type="number" class="adv-quota-prob" value="${thresholds[i].local_prob}" min="0" max="1" step="0.05" style="width:60px;padding:2px 4px;border:1px solid var(--g300);border-radius:3px;font-size:11px;"></td></tr>`;
+  }
+  h+='</table></div>';
+  // 保存按钮
+  h+='<div style="grid-column:1/-1;text-align:center;margin-top:8px;"><button class="btn btn-primary" onclick="saveAdvanced()">💾 保存高级配置</button></div>';
+  document.getElementById('adv-grid').innerHTML=h;
+}
+function toggleAdvanced(){
+  const panel=document.getElementById('adv-panel');
+  const arrow=document.getElementById('adv-arrow');
+  if(panel.style.display==='none'){panel.style.display='';arrow.textContent='▲ 收起';}
+  else{panel.style.display='none';arrow.textContent='▼ 展开';}
+}
+async function saveAdvanced(){
+  const data={};
+  data.generation={
+    mode:document.getElementById('adv-gen-mode')?.value||'single',
+    quad_count:parseInt(document.getElementById('adv-gen-quad')?.value)||3,
+    dynamic:document.getElementById('adv-gen-dynamic')?.checked||false,
+    frame_duration:parseInt(document.getElementById('adv-gen-frame')?.value)||100,
+  };
+  const bgRadio=document.querySelector('input[name="adv-bg-mode"]:checked');
+  data.ai_template={background_mode:bgRadio?.value||'transparent'};
+  data.publish={
+    copyright:document.getElementById('adv-pub-copyright')?.value||'',
+    type:document.getElementById('adv-pub-type')?.value||'',
+    style:document.getElementById('adv-pub-style')?.value||'',
+    theme:document.getElementById('adv-pub-theme')?.value||'',
+    region:document.getElementById('adv-pub-region')?.value||'',
+  };
+  const mins=document.querySelectorAll('.adv-quota-min');
+  const probs=document.querySelectorAll('.adv-quota-prob');
+  if(mins.length>0){
+    const thresholds=[];
+    for(let i=0;i<mins.length;i++){thresholds.push({min:parseInt(mins[i].value)||0,local_prob:parseFloat(probs[i].value)||0});}
+    data.quota={thresholds};
+  }
+  loading(true);
+  try{
+    const r=await fetch('/api/advanced',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    const j=await r.json();if(!j.success)throw new Error(j.error);
+    toast('💾 高级配置已保存','ok');
+  }catch(e){toast('❌ '+e.message,'err')}finally{loading(false)}
+}
+
+// ===== 策略 =====
+async function loadSlotStatus(){
+  loading(true);
+  try{
+    const r=await fetch('/api/strategies');const j=await r.json();
+    const container=document.getElementById('save-slots');
+    if(!container)return;
+    container.innerHTML='';
+    if(j.success){
+      const slots=j.data||[];
+      if(slots.length===0){
+        container.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--g600);font-size:12px;">暂无存档，点击右上角“新增策略”按钮创建</div>';
+        loading(false);
+        return;
+      }
+      slots.forEach(s=>{
+        const ts=s.timestamp||'';const tsStr=ts?new Date(ts).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+        let summary='';if(s.mode_probabilities)summary=`单人${Math.round(s.mode_probabilities.single*100)}% 双人${Math.round(s.mode_probabilities.duo*100)}% 四人${Math.round(s.mode_probabilities.quad*100)}%`;
+        const div=document.createElement('div');
+        div.className='save-slot';
+        div.id='slot-'+s.id;
+        div.style.cssText='background:var(--g50);border-radius:8px;padding:10px;text-align:center;border:2px solid var(--g200);min-height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;';
+        div.innerHTML=`<div style="font-size:20px;">💿</div><div style="font-size:12px;font-weight:600;" title="${s.name}">${s.name.length>15?s.name.substring(0,14)+'…':s.name}</div><div style="font-size:10px;color:var(--g600);">${tsStr}</div><div style="font-size:9px;color:var(--g400);">${summary}</div><div style="display:flex;gap:5px;margin-top:4px;"><button class="strat-btn load" onclick="loadStrat('${s.id}')" style="font-size:11px;padding:3px 10px;">📥 加载</button><button class="strat-btn save" onclick="saveStrat('${s.id}', '${s.name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 10px;">💾 覆盖</button><button class="strat-btn" onclick="deleteStrat('${s.id}')" style="font-size:11px;padding:3px 8px;border-color:var(--red);color:var(--red);">🗑</button></div>`;
+        container.appendChild(div);
+      });
+    }
+  }catch(e){}
+  loading(false);
+}
+
+async function createNewStrat(){
+  const name=prompt('新策略名称（如"日常模式"）：');
+  if(!name||!name.trim())return;
+  await saveStrat('', name.trim());
+}
+
+async function saveStrat(id, defaultName){
+  let name = defaultName;
+  if (!name) {
+    name = prompt('存档名称：', '未命名策略');
+  }
+  if (name === null) return;
+  name = name.trim();
+  if (name === '') return;
+
+  const body={
+    name:name,
+    timestamp:Date.now(),
+    mode_probabilities:collect('mode','[data-mode]'),
+    single_character_probabilities:collect('charprob','[data-charprob]'),
+    character_costume_probabilities:{},
+  };
+  document.querySelectorAll('[data-char]').forEach(card=>{
+    const probs={};card.querySelectorAll('[data-variant]').forEach(s=>probs[s.dataset.variant]=parseInt(s.value)/100);
+    body.character_costume_probabilities[card.dataset.char]=probs;
+  });
+  loading(true);
+  try{
+    const r=await fetch('/api/strategies/save?id='+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json();if(!j.success)throw new Error(j.error);
+    toast('💾 策略已保存','ok');
+    loadSlotStatus();
+  }catch(e){toast('❌ '+e.message,'err');loading(false)}
+}
+
+async function loadStrat(id){
+  let stratData;
+  try{
+    const r=await fetch('/api/strategies');const j=await r.json();
+    if(!j.success){toast('加载策略列表失败','err');return;}
+    const list=j.data||[];
+    stratData=list.find(s=>s.id===id);
+    if(!stratData){toast('该存档不存在','err');return;}
+  }catch(e){toast('❌ '+e.message,'err');return;}
+  
+  const curMode=collect('mode','[data-mode]');
+  const curChar=collect('charprob','[data-charprob]');
+  const sMode=stratData.mode_probabilities||{};
+  const sChar=stratData.single_character_probabilities||{};
+  let diffHtml=`<h3>📥 策略「${stratData.name}」预览</h3>`;
+  diffHtml+='<div style="font-size:11px;color:var(--g600);margin-bottom:8px;">模式概率</div>';
+  for(const k of Object.keys(sMode)){
+    const old=curMode[k]||0;const nv=sMode[k]||0;
+    const cls=Math.abs(old-nv)>0.01?'new':'same';
+    diffHtml+=`<div class="diff-row"><span>${k}</span><span class="${cls}">${Math.round(old*100)}% → ${Math.round(nv*100)}%</span></div>`;
+  }
+  diffHtml+='<div style="font-size:11px;color:var(--g600);margin:8px 0;">角色概率</div>';
+  for(const k of Object.keys(sChar)){
+    const old=curChar[k]||0;const nv=sChar[k]||0;
+    const cls=Math.abs(old-nv)>0.01?'new':'same';
+    diffHtml+=`<div class="diff-row"><span>${k}</span><span class="${cls}">${Math.round(old*100)}% → ${Math.round(nv*100)}%</span></div>`;
+  }
+  const modal=document.createElement('div');modal.className='diff-modal';
+  modal.innerHTML=`<div class="diff-box">${diffHtml}<div class="diff-btns"><button class="btn btn-primary" id="diff-confirm">确认加载</button><button class="btn btn-secondary" id="diff-cancel">取消</button></div></div>`;
+  document.body.appendChild(modal);
+  return new Promise(resolve=>{
+    modal.querySelector('#diff-confirm').onclick=async()=>{
+      modal.remove();loading(true);
+      try{
+        const r=await fetch('/api/strategies/load?id='+id,{method:'POST'});
+        const j=await r.json();if(!j.success)throw new Error(j.error);
+        await loadData();toast('📥 已加载策略','ok');
+      }catch(e){toast('❌ '+e.message,'err')}finally{loading(false);resolve();}
+    };
+    modal.querySelector('#diff-cancel').onclick=()=>{modal.remove();resolve();};
+  });
+}
+
+async function deleteStrat(id){
+  if(!confirm('确认删除此策略？'))return;
+  loading(true);
+  try{
+    const r=await fetch('/api/strategies/delete?id='+id,{method:'POST'});
+    const j=await r.json();if(!j.success)throw new Error(j.error);
+    toast('🗑️ 已删除策略','ok');loadSlotStatus();
+  }catch(e){toast('❌ '+e.message,'err')}finally{loading(false)}
+}
+
+// ===== 参考图 =====
+async function toggleRef(cb){
+  const card=cb.closest('.vc');
+  card.classList.toggle('excluded',!cb.checked);
+  // 自动保存参考图勾选状态
+  await saveRefs();
+}
+async function delRef(el,name){
+  if(!confirm('删除参考图 "'+name+'"？此操作将从磁盘删除文件。'))return;
+  const path=state.references?.[name]?.path;if(!path)return;
+  loading(true);
+  try{
+    const r=await fetch('/api/ref/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,path})});
+    const j=await r.json();if(!j.success)throw new Error(j.error);
+    state.references[name]=null;el.closest('.vc')?.remove();toast('🗑️ 已删除','ok');
+  }catch(e){toast('❌ '+e.message,'err')}finally{loading(false)}
+}
+async function saveRefs(){
+  const refs={};
+  document.querySelectorAll('[data-ref]').forEach(cb=>{refs[cb.dataset.ref]=cb.checked?1:0});
+  loading(true);
+  try{
+    await fetch('/api/probabilities',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reference_probabilities:refs})});
+  }catch(e){}finally{loading(false)}
+}
+// 参考图筛选
+function filterRef(mode){
+  document.querySelectorAll('.ref-gallery').forEach(el=>{
+    const isUsed=el.classList.contains('ref-used');
+    if(mode==='all')el.style.display='';
+    else if(mode==='unused')el.style.display=isUsed?'none':'';
+    else if(mode==='used')el.style.display=isUsed?'':'none';
+  });
+}
+// 全选/全不选
+async function toggleAllRef(checked){
+  document.querySelectorAll('[data-ref]').forEach(cb=>{
+    if(cb.closest('.ref-gallery').style.display==='none')return;
+    cb.checked=checked;
+    cb.closest('.vc').classList.toggle('excluded',!checked);
+  });
+  await saveRefs();
+  toast(checked?'✅ 已全选':'✅ 已全不选','ok');
+}
+// 移入已用
+async function markUsed(el,name){
+  if(!confirm('将参考图 "'+name+'" 移入已用文件夹？'))return;
+  const path=state.references?.[name]?.path;if(!path)return;
+  loading(true);
+  try{
+    const r=await fetch('/api/ref/mark-used',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,path})});
+    const j=await r.json();if(!j.success)throw new Error(j.error);
+    el.closest('.vc')?.remove();
+    toast('✅ 已移入已用','ok');
+    await loadData();
+  }catch(e){toast('❌ '+e.message,'err')}finally{loading(false)}
+}
+
+// ===== Prompt 配方 =====
+async function getColItems(colKey){
+  if(state.keywords.extra_cols){const ec=state.keywords.extra_cols.find(c=>c.key===colKey);if(ec)return ec.items;}
+  return state.keywords[colKey]||[];
+}
+async function setColItems(colKey,items){
+  if(state.keywords.extra_cols){const ec=state.keywords.extra_cols.find(c=>c.key===colKey);if(ec){ec.items=items;return;}}
+  state.keywords[colKey]=items;
+}
+async function addTag(colKey){
+  const item=prompt('输入新元素名称：');if(!item||!item.trim())return;
+  if(!state||!state.keywords)return;
+  const items=getColItems(colKey);items.push(item.trim());setColItems(colKey,items);
+  await saveKeywords();
+}
+async function rmTag(el,colKey,item){
+  if(!confirm('删除 "'+item+'"？'))return;
+  if(!state||!state.keywords)return;
+  const items=getColItems(colKey).filter(i=>i!==item);setColItems(colKey,items);
+  await saveKeywords();
+}
+async function delColumn(colKey){
+  if(!confirm('删除此列？'))return;
+  if(!state||!state.keywords||!state.keywords.extra_cols)return;
+  state.keywords.extra_cols=state.keywords.extra_cols.filter(c=>c.key!==colKey);
+  await saveKeywords();
+}
+async function addColumn(){
+  const title=prompt('新列名称（如"姿态"）：');if(!title||!title.trim())return;
+  if(!state||!state.keywords)return;
+  const key='extra_'+Date.now();
+  if(!state.keywords.extra_cols)state.keywords.extra_cols=[];
+  state.keywords.extra_cols.push({key,title,items:[]});
+  await saveKeywords();
+}
+async function saveKeywords(){
+  loading(true);
+  try{
+    const r=await fetch('/api/keywords',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state.keywords)});
+    const j=await r.json();if(!j.success)throw new Error(j.error);
+    await loadData();toast('✅ 配方已保存','ok');
+  }catch(e){toast('❌ '+e.message,'err')}finally{loading(false)}
+}
+// 情绪×动作配对
+async function addPair(){
+  const keyEl=document.getElementById('new-pair-key');
+  const valEl=document.getElementById('new-pair-val');
+  const key=keyEl?.value?.trim();const val=valEl?.value?.trim();
+  if(!key||!val){toast('请填写键和值','err');return;}
+  if(!state.keywords.emotion_action_pairs)state.keywords.emotion_action_pairs={};
+  state.keywords.emotion_action_pairs[key]=val;
+  keyEl.value='';valEl.value='';
+  await saveKeywords();
+}
+async function rmPair(el,key){
+  if(!confirm('删除配对 "'+key+'"？'))return;
+  if(!state.keywords.emotion_action_pairs)return;
+  delete state.keywords.emotion_action_pairs[key];
+  await saveKeywords();
+}
+
+// ===== 保存全部 =====
+async function saveAll(){
+  const mode=collect('mode','[data-mode]');
+  const chars=collect('charprob','[data-charprob]');
+  // 参考图复选框已自动保存，这里不收集
+  const costumes={};
+  document.querySelectorAll('[data-char]').forEach(card=>{
+    const probs={};card.querySelectorAll('[data-variant]').forEach(s=>probs[s.dataset.variant]=parseInt(s.value)/100);
+    costumes[card.dataset.char]=probs;
+  });
+
+  for(const[name,data]of[['模式',mode],['角色',chars]]){
+    const s=Object.values(data).reduce((a,b)=>a+b,0);
+    if(Math.abs(s-1)>.015){toast(`❌ ${name}概率和=${s.toFixed(2)}，需=1.00`,'err');return}
+  }
+  for(const[char,probs]of Object.entries(costumes)){
+    const s=Object.values(probs).reduce((a,b)=>a+b,0);
+    if(Math.abs(s-1)>.015){toast(`❌ ${char}服装和=${s.toFixed(2)}，需=1.00`,'err');return}
+  }
+
+  loading(true);
+  try{
+    const r=await fetch('/api/probabilities',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode_probabilities:mode,single_character_probabilities:chars,character_costume_probabilities:costumes})});
+    const j=await r.json();if(!j.success)throw new Error(j.error);
+    toast('💾 已保存到 config.yaml！','ok');clearDirty();
+  }catch(e){toast('❌ '+e.message,'err')}finally{loading(false)}
+}
+
+async function loadData(){
+  loading(true);
+  try{
+    const r=await fetch('/api/config');if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json();if(!j.success)throw new Error(j.error);
+    state=j.data;try{render(state);}catch(re){console.error(re);toast('❌ 渲染错误: '+re.message,'err');return;}
+    toast('✅ 加载成功','ok');
+  }catch(e){console.error(e);toast('⚠️ '+e.message,'err')}finally{loading(false)}
+}
+async function resetAll(){
+  if(!confirm('重置所有概率为默认值？'))return;loading(true);
+  try{const r=await fetch('/api/reset',{method:'POST'});const j=await r.json();if(!j.success)throw new Error(j.error);await loadData();toast('↩️ 已重置','inf')}catch(e){toast('❌ '+e.message,'err')}finally{loading(false)}
+}
+loadData();
+</script>
+</body>
+</html>

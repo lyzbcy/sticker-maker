@@ -1,0 +1,37 @@
+{
+  "name": "Test Strategy",
+  "timestamp": 1781601538821,
+  "mode_probabilities": {
+    "single": 0.6,
+    "duo": 0.3,
+    "quad": 0.1
+  },
+  "single_character_probabilities": {
+    "星星布丁": 0.5,
+    "捞鱼": 0.5,
+    "周三涵": 0,
+    "周五涵": 0
+  },
+  "character_costume_probabilities": {
+    "周三涵": {
+      "base1": 0.5,
+      "base2": 0.5
+    },
+    "星星布丁": {
+      "base3": 0.2,
+      "base1": 0.2,
+      "base4": 0.2,
+      "base6": 0.2,
+      "base5": 0.2
+    },
+    "周五涵": {
+      "base1": 1
+    },
+    "捞鱼": {
+      "base3": 0.25,
+      "base4": 0.25,
+      "base2": 0.25,
+      "base1": 0.25
+    }
+  }
+}
