@@ -1,1 +1,57 @@
-{"name":"sticker-maker-desktop","version":"0.1.0","description":"表情包一键制作 - Mac 桌面应用","main":"src/main/index.js","scripts":{"dev":"vite","build":"vite build","electron:dev":"concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"","test":"vitest run","dist":"vite build && electron-builder"},"dependencies":{"vue":"^3.4.0","pinia":"^2.1.0"},"devDependencies":{"@vitejs/plugin-vue":"^5.0.0","@vue/test-utils":"^2.4.0","concurrently":"^8.2.0","cross-env":"^7.0.3","electron":"^30.0.0","electron-builder":"^24.13.0","jsdom":"^24.0.0","vite":"^5.0.0","vitest":"^1.6.0","wait-on":"^7.2.0"},"build":{"appId":"com.lyzbcy.sticker-maker","productName":"表情包一键制作","directories":{"output":"release"},"files":["dist/**/*","src/main/**/*","src/preload/**/*"],"mac":{"target":["dir"],"icon":"build/icon.icns"}}}
+{
+  "name": "sticker-maker-desktop",
+  "version": "0.1.0",
+  "description": "表情包一键制作 - Mac 桌面应用",
+  "main": "src/main/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "test": "vitest run",
+    "dist": "vite build && electron-builder"
+  },
+  "dependencies": {
+    "vue": "^3.4.0",
+    "pinia": "^2.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "@vue/test-utils": "^2.4.0",
+    "concurrently": "^8.2.0",
+    "cross-env": "^7.0.3",
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.0",
+    "jsdom": "^24.0.0",
+    "vite": "^5.0.0",
+    "vitest": "^1.6.0",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.lyzbcy.sticker-maker",
+    "productName": "表情包一键制作",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "src/main/**/*",
+      "src/preload/**/*"
+    ],
+    "mac": {
+      "target": [
+        "dir"
+      ],
+      "icon": "build/icon.icns"
+    },
+    "extraResources": [
+      {
+        "from": "build/sticker-engine-cli",
+        "to": "sticker-engine-cli"
+      },
+      {
+        "from": "install.command",
+        "to": "install.command"
+      }
+    ]
+  }
+}
