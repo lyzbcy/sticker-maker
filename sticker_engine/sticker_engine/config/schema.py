@@ -38,6 +38,7 @@ class Prefs:
     transparent_default: bool = True
     ref_lib_priority: bool = True
     story_mode: bool = True
+    reference_lib_path: Optional[str] = None   # I2：用户可改参考图库位置（None=默认）
 
     def __post_init__(self):
         s = self.mode_probs.single + self.mode_probs.duo + self.mode_probs.trio + self.mode_probs.quad

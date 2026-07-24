@@ -8,21 +8,22 @@
       <div class="info">
         <h3>表情包一键制作</h3>
         <p>版本 {{ version }}</p>
-        <p>作者：{{ author }}</p>
+        <p>作者：{{ promo.author_name }}</p>
+        <p class="hint">把你的表情包创意变成现实 ✨</p>
       </div>
       <div class="qr-section" v-if="hasQr">
         <h3>关注作者</h3>
         <div class="qr-grid">
-          <div class="qr-item" v-if="qr.reward">
-            <img :src="'file://' + qr.reward" alt="赞赏" />
+          <div class="qr-item" v-if="promo.reward_qr">
+            <img :src="imgSrc(promo.reward_qr)" alt="赞赏" @error="onImgError" />
             <p>赞赏</p>
           </div>
-          <div class="qr-item" v-if="qr.group">
-            <img :src="'file://' + qr.group" alt="入群" />
+          <div class="qr-item" v-if="promo.group_qr">
+            <img :src="imgSrc(promo.group_qr)" alt="入群" @error="onImgError" />
             <p>入群</p>
           </div>
-          <div class="qr-item" v-if="qr.sticker">
-            <img :src="'file://' + qr.sticker" alt="表情包" />
+          <div class="qr-item" v-if="promo.sticker_qr">
+            <img :src="imgSrc(promo.sticker_qr)" alt="表情包" @error="onImgError" />
             <p>表情包</p>
           </div>
         </div>
@@ -32,18 +33,35 @@
   </div>
 </template>
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 
 defineEmits(['back'])
 
 const version = ref('0.1.0')
-const author = ref('捞鱼真不吃鱼')
-const qr = ref({ reward: null, group: null, sticker: null })
-const hasQr = ref(false)
+const promo = ref({ reward_qr: null, group_qr: null, sticker_qr: null, author_name: '捞鱼真不吃鱼' })
+
+const hasQr = computed(() => promo.value.reward_qr || promo.value.group_qr || promo.value.sticker_qr)
+
+function imgSrc(path) {
+  // 本地图片：file:// 协议；打包后 resources 路径也走 file://
+  return path ? 'file://' + path : ''
+}
+
+function onImgError(e) {
+  // 图片加载失败隐藏该项
+  e.target.parentElement.style.display = 'none'
+}
 
 onMounted(async () => {
-  // 从配置加载三码（默认空，开发者本地配置后展示）
-  // 这里简化：从 prefs 或本地配置读，未来扩展
+  if (!window.api) return
+  try {
+    const res = await window.api.send('load_promotion')
+    if (res && res.status === 'ok' && res.data) {
+      promo.value = res.data
+    }
+  } catch (e) {
+    // 静默（推广是锦上添花）
+  }
 })
 </script>
 <style scoped>
@@ -51,6 +69,7 @@ onMounted(async () => {
 header { display: flex; align-items: center; gap: 16px; }
 .back { background: none; border: none; color: #4a90d9; cursor: pointer; font-size: 16px; }
 .info { background: #fff; padding: 16px; border-radius: 8px; margin: 16px 0; }
+.info h3 { margin-top: 0; }
 .qr-section { background: #fff; padding: 16px; border-radius: 8px; }
 .qr-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 12px; }
 .qr-item { text-align: center; }

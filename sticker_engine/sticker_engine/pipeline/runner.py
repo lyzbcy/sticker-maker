@@ -1,4 +1,5 @@
 import threading
+import time
 from typing import Callable, List, Optional, Tuple
 
 from .context import GateError, PipelineContext, ProgressEvent
@@ -6,6 +7,34 @@ from .context import GateError, PipelineContext, ProgressEvent
 
 class StopRequested(Exception):
     """stop_event 被置位时抛出，run 应捕获并清理。"""
+
+
+# C5 修复：全局 stage 历史耗时（跨多次 run 滑动平均，算 ETA 用）
+_stage_durations: dict = {}
+_HIST_KEEP = 5
+
+
+def _record_stage_time(label: str, seconds: float) -> None:
+    _stage_durations.setdefault(label, []).append(seconds)
+    if len(_stage_durations[label]) > _HIST_KEEP:
+        _stage_durations[label] = _stage_durations[label][-_HIST_KEEP:]
+
+
+def _estimate_remaining(steps: list, current_idx: int) -> Optional[int]:
+    """基于历史耗时估算剩余秒数。无历史数据返回 None。"""
+    remaining = steps[current_idx + 1:]
+    if not remaining:
+        return 0
+    total = 0.0
+    has_any = False
+    for kind, obj, label in remaining:
+        hist = _stage_durations.get(label)
+        if hist:
+            total += sum(hist) / len(hist)
+            has_any = True
+        else:
+            total += 30
+    return int(total) if has_any else None
 
 
 # 归一化后的 step：("stage"|"gate", obj, label)
@@ -66,14 +95,16 @@ class PipelineRunner:
                 raise StopRequested()
 
             pct = i / n if n > 0 else 1.0
+            # C5：开始阶段时估算剩余时间（基于历史）
+            eta = _estimate_remaining(self.steps, i)
             self._emit(progress_callback, ProgressEvent(
                 stage=label, phase=f"start_{kind}",
-                message=f"开始 {label}", percent=pct))
+                message=f"开始 {label}", percent=pct, eta_seconds=eta))
 
+            stage_start = time.time()
             if kind == "gate":
                 result = obj.check(ctx)
                 if not result.ok:
-                    # 错误里记录 gate 自身身份（obj.name），不是位置 label
                     gate_name = getattr(obj, "name", label)
                     ctx.add_error(GateError(
                         gate=gate_name, message=result.message, guidance=result.guidance))
@@ -83,11 +114,12 @@ class PipelineRunner:
                     return  # 关卡 FAIL 必停
             else:
                 obj.run(ctx)
+            _record_stage_time(label, time.time() - stage_start)
 
             pct_after = (i + 1) / n if n > 0 else 1.0
             self._emit(progress_callback, ProgressEvent(
                 stage=label, phase=f"end_{kind}",
-                message=f"完成 {label}", percent=pct_after))
+                message=f"完成 {label}", percent=pct_after, eta_seconds=_estimate_remaining(self.steps, i)))
 
     @staticmethod
     def _emit(cb: Optional[Callable[[ProgressEvent], None]], ev: ProgressEvent) -> None:

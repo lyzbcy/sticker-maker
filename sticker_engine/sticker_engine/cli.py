@@ -28,6 +28,9 @@ def _ensure_engine() -> StickerEngine:
     prefs = load_prefs_from_file(config.paths.prefs_file)
     if prefs is not None:
         config.prefs = prefs
+        # I2：应用用户自定义的参考图库位置
+        if prefs.reference_lib_path:
+            config.paths.reference_lib = Path(prefs.reference_lib_path)
     _engine = StickerEngine(config)
     return _engine
 
@@ -97,6 +100,21 @@ def cmd_generate_base(req_id, args):
         _result(req_id, "ok", data={"path": str(path)})
 
 
+def cmd_add_base(req_id, args):
+    """C1：用户上传的 base 图复制到用户数据目录的 custom_bases/。"""
+    import shutil
+    src = args.get("path")
+    if not src or not Path(src).exists():
+        _result(req_id, "fail", errors=[{"message": f"源文件不存在: {src}"}])
+        return
+    engine = _ensure_engine()
+    custom_dir = engine.config.paths.user_data / "custom_bases"
+    custom_dir.mkdir(parents=True, exist_ok=True)
+    dst = custom_dir / Path(src).name
+    shutil.copy2(src, dst)
+    _result(req_id, "ok", data={"path": str(dst), "name": dst.name})
+
+
 def cmd_run(req_id, args):
     engine = _ensure_engine()
     stop = threading.Event()
@@ -148,6 +166,29 @@ def cmd_featured(req_id, args):
     })
 
 
+def cmd_load_promotion(req_id, args):
+    """E：读三码推广配置（从用户数据目录 promotion.json 读，开发者本地配置）。"""
+    import json as _json
+    engine = _ensure_engine()
+    promo_file = engine.config.paths.user_data / "promotion.json"
+    data = {"reward_qr": None, "group_qr": None, "sticker_qr": None, "author_name": "捞鱼真不吃鱼"}
+    if promo_file.exists():
+        saved = _json.loads(promo_file.read_text(encoding="utf-8"))
+        data.update(saved)
+    _result(req_id, "ok", data=data)
+
+
+def cmd_save_promotion(req_id, args):
+    """E：保存三码推广配置到 promotion.json。"""
+    import json as _json
+    engine = _ensure_engine()
+    promo_file = engine.config.paths.user_data / "promotion.json"
+    promo_file.parent.mkdir(parents=True, exist_ok=True)
+    promo_file.write_text(_json.dumps(args.get("config", {}), ensure_ascii=False, indent=2),
+                          encoding="utf-8")
+    _result(req_id, "ok")
+
+
 def cmd_open_in_finder(req_id, args):
     import subprocess as sp
     path = args.get("path")
@@ -165,7 +206,8 @@ def _prefs_to_dict(prefs):
     return {"mode_probs": {"single": mp.single, "duo": mp.duo, "trio": mp.trio, "quad": mp.quad},
             "single_char_probs": prefs.single_char_probs, "base_probs": prefs.base_probs,
             "grid_size": prefs.grid_size, "transparent_default": prefs.transparent_default,
-            "ref_lib_priority": prefs.ref_lib_priority, "story_mode": prefs.story_mode}
+            "ref_lib_priority": prefs.ref_lib_priority, "story_mode": prefs.story_mode,
+            "reference_lib_path": prefs.reference_lib_path}
 
 
 def _dict_to_prefs(d):
@@ -175,16 +217,19 @@ def _dict_to_prefs(d):
         trio=mp.get("trio", 0.0), quad=mp.get("quad", 0.2)),
         single_char_probs=d.get("single_char_probs", {}), base_probs=d.get("base_probs", {}),
         grid_size=d.get("grid_size", 4), transparent_default=d.get("transparent_default", True),
-        ref_lib_priority=d.get("ref_lib_priority", True), story_mode=d.get("story_mode", True))
+        ref_lib_priority=d.get("ref_lib_priority", True), story_mode=d.get("story_mode", True),
+        reference_lib_path=d.get("reference_lib_path"))
 
 
 HANDLERS = {
     "check_codex": cmd_check_codex, "get_version": cmd_get_version,
     "load_prefs": cmd_load_prefs, "save_prefs": cmd_save_prefs,
     "list_characters": cmd_list_characters, "generate_base": cmd_generate_base,
+    "add_base": cmd_add_base,
     "run": cmd_run, "stop": cmd_stop,
     "list_episodes": cmd_list_episodes, "open_in_finder": cmd_open_in_finder,
     "featured": cmd_featured,
+    "load_promotion": cmd_load_promotion, "save_promotion": cmd_save_promotion,
 }
 
 
