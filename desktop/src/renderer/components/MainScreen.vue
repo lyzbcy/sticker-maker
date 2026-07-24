@@ -14,6 +14,7 @@
           <h4>最近作品</h4>
           <p v-for="ep in store.episodes.slice(0, 5)" :key="ep.path">{{ ep.name }}（{{ ep.sticker_count }} 张）</p>
         </div>
+        <FeaturedShowcase />
       </div>
       <div v-else-if="store.running" class="running">
         <ProgressBar />
@@ -30,6 +31,7 @@ import { computed, onMounted } from 'vue'
 import { useEngineStore } from '../store/engine'
 import ProgressBar from './ProgressBar.vue'
 import ResultPreview from './ResultPreview.vue'
+import FeaturedShowcase from './FeaturedShowcase.vue'
 const store = useEngineStore()
 const gridLabel = computed(() => {
   const g = store.prefs?.grid_size || 4

@@ -8,7 +8,8 @@ a = Analysis(
     ['cli_entry.py'],
     pathex=['.'],
     binaries=[],
-    datas=[('sticker_engine/resources', 'resources')],   # 含 base 图/剧本库/关键词库（修 A 评审 C3）
+    datas=[('sticker_engine/resources', 'resources'),     # 含 base 图/剧本库/关键词库（修 A 评审 C3）
+           ('sticker_engine/resources/featured', 'featured')],   # E：精选表情（初心第85行）
     hiddenimports=['sticker_engine', 'sticker_engine.cli'],
     hookspath=[],
     runtime_hooks=[],
