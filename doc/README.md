@@ -20,13 +20,13 @@
 
 | 子项目 | 状态 | 说明 |
 |---|---|---|
-| **A. 核心生图引擎** | ✅ 交付 | Python 库 `sticker_engine/`，77 测试全绿 |
-| B. Mac 应用外壳 | ⏳ 未开始 | GUI、首次向导、`.app` 打包 |
+| **A. 核心生图引擎** | ✅ 交付 | Python 库 `sticker_engine/`，85 测试全绿 |
+| **B. Mac 应用外壳** | ✅ 交付 | Electron+Vue，打 .app + zip 分发包，5 前端测试 |
 | C. 发布与上架 | ⏳ 未开始 | 跨平台发布流、一键多平台 |
 | D. AI Agent 接口 | ⏳ 未开始 | 外部 agent 控制、定时发布 |
 | E. 推广系统 | ⏳ 未开始 | 表情包推广、三码 |
 
-**当前可做**：A 已可作为地基，启动 B 的 brainstorm。
+**当前可做**：A+B 已交付（可分发 .app），启动 C 的 brainstorm。
 
 ## 专题文档（按需读）
 
@@ -35,6 +35,7 @@
 | [`./architecture.md`](./architecture.md) | 要改 A 的代码、或理解 A 怎么接 B/C/D |
 | [`./decisions.md`](./decisions.md) | 要知道某个设计为什么这么定（13 个关键决策） |
 | [`./status-A.md`](./status-A.md) | 要看 A 的完成度细节、已知技术债 |
+| [`./status-B.md`](./status-B.md) | 要看 B 的完成度细节、已知技术债 |
 | [`./how-to-run.md`](./how-to-run.md) | 要跑/测 A |
 
 ## 关键文件指针

@@ -88,7 +88,7 @@ class PrepStage:
         base_rel = char_obj.bases[base_key]
         # base 路径相对 resources，转绝对
         import sticker_engine as _se
-        res_root = Path(_se.__file__).parent / "resources"
+        res_root = _se.resources_path()
         return res_root / base_rel
 
     def _pick_characters(self, ctx, mode, count):
