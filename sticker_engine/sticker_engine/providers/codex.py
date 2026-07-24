@@ -70,6 +70,34 @@ class CodexProvider:
         """决策 J1：生成新 base 图（无参考图）。"""
         return self.generate(prompt, refs=[], timeout=timeout)
 
+    def exec_text(self, prompt: str, refs: list = None, timeout: int = None) -> str:
+        """决策 K：用 codex exec 跑文本任务（识图命名/介绍文案），返回 stdout 文本。
+
+        与 generate() 的关键差异：
+        - 不加 ``--enable image_generation``（生图专用）；纯 ``codex exec``。
+        - 不扫图目录，而是捕获 ``subprocess.run(...).stdout`` 返回。
+        - refs 作为 ``-i`` 参考图传入（识图任务 codex 需要看图）。
+
+        失败语义：非零退出 / 超时 / 文件缺失 一律返回空字符串 ``""``，
+        不抛异常（调用方据空串降级，保持管线不崩）。
+        """
+        refs = refs or []
+        # 文本任务：普通 codex exec，不带 image_generation flag
+        cmd = [self.codex_exec, "exec"]
+        for r in refs:
+            cmd += ["-i", str(r)]
+        cmd.append(prompt)
+        try:
+            r = subprocess.run(
+                cmd, capture_output=True, text=True,
+                timeout=timeout or self.timeout, check=False,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            return ""
+        if r.returncode != 0:
+            return ""
+        return r.stdout or ""
+
     def scan_latest_image(self) -> Optional[Path]:
         """扫描 output_dir 下所有 session 的 png，返回最新的。"""
         if not self.output_dir.exists():
