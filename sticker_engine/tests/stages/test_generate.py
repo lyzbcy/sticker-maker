@@ -1,0 +1,55 @@
+from pathlib import Path
+from unittest.mock import MagicMock
+import pytest
+from sticker_engine.stages.generate import GenerateStage, GenerationMode
+from sticker_engine.pipeline.context import PipelineContext, EpisodeSpec
+from sticker_engine.config.schema import Config, Paths
+
+
+def _ctx(tmp_path, refs_available=0):
+    paths = Paths(user_data=tmp_path, output_root=tmp_path/"e", reference_lib=tmp_path/"ref",
+                  prefs_file=tmp_path/"p.yaml", codex_exec="codex", codex_output_dir=tmp_path/"codex")
+    config = Config.placeholder(); config.paths = paths
+    ctx = PipelineContext(config=config, episode=EpisodeSpec.placeholder())
+    ctx.episode_dir = tmp_path / "e1"; ctx.episode_dir.mkdir()
+    (ctx.episode_dir / "原图").mkdir()
+    # 参考图
+    (tmp_path/"ref").mkdir(exist_ok=True)
+    for i in range(refs_available):
+        (tmp_path/"ref"/f"r{i}.png").write_bytes(b"x")
+    return ctx
+
+
+def test_decide_mode_picks_ref_library_when_enough_refs(tmp_path):
+    stage = GenerateStage(codex=MagicMock())
+    ctx = _ctx(tmp_path, refs_available=16)   # grid=4 需 16
+    mode = stage.decide_mode(ctx)
+    assert mode == GenerationMode.REF_LIBRARY
+
+
+def test_decide_mode_falls_to_story_when_refs_insufficient(tmp_path):
+    stage = GenerateStage(codex=MagicMock())
+    ctx = _ctx(tmp_path, refs_available=5)   # < 16
+    mode = stage.decide_mode(ctx)
+    assert mode == GenerationMode.STORY
+
+
+def test_decide_mode_falls_to_combo_when_story_disabled(tmp_path):
+    stage = GenerateStage(codex=MagicMock())
+    ctx = _ctx(tmp_path, refs_available=5)
+    ctx.episode.story_mode = False
+    mode = stage.decide_mode(ctx)
+    assert mode == GenerationMode.KEYWORD_COMBO
+
+
+def test_generate_calls_codex_and_records_grid_image(tmp_path):
+    fake_codex = MagicMock()
+    fake_codex.generate.return_value = tmp_path / "fake_grid.png"
+    # fake_codex.generate 返回一个路径，GenerateStage 会 shutil.copy2 它，所以要真造个文件
+    (tmp_path / "fake_grid.png").write_bytes(b"fake")
+    stage = GenerateStage(codex=fake_codex)
+    ctx = _ctx(tmp_path, refs_available=0)
+    ctx.episode.story_mode = False   # 强制 combo 模式，不依赖剧本库
+    stage.run(ctx)
+    assert ctx.grid_image is not None
+    fake_codex.generate.assert_called_once()
