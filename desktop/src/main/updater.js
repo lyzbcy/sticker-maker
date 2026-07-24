@@ -15,7 +15,7 @@ async function checkForUpdates(mainWindow) {
         title: '发现新版本',
         message: `新版本 ${data.version} 可用（当前 ${CURRENT_VERSION}）`,
         detail: data.releaseNotes || '',
-        buttons: ['一键更新', '稍后'],
+        buttons: ['打开下载页', '稍后'],
         defaultId: 0,
       })
       if (choice.response === 0 && data.downloadUrl) {

@@ -6,6 +6,7 @@
     <Wizard v-else-if="store.phase === 'wizard'" />
     <MainScreen v-else-if="store.phase === 'main'" />
     <SettingsPanel v-else-if="store.phase === 'settings'" />
+    <AboutPanel v-else-if="store.phase === 'about'" @back="store.phase = 'main'" />
   </div>
 </template>
 
@@ -15,6 +16,7 @@ import { useEngineStore } from './store/engine'
 import Wizard from './components/Wizard.vue'
 import MainScreen from './components/MainScreen.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
+import AboutPanel from './components/AboutPanel.vue'
 
 const store = useEngineStore()
 onMounted(() => store.init())

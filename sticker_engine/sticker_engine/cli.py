@@ -28,6 +28,9 @@ def _ensure_engine() -> StickerEngine:
     prefs = load_prefs_from_file(config.paths.prefs_file)
     if prefs is not None:
         config.prefs = prefs
+        # I2：应用用户自定义的参考图库位置
+        if prefs.reference_lib_path:
+            config.paths.reference_lib = Path(prefs.reference_lib_path)
     _engine = StickerEngine(config)
     return _engine
 
@@ -75,9 +78,33 @@ def cmd_save_prefs(req_id, args):
     _result(req_id, "ok")
 
 
+def _sync_custom_bases(engine):
+    """C1 集成：把 user_data/custom_bases/ 的图挂进一个'自定义'角色。
+
+    每次 list/add/generate 后调用，保证上传/生成的 base 可见、可选。
+    """
+    custom_dir = engine.config.paths.user_data / "custom_bases"
+    if not custom_dir.exists():
+        return
+    from .config.schema import Character
+    custom_bases = {}
+    for img in sorted(custom_dir.iterdir()):
+        if img.suffix.lower() in (".png", ".jpg", ".jpeg"):
+            # 用相对路径（绝对路径直接存，_pick_base_path 会用）
+            custom_bases[img.stem] = str(img)
+    if not custom_bases:
+        return
+    n = len(custom_bases)
+    # 均分概率
+    probs = {k: 1.0 / n for k in custom_bases}
+    engine.config.characters["自定义"] = Character(
+        name="自定义", bases=custom_bases, base_probs=probs)
+
+
 def cmd_list_characters(req_id, args):
     engine = _ensure_engine()
     engine._ensure_characters()
+    _sync_custom_bases(engine)
     chars = {}
     for name, c in engine.config.characters.items():
         chars[name] = {"bases": c.bases, "base_probs": c.base_probs}
@@ -94,11 +121,35 @@ def cmd_generate_base(req_id, args):
     if path is None:
         _result(req_id, "fail", errors=[{"message": "base 图生成失败"}])
     else:
-        _result(req_id, "ok", data={"path": str(path)})
+        # C1 集成：把生成的 base 复制到 custom_bases，挂进"自定义"角色
+        import shutil
+        custom_dir = engine.config.paths.user_data / "custom_bases"
+        custom_dir.mkdir(parents=True, exist_ok=True)
+        dst = custom_dir / f"ai_{Path(path).name}"
+        shutil.copy2(path, dst)
+        _sync_custom_bases(engine)
+        _result(req_id, "ok", data={"path": str(dst), "name": dst.name})
+
+
+def cmd_add_base(req_id, args):
+    """C1：用户上传的 base 图复制到 custom_bases/，并挂进'自定义'角色。"""
+    import shutil
+    src = args.get("path")
+    if not src or not Path(src).exists():
+        _result(req_id, "fail", errors=[{"message": f"源文件不存在: {src}"}])
+        return
+    engine = _ensure_engine()
+    custom_dir = engine.config.paths.user_data / "custom_bases"
+    custom_dir.mkdir(parents=True, exist_ok=True)
+    dst = custom_dir / Path(src).name
+    shutil.copy2(src, dst)
+    _sync_custom_bases(engine)   # 立即挂进角色，list 能看到
+    _result(req_id, "ok", data={"path": str(dst), "name": dst.name})
 
 
 def cmd_run(req_id, args):
     engine = _ensure_engine()
+    _sync_custom_bases(engine)   # C1：run 前同步自定义 base，保证可选
     stop = threading.Event()
     _stop_events[req_id] = stop
     try:
@@ -148,6 +199,29 @@ def cmd_featured(req_id, args):
     })
 
 
+def cmd_load_promotion(req_id, args):
+    """E：读三码推广配置（从用户数据目录 promotion.json 读，开发者本地配置）。"""
+    import json as _json
+    engine = _ensure_engine()
+    promo_file = engine.config.paths.user_data / "promotion.json"
+    data = {"reward_qr": None, "group_qr": None, "sticker_qr": None, "author_name": "捞鱼真不吃鱼"}
+    if promo_file.exists():
+        saved = _json.loads(promo_file.read_text(encoding="utf-8"))
+        data.update(saved)
+    _result(req_id, "ok", data=data)
+
+
+def cmd_save_promotion(req_id, args):
+    """E：保存三码推广配置到 promotion.json。"""
+    import json as _json
+    engine = _ensure_engine()
+    promo_file = engine.config.paths.user_data / "promotion.json"
+    promo_file.parent.mkdir(parents=True, exist_ok=True)
+    promo_file.write_text(_json.dumps(args.get("config", {}), ensure_ascii=False, indent=2),
+                          encoding="utf-8")
+    _result(req_id, "ok")
+
+
 def cmd_open_in_finder(req_id, args):
     import subprocess as sp
     path = args.get("path")
@@ -165,7 +239,8 @@ def _prefs_to_dict(prefs):
     return {"mode_probs": {"single": mp.single, "duo": mp.duo, "trio": mp.trio, "quad": mp.quad},
             "single_char_probs": prefs.single_char_probs, "base_probs": prefs.base_probs,
             "grid_size": prefs.grid_size, "transparent_default": prefs.transparent_default,
-            "ref_lib_priority": prefs.ref_lib_priority, "story_mode": prefs.story_mode}
+            "ref_lib_priority": prefs.ref_lib_priority, "story_mode": prefs.story_mode,
+            "reference_lib_path": prefs.reference_lib_path}
 
 
 def _dict_to_prefs(d):
@@ -175,16 +250,19 @@ def _dict_to_prefs(d):
         trio=mp.get("trio", 0.0), quad=mp.get("quad", 0.2)),
         single_char_probs=d.get("single_char_probs", {}), base_probs=d.get("base_probs", {}),
         grid_size=d.get("grid_size", 4), transparent_default=d.get("transparent_default", True),
-        ref_lib_priority=d.get("ref_lib_priority", True), story_mode=d.get("story_mode", True))
+        ref_lib_priority=d.get("ref_lib_priority", True), story_mode=d.get("story_mode", True),
+        reference_lib_path=d.get("reference_lib_path"))
 
 
 HANDLERS = {
     "check_codex": cmd_check_codex, "get_version": cmd_get_version,
     "load_prefs": cmd_load_prefs, "save_prefs": cmd_save_prefs,
     "list_characters": cmd_list_characters, "generate_base": cmd_generate_base,
+    "add_base": cmd_add_base,
     "run": cmd_run, "stop": cmd_stop,
     "list_episodes": cmd_list_episodes, "open_in_finder": cmd_open_in_finder,
     "featured": cmd_featured,
+    "load_promotion": cmd_load_promotion, "save_promotion": cmd_save_promotion,
 }
 
 

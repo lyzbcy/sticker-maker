@@ -3,6 +3,7 @@
     <header>
       <h2>表情包一键制作</h2>
       <button class="settings-btn" @click="store.phase = 'settings'">⚙ 设置</button>
+      <button class="settings-btn" @click="store.phase = 'about'">关于</button>
     </header>
     <div class="body">
       <div v-if="!store.running && !store.lastEpisode && !store.lastError" class="idle">

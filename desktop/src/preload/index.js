@@ -13,4 +13,6 @@ contextBridge.exposeInMainWorld('api', {
   onRestarting: (cb) => {
     ipcRenderer.on('python-restarting', (_, data) => cb(data))
   },
+  selectFile: async () => ipcRenderer.invoke('select-file'),
+  selectDirectory: async () => ipcRenderer.invoke('select-directory'),
 })

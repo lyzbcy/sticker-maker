@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>表情包一键制作 · 下载</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; color: #333; }
+    .container { max-width: 720px; margin: 0 auto; padding: 40px 20px; }
+    .card { background: #fff; border-radius: 16px; padding: 40px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+    h1 { font-size: 28px; margin-bottom: 8px; color: #333; }
+    .tagline { color: #888; font-size: 16px; margin-bottom: 28px; }
+    .features { list-style: none; margin: 24px 0; }
+    .features li { padding: 8px 0; padding-left: 28px; position: relative; color: #555; }
+    .features li::before { content: "✨"; position: absolute; left: 0; }
+    .download-btn { display: inline-block; background: linear-gradient(135deg, #4a90d9, #7ac67d); color: #fff; padding: 14px 36px; border-radius: 30px; text-decoration: none; font-size: 18px; font-weight: 600; margin: 16px 0; transition: transform 0.2s; }
+    .download-btn:hover { transform: translateY(-2px); }
+    .version-info { color: #999; font-size: 13px; margin-top: 16px; }
+    .update-banner { display: none; background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; }
+    .update-banner a { color: #4a90d9; }
+    .footer { text-align: center; color: rgba(255,255,255,0.7); font-size: 13px; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="update-banner" id="updateBanner">
+      🎉 发现新版本 <span id="newVersion"></span>！<a href="#" id="updateLink">立即下载</a>
+    </div>
+    <div class="card">
+      <h1>🎨 表情包一键制作</h1>
+      <p class="tagline">把你的角色变成微信表情包，从生成到发布全自动。</p>
+
+      <ul class="features">
+        <li>AI 一键生成表情包（支持 codex 生图）</li>
+        <li>三模式：参考图库 / 故事模式 / 排列组合</li>
+        <li>内置洋红抠图 + 自动裁切重命名</li>
+        <li>Mac 桌面应用，双击即用（免装 Python）</li>
+        <li>一键发布到微信表情开放平台</li>
+        <li>AI Agent 接口，支持定时发布</li>
+      </ul>
+
+      <a class="download-btn" id="downloadBtn" href="#">📦 下载 Mac 版</a>
+      <p class="version-info">当前版本：<span id="currentVersion">0.1.0</span> · 需 macOS 11+ · 需自备 codex CLI</p>
+    </div>
+    <p class="footer">© 2026 捞鱼真不吃鱼 · <a href="#" style="color:rgba(255,255,255,0.9)">赞赏</a> · <a href="#" style="color:rgba(255,255,255,0.9)">入群</a></p>
+  </div>
+
+  <script>
+    // 初心第77行：版本号不一致强制刷新（静态页缓存问题）
+    (async function() {
+      const CURRENT_VERSION = "0.1.0"
+      try {
+        const res = await fetch('version.json', { cache: 'no-store' })
+        const data = await res.json()
+        // 强制刷新逻辑：localStorage 记录上次见的版本，不一致就 reload
+        const lastSeen = localStorage.getItem('site_version')
+        if (lastSeen && lastSeen !== data.version) {
+          localStorage.setItem('site_version', data.version)
+          location.reload(true)
+          return
+        }
+        localStorage.setItem('site_version', data.version)
+
+        // 更新下载链接
+        const dlBtn = document.getElementById('downloadBtn')
+        if (data.downloadUrl) dlBtn.href = data.downloadUrl
+
+        // 版本不一致显示更新横幅
+        if (data.version !== CURRENT_VERSION) {
+          const banner = document.getElementById('updateBanner')
+          document.getElementById('newVersion').textContent = data.version
+          document.getElementById('updateLink').href = data.downloadUrl || '#'
+          banner.style.display = 'block'
+        }
+      } catch (e) {
+        console.log('version check failed', e)
+      }
+    })()
+  </script>
+</body>
+</html>

@@ -77,6 +77,12 @@ class PostprocessStage:
         else:
             meanings = {1: Path(panels[0]).stem}
         ctx.meaning_map = meanings
+        # C3 修复：把含义词顺序落盘到 meaning_map.json
+        # （初心第44行：发布时要按故事线顺序，C 的 publisher 读此文件排序上传）
+        import json
+        (ctx.episode_dir / "meaning_map.json").write_text(
+            json.dumps({str(k): v for k, v in meanings.items()}, ensure_ascii=False, indent=2),
+            encoding="utf-8")
         # 3) 条件抠图 + 重命名 → 写最终版
         final_dir = ctx.episode_dir / "最终版"
         final_dir.mkdir(exist_ok=True)

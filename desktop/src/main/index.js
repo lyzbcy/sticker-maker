@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('path')
 const { PythonBridge } = require('./pythonBridge')
 
@@ -45,6 +45,27 @@ app.whenReady().then(() => {
 
   ipcMain.handle('python-stop', async (event, targetId) => {
     return bridge.stop(targetId)
+  })
+
+  // C1 修复：文件选择（上传 base 图）
+  ipcMain.handle('select-file', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: '选择 base 图',
+      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg'] }],
+      properties: ['openFile'],
+    })
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true }
+    return { canceled: false, path: result.filePaths[0] }
+  })
+
+  // I2 修复：目录选择（参考图库位置）
+  ipcMain.handle('select-directory', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: '选择参考图库文件夹',
+      properties: ['openDirectory'],
+    })
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true }
+    return { canceled: false, path: result.filePaths[0] }
   })
 
   createWindow()
