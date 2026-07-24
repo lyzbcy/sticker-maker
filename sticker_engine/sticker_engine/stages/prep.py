@@ -33,6 +33,12 @@ class PrepStage:
 
     def run(self, ctx: PipelineContext) -> None:
         prefs = ctx.config.prefs
+        # 0) 参考图库文件夹不存在则自动创建（初心第31行：用户可往里放参考图）
+        ref_lib = ctx.config.paths.reference_lib
+        if not ref_lib.exists():
+            ref_lib.mkdir(parents=True, exist_ok=True)
+            ctx.log(LogEntry(stage="S0", status="OK",
+                             message=f"参考图库不存在，已自动创建：{ref_lib}"))
         # 1) 选模式
         mode = ctx.episode.forced_mode or _pick_by_probs({
             "single": prefs.mode_probs.single, "duo": prefs.mode_probs.duo,
