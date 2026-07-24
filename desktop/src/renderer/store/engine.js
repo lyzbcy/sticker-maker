@@ -13,6 +13,9 @@ export const useEngineStore = defineStore('engine', () => {
   const progress = ref(null)
   const lastEpisode = ref(null)
   const lastError = ref(null)
+  // codex 安装状态
+  const installing = ref(false)
+  const installLog = ref([])
 
   // 确保 window.api 存在（开发模式 Electron 注入）
   const api = typeof window !== 'undefined' && window.api ? window.api : null
@@ -63,6 +66,28 @@ export const useEngineStore = defineStore('engine', () => {
       codexStatus.value = (res && res.data) || { image_ready: false }
     } catch (e) {
       codexStatus.value = (e && e.data) || { image_ready: false, guidance_msg: '检测失败' }
+    }
+  }
+
+  async function installCodex() {
+    if (!api) return
+    installing.value = true
+    installLog.value = []
+    lastError.value = null
+    try {
+      const res = await api.send('install_codex')
+      if (res && res.status === 'ok') {
+        // 安装成功，重新检测
+        await checkCodex()
+      } else {
+        lastError.value = (res && res.errors) || [{ message: '安装失败' }]
+        if (res && res.data && res.data.hint) lastError.value.push({ message: res.data.hint })
+      }
+    } catch (e) {
+      lastError.value = [{ message: (e && (e.message || (e.errors && e.errors[0] && e.errors[0].message))) || '安装失败' }]
+      if (e && e.data && e.data.hint) lastError.value.push({ message: e.data.hint })
+    } finally {
+      installing.value = false
     }
   }
 
@@ -139,7 +164,11 @@ export const useEngineStore = defineStore('engine', () => {
   // 监听 progress（run 期间更新）
   if (api) {
     api.onProgress((ev) => {
-      if (running.value) progress.value = ev
+      if (ev.stage === 'install' && installing.value) {
+        installLog.value.push(ev.message)
+      } else if (running.value) {
+        progress.value = ev
+      }
     })
     api.onRestarting(() => {
       running.value = false
@@ -151,6 +180,7 @@ export const useEngineStore = defineStore('engine', () => {
   return {
     phase, firstRun, prefs, codexStatus, characters, episodes,
     running, progress, lastEpisode, lastError,
-    init, checkCodex, loadCharacters, savePrefs, runGenerate, stopRun, loadEpisodes, clearResult,
+    installing, installLog,
+    init, checkCodex, installCodex, loadCharacters, savePrefs, runGenerate, stopRun, loadEpisodes, clearResult,
   }
 })
