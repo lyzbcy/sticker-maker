@@ -53,3 +53,18 @@ def test_generate_calls_codex_and_records_grid_image(tmp_path):
     stage.run(ctx)
     assert ctx.grid_image is not None
     fake_codex.generate.assert_called_once()
+
+
+def test_generate_records_fail_and_skips_copy_when_codex_returns_none(tmp_path):
+    """补测：codex 生图失败（返回 None）时，记 FAIL 日志、grid_image 置 None、不崩溃。"""
+    from sticker_engine.pipeline.context import LogEntry
+    fake_codex = MagicMock()
+    fake_codex.generate.return_value = None   # 模拟生图失败
+    stage = GenerateStage(codex=fake_codex)
+    ctx = _ctx(tmp_path, refs_available=0)
+    ctx.episode.story_mode = False
+    stage.run(ctx)
+    assert ctx.grid_image is None
+    # 应有一条 S1 FAIL 日志
+    fails = [e for e in ctx.production_log if e.stage == "S1" and e.status == "FAIL"]
+    assert len(fails) == 1
