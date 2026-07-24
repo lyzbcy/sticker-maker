@@ -60,6 +60,51 @@ def cmd_check_codex(req_id, args):
                   "image_ready": status.image_ready, "guidance_msg": status.guidance_msg})
 
 
+def cmd_install_codex(req_id, args):
+    """一键安装 codex（用户友好，初心第3行）。
+
+    走官方安装脚本：curl -fsSL https://chatgpt.com/codex/install.sh | sh
+    流式把 stdout 行作为 progress 事件发出去，前端实时显示。
+    """
+    import subprocess as sp
+    _emit({"id": req_id, "type": "progress", "stage": "install",
+           "message": "开始安装 codex（下载官方安装脚本）...", "percent": 0.1})
+    try:
+        # 官方一键脚本（Mac/Linux，自带 node，不需用户预装）
+        cmd = "curl -fsSL https://chatgpt.com/codex/install.sh | sh"
+        proc = sp.Popen(cmd, shell=True, stdout=sp.PIPE, stderr=sp.STDOUT, text=True)
+        lines = []
+        for line in proc.stdout:
+            line = line.rstrip()
+            if line:
+                lines.append(line)
+                _emit({"id": req_id, "type": "progress", "stage": "install",
+                       "message": line, "percent": 0.5})
+        proc.wait()
+        if proc.returncode == 0:
+            _emit({"id": req_id, "type": "progress", "stage": "install",
+                   "message": "安装完成，正在验证...", "percent": 0.9})
+            # 重新检测
+            from .providers.codex import CodexProvider
+            import shutil as _sh
+            engine = _ensure_engine()
+            provider = CodexProvider(codex_exec="codex",
+                                     output_dir=engine.config.paths.codex_output_dir)
+            status = provider.check()
+            _result(req_id, "ok" if status.installed else "fail",
+                    data={"installed": status.installed, "image_ready": status.image_ready,
+                          "guidance_msg": status.guidance_msg,
+                          "log": "\n".join(lines[-10:])})
+        else:
+            _result(req_id, "fail",
+                    errors=[{"message": f"安装脚本退出码 {proc.returncode}"}],
+                    data={"log": "\n".join(lines[-15:]),
+                          "hint": "可尝试手动安装：终端运行 npm i -g @openai/codex"})
+    except Exception as e:
+        _result(req_id, "fail", errors=[{"message": f"安装失败: {type(e).__name__}: {e}"}],
+                data={"hint": "手动安装：终端运行 curl -fsSL https://chatgpt.com/codex/install.sh | sh"})
+
+
 def cmd_get_version(req_id, args):
     _result(req_id, "ok", data={"version": VERSION})
 
@@ -255,7 +300,8 @@ def _dict_to_prefs(d):
 
 
 HANDLERS = {
-    "check_codex": cmd_check_codex, "get_version": cmd_get_version,
+    "check_codex": cmd_check_codex, "install_codex": cmd_install_codex,
+    "get_version": cmd_get_version,
     "load_prefs": cmd_load_prefs, "save_prefs": cmd_save_prefs,
     "list_characters": cmd_list_characters, "generate_base": cmd_generate_base,
     "add_base": cmd_add_base,
