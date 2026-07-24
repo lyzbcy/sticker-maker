@@ -29,7 +29,7 @@ def test_remove_magenta_makes_magenta_area_transparent():
     arr = np.zeros((10, 20, 3), dtype=np.uint8)
     arr[:, :10] = (255, 0, 255)   # 洋红
     arr[:, 10:] = (255, 0, 0)     # 红（应保留）
-    img = Image.fromarray(arr, "RGB").convert("RGBA")
+    img = Image.fromarray(arr).convert("RGBA")  # (H,W,3) uint8 → 推断 RGB
     provider = ChromaKeyProvider()
     out = provider.remove_key(img, "#ff00ff")
     out_arr = np.array(out)
@@ -64,7 +64,7 @@ def test_vectorized_remove_key_matches_colorsys_baseline():
     arr[0, 3] = (200, 200, 200)      # 灰（非 key）
     arr[0, 4] = (0, 0, 0)            # 纯黑（mx==0，非 key）
     arr[0, 5] = (255, 150, 255)      # 粉色低 sat（非 key）
-    img = Image.fromarray(arr, "RGB").convert("RGBA")
+    img = Image.fromarray(arr).convert("RGBA")  # (H,W,3) uint8 → 推断 RGB
     for key_color in ("#ff00ff", "#00ff00"):
         out = provider.remove_key(img, key_color)
         out_a = np.array(out)[:, :, 3]
