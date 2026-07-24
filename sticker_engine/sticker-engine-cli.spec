@@ -5,11 +5,11 @@
 block_cipher = None
 
 a = Analysis(
-    ['sticker_engine/cli.py'],
-    pathex=[],
+    ['cli_entry.py'],
+    pathex=['.'],
     binaries=[],
     datas=[('sticker_engine/resources', 'resources')],   # 含 base 图/剧本库/关键词库（修 A 评审 C3）
-    hiddenimports=['sticker_engine'],
+    hiddenimports=['sticker_engine', 'sticker_engine.cli'],
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
@@ -33,7 +33,7 @@ exe = EXE(
     strip=False,
     upx=True,
     runtime_tmpdir=None,
-    console=False,
+    console=True,   # CLI 模式需要 stdout/stderr（JSON-lines 协议依赖 stdout）
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

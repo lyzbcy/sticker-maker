@@ -107,7 +107,7 @@ class StickerEngine:
         stop_event: Optional[threading.Event] = None,
     ) -> Episode:
         codex, chromakey, vision = self._build_providers()
-        res = Path(_se.__file__).parent / "resources"
+        res = _se.resources_path()
         lib = LinkageLibrary.load(res / "linkage_scripts.json")
         import json
         keywords = {}
@@ -147,7 +147,7 @@ class StickerEngine:
     def _ensure_characters(self):
         if self.config.characters:
             return
-        res = Path(_se.__file__).parent / "resources" / "default_config.yaml"
+        res = _se.resources_path() / "default_config.yaml"
         if res.exists():
             import yaml
             data = yaml.safe_load(res.read_text(encoding="utf-8"))

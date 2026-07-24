@@ -107,7 +107,7 @@ class GenerateStage:
             return None
         base_rel = next(iter(char.bases.values()))
         import sticker_engine as _se
-        res_root = Path(_se.__file__).parent / "resources"
+        res_root = _se.resources_path()
         return res_root / base_rel
 
     def _pick_refs(self, ctx, n) -> list:
