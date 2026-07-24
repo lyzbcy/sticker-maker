@@ -1,0 +1,26 @@
+[project]
+name = "sticker-engine"
+version = "0.1.0"
+description = "表情包一键制作 - 核心生图引擎"
+requires-python = ">=3.9"
+dependencies = [
+    "Pillow>=10.0.0",
+    "numpy>=1.24.0",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov"]
+
+[project.scripts]
+sticker-engine = "sticker_engine.cli:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["sticker_engine*"]
+
+[tool.setuptools.package-data]
+sticker_engine = ["resources/*.yaml", "resources/*.json", "resources/base_images/*", "resources/prompts/*"]

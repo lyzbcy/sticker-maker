@@ -1,0 +1,37 @@
+# 表情包一键制作 · 内置默认配置
+characters:
+  星星布丁:
+    bases:
+      base1: base_images/星星布丁/base1.jpg
+      base3: base_images/星星布丁/base3.png
+      base4: base_images/星星布丁/base4.jpg
+      base5: base_images/星星布丁/base5.png
+      base6: base_images/星星布丁/base6.png
+    base_probs: {base1: 0.00, base3: 0.15, base4: 0.35, base5: 0.25, base6: 0.25}
+  捞鱼:
+    bases:
+      base1: base_images/捞鱼/base1.png
+      base2: base_images/捞鱼/base2.png
+      base3: base_images/捞鱼/base3.png
+      base4: base_images/捞鱼/base4.png
+    base_probs: {base1: 0.10, base2: 0.40, base3: 0.20, base4: 0.30}
+  周三涵:
+    bases:
+      base1: base_images/周三涵/base1.png
+      base2: base_images/周三涵/base2.png
+    base_probs: {base1: 0.20, base2: 0.80}
+  周五涵:
+    bases:
+      base1: base_images/周五涵/base1.png
+    base_probs: {base1: 1.00}
+
+default_prefs:
+  mode_probs: {single: 0.5, duo: 0.3, trio: 0.0, quad: 0.2}
+  single_char_probs: {星星布丁: 0.7, 捞鱼: 0.3, 周三涵: 0.0, 周五涵: 0.0}
+  grid_size: 4
+  transparent_default: true
+  ref_lib_priority: true
+  story_mode: true
+
+magenta_key: "#ff00ff"
+green_key: "#00ff00"
