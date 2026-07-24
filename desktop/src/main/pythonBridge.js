@@ -15,11 +15,14 @@ class PythonBridge extends EventEmitter {
     this.proc = null
     this.reqId = 0
     this.pending = new Map()   // {reqId -> {resolve, reject, progressCb}}
+    this.currentRunId = null
     this._buffer = ''
+    this._stopped = false   // true 表示主动 stopAll，不要自动重启
   }
 
   start() {
     if (this.proc) return
+    this._stopped = false
     let cmd, args
     if (this.cliPath === 'dev') {
       cmd = '/Users/zeen/Documents/共享/星星布丁/微信表情包/sticker_engine/.venv/bin/python'
@@ -44,6 +47,13 @@ class PythonBridge extends EventEmitter {
         p.reject(new Error(`CLI 进程退出 (code=${code})`))
       }
       this.pending.clear()
+      this.currentRunId = null
+      // C3 修复：崩溃（非主动关闭）自动重启
+      if (!this._stopped) {
+        console.error('[pythonBridge] CLI 崩溃，3 秒后自动重启...')
+        this.emit('restarting')
+        setTimeout(() => this.start(), 3000)
+      }
     })
   }
 
@@ -74,6 +84,8 @@ class PythonBridge extends EventEmitter {
     } else if (ev.type === 'result') {
       if (pending) {
         this.pending.delete(id)
+        // run 结束后清当前 run 标记
+        if (id === this.currentRunId) this.currentRunId = null
         if (ev.status === 'ok') pending.resolve(ev)
         else pending.reject(ev)
       }
@@ -96,15 +108,23 @@ class PythonBridge extends EventEmitter {
       }
       const id = `req-${++this.reqId}`
       this.pending.set(id, { resolve, reject, progressCb })
+      // C2 修复：追踪当前 run 的 id，stop 不传 target 时停它
+      if (cmd === 'run') {
+        this.currentRunId = id
+      }
       this.proc.stdin.write(JSON.stringify({ id, cmd, args }) + '\n')
     })
   }
 
   stop(targetId) {
-    return this.send('stop', { target_id: targetId })
+    // C2 修复：targetId 缺省时用当前 run 的 id（前端不知道真实 reqId）
+    const realTarget = targetId && targetId !== 'all' ? targetId : this.currentRunId
+    if (!realTarget) return Promise.reject(new Error('无正在运行的任务'))
+    return this.send('stop', { target_id: realTarget })
   }
 
   async stopAll() {
+    this._stopped = true   // 标记主动关闭，阻止自动重启
     if (this.proc) {
       this.proc.kill()
       this.proc = null

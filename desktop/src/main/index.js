@@ -28,6 +28,9 @@ app.whenReady().then(() => {
   bridge.on('exit', (code) => {
     mainWindow && mainWindow.webContents.send('python-exit', { code })
   })
+  bridge.on('restarting', () => {
+    mainWindow && mainWindow.webContents.send('python-restarting', {})
+  })
 
   ipcMain.handle('python-command', async (event, { cmd, args }) => {
     try {

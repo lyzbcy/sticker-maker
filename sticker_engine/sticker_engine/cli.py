@@ -176,8 +176,26 @@ HANDLERS = {
 }
 
 
+def _handle_in_thread(req_id, cmd, args):
+    """在独立线程执行 handler，避免长任务（run）阻塞 stdin 读取（C1 修复）。"""
+    handler = HANDLERS.get(cmd)
+    if handler is None:
+        _emit({"id": req_id, "type": "error", "message": f"未知命令: {cmd}"})
+        return
+    try:
+        handler(req_id, args)
+    except Exception as e:
+        _emit({"id": req_id, "type": "error", "message": f"{type(e).__name__}: {e}"})
+
+
 def main():
+    """常驻读 stdin，每行一个命令 JSON。
+
+    C1 修复：每个命令在独立线程执行，主线程立即返回继续读 stdin。
+    这样 run（分钟级长任务）期间仍能读取 stop 命令并置位 stop_event。
+    """
     print(f"[sticker-engine-cli] v{VERSION} 等待命令...", file=sys.stderr)
+    active_threads = []
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -189,14 +207,17 @@ def main():
             continue
         req_id = req.get("id")
         cmd = req.get("cmd")
-        handler = HANDLERS.get(cmd)
-        if handler is None:
-            _emit({"id": req_id, "type": "error", "message": f"未知命令: {cmd}"})
-            continue
-        try:
-            handler(req_id, req.get("args", {}))
-        except Exception as e:
-            _emit({"id": req_id, "type": "error", "message": f"{type(e).__name__}: {e}"})
+        args = req.get("args", {})
+        # stop 命令同步执行（要立即置位 stop_event，不能排队）
+        if cmd == "stop":
+            _handle_in_thread(req_id, cmd, args)
+        else:
+            t = threading.Thread(target=_handle_in_thread, args=(req_id, cmd, args), daemon=True)
+            t.start()
+            active_threads.append(t)
+    # stdin EOF：等所有活跃命令线程完成再退出，避免 daemon 被杀导致响应丢失
+    for t in active_threads:
+        t.join(timeout=30)
 
 
 if __name__ == "__main__":

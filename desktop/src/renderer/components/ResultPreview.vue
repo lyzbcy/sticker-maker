@@ -11,6 +11,7 @@
       <div class="actions">
         <button class="btn" @click="openFinder">在 Finder 中显示</button>
         <button class="btn btn-green" @click="store.runGenerate">再生成一组</button>
+        <button class="btn btn-gray" @click="store.clearResult">回到主页</button>
       </div>
     </div>
   </div>
@@ -30,5 +31,6 @@ async function openFinder() {
 .actions { display: flex; gap: 10px; margin-top: 12px; }
 .btn { padding: 6px 14px; border: none; border-radius: 6px; background: #4a90d9; color: #fff; cursor: pointer; }
 .btn-green { background: #7ac67d; }
+.btn-gray { background: #999; }
 .hint { color: #888; font-size: 12px; word-break: break-all; }
 </style>

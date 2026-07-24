@@ -10,4 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   onExit: (cb) => {
     ipcRenderer.on('python-exit', (_, data) => cb(data))
   },
+  onRestarting: (cb) => {
+    ipcRenderer.on('python-restarting', (_, data) => cb(data))
+  },
 })

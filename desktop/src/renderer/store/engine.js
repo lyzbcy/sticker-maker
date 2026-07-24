@@ -64,13 +64,35 @@ export const useEngineStore = defineStore('engine', () => {
   }
 
   async function savePrefs(newPrefs) {
-    if (!api) { phase.value = 'main'; return }
-    const res = await api.send('save_prefs', { prefs: newPrefs })
-    if (res && res.status === 'ok') {
-      prefs.value = newPrefs
-      firstRun.value = false
-      phase.value = 'main'
+    // I2 修复：前端先校验 mode_probs 总和，避免 A 侧 ValueError 静默失败
+    const mp = newPrefs.mode_probs || {}
+    const sum = (mp.single || 0) + (mp.duo || 0) + (mp.trio || 0) + (mp.quad || 0)
+    if (Math.abs(sum - 1) > 0.001) {
+      lastError.value = [{ message: `模式概率总和必须为 100%，当前 ${Math.round(sum * 100)}%` }]
+      return false
     }
+    if (!api) { phase.value = 'main'; return true }
+    try {
+      const res = await api.send('save_prefs', { prefs: newPrefs })
+      if (res && res.status === 'ok') {
+        prefs.value = newPrefs
+        firstRun.value = false
+        phase.value = 'main'
+        lastError.value = null
+        return true
+      }
+      lastError.value = [{ message: '保存失败' }]
+      return false
+    } catch (e) {
+      lastError.value = [{ message: (e && e.message) || '保存失败' }]
+      return false
+    }
+  }
+
+  // I4 修复：清结果回到待机态
+  function clearResult() {
+    lastEpisode.value = null
+    lastError.value = null
   }
 
   async function runGenerate() {
@@ -110,11 +132,16 @@ export const useEngineStore = defineStore('engine', () => {
     api.onProgress((ev) => {
       if (running.value) progress.value = ev
     })
+    api.onRestarting(() => {
+      running.value = false
+      progress.value = null
+      lastError.value = [{ message: '引擎意外退出，正在自动重启…请稍后重试' }]
+    })
   }
 
   return {
     phase, firstRun, prefs, codexStatus, characters, episodes,
     running, progress, lastEpisode, lastError,
-    init, checkCodex, loadCharacters, savePrefs, runGenerate, stopRun, loadEpisodes,
+    init, checkCodex, loadCharacters, savePrefs, runGenerate, stopRun, loadEpisodes, clearResult,
   }
 })
