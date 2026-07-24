@@ -45,6 +45,7 @@ class GenerateStage:
 
     def run(self, ctx: PipelineContext) -> None:
         mode = self.decide_mode(ctx)
+        ctx.gen_mode = mode.value   # C1 修复：把决出的 mode 写进 ctx，供 S2 决定抠图策略
         prompt, refs = self._build_prompt_and_refs(ctx, mode)
         # 生图
         grid_image = self.codex.generate(prompt=prompt, refs=refs)
@@ -95,14 +96,16 @@ class GenerateStage:
         return prompt, refs
 
     def _pick_base(self, ctx) -> Optional[Path]:
-        # 从 config.characters 选第一个角色的第一个 base（简化；真实多 base 概率在 Prep 已决定）
+        # I6 修复：用 PrepStage 按 base_probs 选好的 base（ctx.selected_base）
+        # 兜底：若 Prep 没选（如旧测试路径），退化到第一个角色的第一个 base
+        if ctx.selected_base is not None:
+            return ctx.selected_base
         if not ctx.config.characters:
             return None
         char = next(iter(ctx.config.characters.values()))
         if not char.bases:
             return None
         base_rel = next(iter(char.bases.values()))
-        # base 路径是相对 resources 的
         import sticker_engine as _se
         res_root = Path(_se.__file__).parent / "resources"
         return res_root / base_rel

@@ -50,12 +50,19 @@ class Sticker:
 class PostprocessStage:
     """S2：裁切 → 含义预检 → 条件抠图 → 重命名 → 写最终版。"""
 
+    name = "S2"
+
     def __init__(self, vision: VisionProvider, chromakey: ChromaKeyProvider):
         self.vision = vision
         self.chromakey = chromakey
 
-    def run(self, ctx: PipelineContext, gen_mode: str = "story",
-            transparent: bool = True) -> None:
+    def run(self, ctx: PipelineContext, gen_mode: str = None,
+            transparent: bool = None) -> None:
+        # C1 修复：单参契约下从 ctx 读模式；双参调用（旧测试）显式传值优先
+        if gen_mode is None:
+            gen_mode = ctx.gen_mode or "story"
+        if transparent is None:
+            transparent = ctx.episode.transparent_default
         grid_size = ctx.episode.grid_size
         # 1) 裁切（或 1×1 直接用）
         if should_crop(grid_size):

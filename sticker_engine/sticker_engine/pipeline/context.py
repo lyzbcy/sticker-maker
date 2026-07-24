@@ -69,6 +69,12 @@ class PipelineContext:
     episode: EpisodeSpec
     episode_dir: Optional[Path] = None
     grid_image: Optional[Path] = None
+    # S1 决出的生图模式（传给 S2 决定抠图策略，C1 修复）
+    gen_mode: Optional[str] = None   # "ref_library"/"story"/"keyword_combo"
+    # S0 选中的 base 图路径（按 base_probs 概率选，I6 修复）
+    selected_base: Optional[Path] = None
+    # S0 选中的角色列表
+    selected_characters: list = field(default_factory=list)
     stickers: list = field(default_factory=list)
     meaning_map: dict = field(default_factory=dict)
     assets: object = None

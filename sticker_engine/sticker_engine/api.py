@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .pipeline.context import PipelineContext, EpisodeSpec
-from .pipeline.runner import PipelineRunner
+from .pipeline.runner import PipelineRunner, StopRequested
 from .pipeline.gates import Gate0PreGenerate, Gate1PostGenerateRaw, Gate2PostGenerate
 from .stages.prep import PrepStage
 from .stages.generate import GenerateStage
@@ -20,27 +20,15 @@ import sticker_engine as _se
 
 @dataclass
 class Episode:
-    """一次 run 的产出。"""
+    """一次 run 的产出。success=False 表示关卡 FAIL 或被取消，调用方应查 errors/gate_errors。"""
     episode_dir: Optional[Path] = None
     stickers: list = field(default_factory=list)
     meaning_map: dict = field(default_factory=dict)
     assets: object = None
     production_log: list = field(default_factory=list)
-
-
-class _S2Adapter:
-    """把 PostprocessStage.run(ctx, gen_mode, transparent) 适配成单参 run(ctx)。"""
-
-    def __init__(self, stage):
-        self.stage = stage
-        self.name = "S2"
-
-    def run(self, ctx):
-        self.stage.run(
-            ctx,
-            gen_mode="story",
-            transparent=ctx.episode.transparent_default,
-        )
+    success: bool = True
+    errors: list = field(default_factory=list)   # list[GateError]，关卡失败记录
+    aborted_reason: str = ""   # 非空表示被取消/异常中止的原因
 
 
 class _FailingCodex:
@@ -103,6 +91,16 @@ class StickerEngine:
         vision = VisionProvider(codex)
         return codex, chromakey, vision
 
+    def _build_episode_spec(self) -> EpisodeSpec:
+        """M3 修复：从 config.prefs 构造 EpisodeSpec，而非用 placeholder 忽略用户偏好。"""
+        prefs = self.config.prefs
+        return EpisodeSpec(
+            grid_size=prefs.grid_size,
+            transparent_default=prefs.transparent_default,
+            story_mode=prefs.story_mode,
+            ref_lib_priority=prefs.ref_lib_priority,
+        )
+
     def run(
         self,
         progress_callback: Optional[Callable] = None,
@@ -118,24 +116,31 @@ class StickerEngine:
             keywords = json.loads(kw_path.read_text(encoding="utf-8"))
         story_selector = StorySelector(lib.scripts, used=set())
         self._ensure_characters()
-        ctx = PipelineContext(config=self.config, episode=EpisodeSpec.placeholder())
+        ctx = PipelineContext(config=self.config, episode=self._build_episode_spec())
         runner = PipelineRunner(steps=[
             ("S0", PrepStage()),
             (Gate0PreGenerate(codex), "Gate0"),
             ("S1", GenerateStage(
                 codex=codex, story_selector=story_selector, keywords=keywords)),
             (Gate1PostGenerateRaw(), "Gate1"),
-            ("S2", _S2Adapter(PostprocessStage(vision=vision, chromakey=chromakey))),
+            ("S2", PostprocessStage(vision=vision, chromakey=chromakey)),
             (Gate2PostGenerate(), "Gate2"),
             ("S3", AssetsStage(vision=vision)),
         ])
+        aborted_reason = ""
         try:
             runner.run(ctx, progress_callback=progress_callback, stop_event=stop_event)
-        except Exception:
-            pass
+        except StopRequested:
+            aborted_reason = "用户取消（stop_event）"
+        except Exception as e:
+            # C2 修复：真实 bug 不再静默吞掉，记进 aborted_reason 暴露给调用方
+            aborted_reason = f"运行异常：{type(e).__name__}: {e}"
+        # C2 修复：success 由关卡 errors / 异常决定，调用方可据 success 区分成功失败
+        success = not ctx.errors and not aborted_reason
         ep = Episode(
             episode_dir=ctx.episode_dir, stickers=ctx.stickers,
-            meaning_map=ctx.meaning_map, assets=ctx.assets)
+            meaning_map=ctx.meaning_map, assets=ctx.assets,
+            success=success, errors=list(ctx.errors), aborted_reason=aborted_reason)
         ep.production_log = list(ctx.production_log)
         return ep
 
