@@ -137,6 +137,17 @@ def cmd_list_episodes(req_id, args):
     _result(req_id, "ok", data={"episodes": episodes})
 
 
+def cmd_featured(req_id, args):
+    """E：随机抽 N 张精选表情（初心第85行：软件里多用精选）。"""
+    from .promotion.featured import sample_featured, featured_count
+    n = args.get("n", 8)
+    sample = sample_featured(n=n)
+    _result(req_id, "ok", data={
+        "count": featured_count(),
+        "sample": [{"name": p.stem, "path": str(p)} for p in sample],
+    })
+
+
 def cmd_open_in_finder(req_id, args):
     import subprocess as sp
     path = args.get("path")
@@ -173,6 +184,7 @@ HANDLERS = {
     "list_characters": cmd_list_characters, "generate_base": cmd_generate_base,
     "run": cmd_run, "stop": cmd_stop,
     "list_episodes": cmd_list_episodes, "open_in_finder": cmd_open_in_finder,
+    "featured": cmd_featured,
 }
 
 
