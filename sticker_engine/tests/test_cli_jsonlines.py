@@ -102,3 +102,27 @@ def test_stop_command_sets_stop_event(monkeypatch):
     cli.cmd_stop("req-stop", {"target_id": "req-s"})
     t.join(timeout=3)
     assert captured_stop["event"].is_set()
+
+
+# ---- C1 集成验证：custom_bases 真挂进角色 ----
+def test_add_base_then_list_shows_custom_character(tmp_path, monkeypatch):
+    """add_base 后 list_characters 能看到'自定义'角色。"""
+    from sticker_engine import cli
+    from PIL import Image
+    # 造一张假 base 图
+    src = tmp_path / "my_base.png"
+    Image.new("RGBA", (10, 10)).save(src)
+    # mock engine 的 paths
+    fake_engine = MagicMock()
+    fake_engine.config.paths.user_data = tmp_path
+    fake_engine.config.characters = {}
+    monkeypatch.setattr(cli, "_engine", fake_engine)
+    monkeypatch.setattr(cli, "_emit", lambda ev: None)
+    # add_base
+    cli.cmd_add_base("r1", {"path": str(src)})
+    # custom_bases 目录应存在 + 文件在
+    assert (tmp_path / "custom_bases" / "my_base.png").exists()
+    # _sync 后"自定义"角色应挂上
+    cli._sync_custom_bases(fake_engine)
+    assert "自定义" in fake_engine.config.characters
+    assert "my_base" in fake_engine.config.characters["自定义"].bases

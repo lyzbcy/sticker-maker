@@ -85,11 +85,14 @@ class PrepStage:
         probs = char_obj.base_probs or {k: 1.0 for k in char_obj.bases}
         probs = normalize_probs(probs) if sum(probs.values()) > 0 else {k: 1.0 for k in char_obj.bases}
         base_key = _pick_by_probs(probs, self.rng)
-        base_rel = char_obj.bases[base_key]
-        # base 路径相对 resources，转绝对
+        base_val = char_obj.bases[base_key]
+        # C1 集成：custom_bases 存绝对路径，内置 base 存相对路径
+        if isinstance(base_val, str) and (base_val.startswith("/") or ":" in base_val[:3]):
+            return Path(base_val)
+        # 相对 resources，转绝对
         import sticker_engine as _se
         res_root = _se.resources_path()
-        return res_root / base_rel
+        return res_root / base_val
 
     def _pick_characters(self, ctx, mode, count):
         all_chars = list(ctx.config.characters.keys())

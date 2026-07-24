@@ -78,9 +78,33 @@ def cmd_save_prefs(req_id, args):
     _result(req_id, "ok")
 
 
+def _sync_custom_bases(engine):
+    """C1 集成：把 user_data/custom_bases/ 的图挂进一个'自定义'角色。
+
+    每次 list/add/generate 后调用，保证上传/生成的 base 可见、可选。
+    """
+    custom_dir = engine.config.paths.user_data / "custom_bases"
+    if not custom_dir.exists():
+        return
+    from .config.schema import Character
+    custom_bases = {}
+    for img in sorted(custom_dir.iterdir()):
+        if img.suffix.lower() in (".png", ".jpg", ".jpeg"):
+            # 用相对路径（绝对路径直接存，_pick_base_path 会用）
+            custom_bases[img.stem] = str(img)
+    if not custom_bases:
+        return
+    n = len(custom_bases)
+    # 均分概率
+    probs = {k: 1.0 / n for k in custom_bases}
+    engine.config.characters["自定义"] = Character(
+        name="自定义", bases=custom_bases, base_probs=probs)
+
+
 def cmd_list_characters(req_id, args):
     engine = _ensure_engine()
     engine._ensure_characters()
+    _sync_custom_bases(engine)
     chars = {}
     for name, c in engine.config.characters.items():
         chars[name] = {"bases": c.bases, "base_probs": c.base_probs}
@@ -97,11 +121,18 @@ def cmd_generate_base(req_id, args):
     if path is None:
         _result(req_id, "fail", errors=[{"message": "base 图生成失败"}])
     else:
-        _result(req_id, "ok", data={"path": str(path)})
+        # C1 集成：把生成的 base 复制到 custom_bases，挂进"自定义"角色
+        import shutil
+        custom_dir = engine.config.paths.user_data / "custom_bases"
+        custom_dir.mkdir(parents=True, exist_ok=True)
+        dst = custom_dir / f"ai_{Path(path).name}"
+        shutil.copy2(path, dst)
+        _sync_custom_bases(engine)
+        _result(req_id, "ok", data={"path": str(dst), "name": dst.name})
 
 
 def cmd_add_base(req_id, args):
-    """C1：用户上传的 base 图复制到用户数据目录的 custom_bases/。"""
+    """C1：用户上传的 base 图复制到 custom_bases/，并挂进'自定义'角色。"""
     import shutil
     src = args.get("path")
     if not src or not Path(src).exists():
@@ -112,11 +143,13 @@ def cmd_add_base(req_id, args):
     custom_dir.mkdir(parents=True, exist_ok=True)
     dst = custom_dir / Path(src).name
     shutil.copy2(src, dst)
+    _sync_custom_bases(engine)   # 立即挂进角色，list 能看到
     _result(req_id, "ok", data={"path": str(dst), "name": dst.name})
 
 
 def cmd_run(req_id, args):
     engine = _ensure_engine()
+    _sync_custom_bases(engine)   # C1：run 前同步自定义 base，保证可选
     stop = threading.Event()
     _stop_events[req_id] = stop
     try:
