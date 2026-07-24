@@ -28,15 +28,22 @@ class PythonBridge extends EventEmitter {
       cmd = '/Users/zeen/Documents/共享/星星布丁/微信表情包/sticker_engine/.venv/bin/python'
       args = ['-m', 'sticker_engine.cli']
     } else if (this.cliPath === 'packaged') {
-      cmd = path.join(process.resourcesPath, 'sticker-engine-cli')
+      // onedir 模式：可执行在 sticker-engine-cli/sticker-engine-cli
+      cmd = path.join(process.resourcesPath, 'sticker-engine-cli', 'sticker-engine-cli')
       args = []
     } else {
       cmd = this.cliPath
       args = []
     }
     this.proc = spawn(cmd, args, { cwd: path.dirname(cmd) || undefined })
+    this.proc.on('error', (err) => {
+      console.error('[pythonBridge] spawn ERROR:', err.message, err.code)
+    })
     this.proc.stdout.setEncoding('utf-8')
-    this.proc.stdout.on('data', (data) => this._onData(data))
+    this.proc.stdout.on('data', (data) => {
+      console.log('[cli stdout]', data.toString().trim())
+      this._onData(data)
+    })
     this.proc.stderr.on('data', (data) => {
       console.error('[cli stderr]', data.toString())
     })

@@ -17,15 +17,24 @@ function createWindow() {
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
   } else {
-    mainWindow.loadFile(path.join(__dirname, '..', '..', 'dist', 'index.html'))
+    // 打包模式：dist 在 app.asar 内，用 app.getAppPath() 定位更稳
+    mainWindow.loadFile(path.join(app.getAppPath(), 'dist', 'index.html'))
+  }
+  // 诊断模式：设环境变量 STICKER_DEVTOOLS=1 时开 DevTools（默认关，避免给粉丝的版本带 DevTools）
+  if (process.env.STICKER_DEVTOOLS === '1') {
+    mainWindow.webContents.on('did-finish-load', () => {
+      mainWindow.webContents.openDevTools({ mode: 'detach' })
+    })
   }
 }
 
 app.whenReady().then(() => {
   const isPackaged = app.isPackaged
   bridge = new PythonBridge(isPackaged ? 'packaged' : 'dev')
+  console.log('[main] isPackaged=', isPackaged, 'cliPath=', isPackaged ? 'packaged' : 'dev')
   bridge.start()
   bridge.on('exit', (code) => {
+    console.log('[main] python cli exited code=', code)
     mainWindow && mainWindow.webContents.send('python-exit', { code })
   })
   bridge.on('restarting', () => {

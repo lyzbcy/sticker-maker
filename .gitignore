@@ -78,3 +78,6 @@ temp_prompt.txt
 .superpowers/
 *.zip
 build/*.zip
+
+# 解压的分发包目录
+表情包一键制作-mac-*/

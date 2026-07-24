@@ -24,20 +24,28 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='sticker-engine-cli',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    runtime_tmpdir=None,
-    console=True,   # CLI 模式需要 stdout/stderr（JSON-lines 协议依赖 stdout）
+    console=True,   # CLI 需要 stdout/stderr（JSON-lines 协议依赖 stdout）
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='sticker-engine-cli',
 )

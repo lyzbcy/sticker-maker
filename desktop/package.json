@@ -32,10 +32,12 @@
     "directories": {
       "output": "release"
     },
+    "afterPack": "afterPack.js",
     "files": [
       "dist/**/*",
       "src/main/**/*",
-      "src/preload/**/*"
+      "src/preload/**/*",
+      "afterPack.js"
     ],
     "mac": {
       "target": [
@@ -45,7 +47,7 @@
     },
     "extraResources": [
       {
-        "from": "build/sticker-engine-cli",
+        "from": "../sticker_engine/dist/sticker-engine-cli",
         "to": "sticker-engine-cli"
       },
       {

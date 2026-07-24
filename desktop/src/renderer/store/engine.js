@@ -19,8 +19,17 @@ export const useEngineStore = defineStore('engine', () => {
 
   async function init() {
     if (!api) { phase.value = 'wizard'; return }
+    // 超时兜底：cli 冷启动可能慢，但 15 秒还没响应就降级进向导
+    const timeout = new Promise(resolve => setTimeout(() => resolve({__timeout: true}), 15000))
     try {
-      const res = await api.send('load_prefs')
+      const res = await Promise.race([api.send('load_prefs'), timeout])
+      if (res && res.__timeout) {
+        // 超时：引擎可能还在启动，先进向导（用户可重试）
+        lastError.value = [{ message: '引擎启动较慢，已进入向导。如 codex 检测失败请点重新检测。' }]
+        prefs.value = defaultPrefs()
+        phase.value = 'wizard'
+        return
+      }
       if (res && res.status === 'ok') {
         prefs.value = res.data.prefs || defaultPrefs()
         firstRun.value = res.data.first_run
