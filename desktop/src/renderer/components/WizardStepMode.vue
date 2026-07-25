@@ -1,6 +1,6 @@
 <template>
   <div class="step-mode">
-    <p>设置不同人数表情包的出现概率（<strong>建议单人</strong>，实测效果最好）：</p>
+    <p class="lead">设置不同人数表情包的出现概率（<strong>建议单人</strong>，实测效果最好）：</p>
     <div class="sliders">
       <div v-for="(label, key) in labels" :key="key" class="slider-row">
         <label>{{ label }}</label>
@@ -27,10 +27,50 @@ function update(key, ev) {
 }
 </script>
 <style scoped>
-.slider-row { display: flex; align-items: center; gap: 12px; margin: 10px 0; }
-.slider-row label { width: 60px; }
-.slider-row input { flex: 1; }
-.pct { width: 40px; text-align: right; }
-.sum { font-weight: 600; margin-top: 16px; }
-.sum.bad { color: #c33; }
+.lead { margin: 0 0 18px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.lead strong { color: var(--forest); }
+
+.sliders { display: flex; flex-direction: column; gap: 6px; }
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: var(--bg-cream);
+  border-radius: var(--r-md);
+}
+.slider-row label {
+  width: 56px;
+  font-weight: 600;
+  color: var(--ink);
+  font-size: 14px;
+}
+.slider-row input { flex: 1; accent-color: var(--forest); cursor: pointer; }
+
+.pct {
+  min-width: 48px;
+  text-align: center;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  background: var(--candy-yellow);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sum {
+  margin-top: 18px;
+  padding: 10px 16px;
+  border-radius: var(--r-md);
+  background: rgba(175, 205, 168, .3);
+  color: var(--forest);
+  font-weight: 700;
+  font-size: 14px;
+  text-align: center;
+}
+.sum.bad {
+  background: rgba(181, 72, 42, .12);
+  color: var(--brick);
+}
 </style>

@@ -5,12 +5,16 @@
       <h2>关于</h2>
     </header>
     <div class="body">
-      <div class="info">
+      <!-- 信息卡片 -->
+      <div class="info-card">
+        <div class="info-emoji">🎨</div>
         <h3>表情包一键制作</h3>
-        <p>版本 {{ version }}</p>
-        <p>作者：{{ promo.author_name }}</p>
-        <p class="hint">把你的表情包创意变成现实 ✨</p>
+        <p class="version">版本 {{ version }}</p>
+        <p class="author">作者：{{ promo.author_name }}</p>
+        <p class="tagline">把你的表情包创意变成现实 ✨</p>
       </div>
+
+      <!-- 二维码区 -->
       <div class="qr-section" v-if="hasQr">
         <h3>关注作者</h3>
         <div class="qr-grid">
@@ -65,15 +69,96 @@ onMounted(async () => {
 })
 </script>
 <style scoped>
-.about { padding: 24px; max-width: 600px; margin: 0 auto; }
-header { display: flex; align-items: center; gap: 16px; }
-.back { background: none; border: none; color: #4a90d9; cursor: pointer; font-size: 16px; }
-.info { background: #fff; padding: 16px; border-radius: 8px; margin: 16px 0; }
-.info h3 { margin-top: 0; }
-.qr-section { background: #fff; padding: 16px; border-radius: 8px; }
-.qr-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 12px; }
-.qr-item { text-align: center; }
-.qr-item img { width: 100%; max-width: 140px; border-radius: 8px; }
-.qr-item p { margin: 6px 0 0; font-size: 13px; color: #666; }
-.hint { color: #999; font-size: 13px; text-align: center; }
+.about { padding: 32px; max-width: 600px; margin: 0 auto; }
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.back {
+  background: var(--card);
+  border: 1.5px solid var(--paper);
+  border-radius: var(--r-pill);
+  padding: 8px 18px;
+  color: var(--forest);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  box-shadow: var(--shadow-soft);
+  transition: all .15s ease;
+}
+.back:hover { border-color: var(--sage); transform: translateX(-2px); }
+
+h2 {
+  margin: 0;
+  font-family: var(--font-head);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.body { display: flex; flex-direction: column; gap: 18px; }
+
+/* 信息卡片（大圆角 + 柔光阴影） */
+.info-card {
+  padding: 32px 24px;
+  text-align: center;
+  background: var(--hero-gradient);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
+}
+.info-emoji { font-size: 48px; margin-bottom: 8px; }
+.info-card h3 {
+  margin: 0 0 8px;
+  font-family: var(--font-head);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.version { margin: 0 0 4px; color: var(--forest); font-weight: 600; font-size: 13px; }
+.author { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+.tagline { margin: 0; color: var(--forest); font-size: 14px; font-weight: 600; }
+
+/* 二维码区 */
+.qr-section {
+  padding: 24px;
+  background: var(--card);
+  border-radius: var(--r-card);
+  border: 1.5px solid var(--paper);
+  box-shadow: var(--shadow-card);
+}
+.qr-section h3 {
+  margin: 0 0 16px;
+  font-family: var(--font-head);
+  font-size: 16px;
+  color: var(--forest);
+}
+.qr-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.qr-item {
+  text-align: center;
+  padding: 12px 8px;
+  background: var(--bg-cream);
+  border-radius: var(--r-md);
+  transition: all .15s ease;
+}
+.qr-item:hover { transform: translateY(-2px); box-shadow: var(--shadow-soft); }
+.qr-item img {
+  width: 100%;
+  max-width: 130px;
+  border-radius: var(--r-sm);
+}
+.qr-item p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--forest);
+}
+
+.hint { color: var(--muted-faint); font-size: 13px; text-align: center; }
 </style>
