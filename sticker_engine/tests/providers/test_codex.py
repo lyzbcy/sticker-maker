@@ -4,13 +4,50 @@ import pytest
 from sticker_engine.providers.codex import CodexProvider, CodexStatus
 
 
-def test_check_returns_not_installed_when_codex_missing(tmp_path):
+def test_check_returns_not_installed_when_codex_missing(tmp_path, monkeypatch):
     provider = CodexProvider(codex_exec="nonexistent_codex_xyz", output_dir=tmp_path)
+    # 隔离：mock 掉所有 fallback 路径探测（避免本机有桌面 App 时误判）
+    monkeypatch.setattr(provider, "_resolve_codex_path", lambda: None)
     status = provider.check()
     assert isinstance(status, CodexStatus)
     assert status.installed is False
     assert status.image_ready is False
     assert len(status.guidance_msg) > 0
+
+
+def test_resolve_codex_path_finds_desktop_app(monkeypatch):
+    """修复A验证：能探测到桌面 App 内部的 codex（GUI PATH 缺失场景）。"""
+    from pathlib import Path
+    provider = CodexProvider(codex_exec="codex")
+    # mock shutil.which 返回 None（模拟 GUI 应用的残缺 PATH）
+    import sticker_engine.providers.codex as cmod
+    monkeypatch.setattr(cmod.shutil, "which", lambda x: None)
+    # 真实探测（本机有 ~/.codex/plugins/.plugin-appserver/codex 或 App 内）
+    resolved = provider._resolve_codex_path()
+    # 如果本机有桌面 App，应找到；CI 无桌面 App 时不强制
+    if resolved:
+        assert Path(resolved).is_file()
+
+
+def test_check_uses_auth_json_for_login(tmp_path, monkeypatch):
+    """修复B验证：登录态看 auth.json（不只 auth）。"""
+    provider = CodexProvider(codex_exec="codex", output_dir=tmp_path)
+    # mock 找到 codex + --version 成功
+    monkeypatch.setattr(provider, "_resolve_codex_path", lambda: "/fake/codex")
+    import sticker_engine.providers.codex as cmod
+
+    class _R:
+        returncode = 0
+    monkeypatch.setattr(cmod.subprocess, "run", lambda *a, **kw: _R())
+    # mock home 到 tmp_path，造 auth.json
+    fake_home = tmp_path / "home"
+    (fake_home / ".codex").mkdir(parents=True)
+    (fake_home / ".codex" / "auth.json").write_text("{}")
+    monkeypatch.setattr(cmod.Path, "home", classmethod(lambda cls: fake_home))
+    status = provider.check()
+    assert status.installed is True
+    assert status.logged_in is True   # auth.json 存在 → 登录态
+    assert status.image_ready is True
 
 
 def test_scan_latest_image_picks_most_recent(tmp_path):

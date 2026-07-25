@@ -60,49 +60,109 @@ def cmd_check_codex(req_id, args):
                   "image_ready": status.image_ready, "guidance_msg": status.guidance_msg})
 
 
+def _login_shell_env():
+    """通过 login interactive shell 拿到用户真实 PATH（含 nvm/homebrew）。
+
+    GUI 应用的 PATH 残缺，subprocess 跑 npm/curl 会失败。这里用 zsh -lic
+    重新加载用户的 .zshrc/.zprofile，拿到完整 PATH。
+    """
+    import subprocess as sp
+    import os as _os
+    env = _os.environ.copy()
+    try:
+        out = sp.run(["/bin/zsh", "-lic", "print -rn -- $PATH"],
+                     capture_output=True, text=True, timeout=5)
+        if out.returncode == 0 and out.stdout.strip():
+            env["PATH"] = out.stdout.strip() + _os.pathsep + env.get("PATH", "")
+    except Exception:
+        pass   # 拿不到就用原 env，至少不崩
+    return env
+
+
 def cmd_install_codex(req_id, args):
     """一键安装 codex（用户友好，初心第3行）。
 
-    走官方安装脚本：curl -fsSL https://chatgpt.com/codex/install.sh | sh
+    策略（按优先级）：
+    1. 先探测已有 codex（桌面 App / 之前装过）→ 直接用，不下载
+    2. 走 npm 安装（registry.npmjs.org 通常可达）：npm i -g @openai/codex
+    3. 回退官方脚本（chatgpt.com，部分网络不通）
     流式把 stdout 行作为 progress 事件发出去，前端实时显示。
     """
     import subprocess as sp
+    from .providers.codex import CodexProvider
+
+    # 策略1：先探测是否已有 codex（很多用户装了桌面 App 就有，不用重复下载）
     _emit({"id": req_id, "type": "progress", "stage": "install",
-           "message": "开始安装 codex（下载官方安装脚本）...", "percent": 0.1})
+           "message": "检测是否已安装 codex...", "percent": 0.1})
+    engine = _ensure_engine()
+    provider = CodexProvider(codex_exec="codex", output_dir=engine.config.paths.codex_output_dir)
+    resolved = provider._resolve_codex_path()
+    if resolved:
+        _emit({"id": req_id, "type": "progress", "stage": "install",
+               "message": f"✅ 已检测到 codex：{resolved}", "percent": 0.9})
+        status = provider.check()
+        _result(req_id, "ok" if status.installed else "fail",
+                data={"installed": status.installed, "image_ready": status.image_ready,
+                      "guidance_msg": status.guidance_msg,
+                      "codex_path": resolved,
+                      "log": f"已检测到现有 codex: {resolved}"})
+        return
+
+    # 策略2：npm 安装（用 login shell 的 PATH，拿到 nvm 的 node）
+    _emit({"id": req_id, "type": "progress", "stage": "install",
+           "message": "通过 npm 安装 codex...", "percent": 0.3})
+    env = _login_shell_env()
+    lines = []
     try:
-        # 官方一键脚本（Mac/Linux，自带 node，不需用户预装）
-        cmd = "curl -fsSL https://chatgpt.com/codex/install.sh | sh"
-        proc = sp.Popen(cmd, shell=True, stdout=sp.PIPE, stderr=sp.STDOUT, text=True)
-        lines = []
+        proc = sp.Popen("npm install -g @openai/codex", shell=True, executable="/bin/zsh",
+                        stdout=sp.PIPE, stderr=sp.STDOUT, text=True, env=env)
         for line in proc.stdout:
             line = line.rstrip()
             if line:
                 lines.append(line)
                 _emit({"id": req_id, "type": "progress", "stage": "install",
-                       "message": line, "percent": 0.5})
+                       "message": line, "percent": 0.6})
         proc.wait()
         if proc.returncode == 0:
             _emit({"id": req_id, "type": "progress", "stage": "install",
-                   "message": "安装完成，正在验证...", "percent": 0.9})
-            # 重新检测
-            from .providers.codex import CodexProvider
-            import shutil as _sh
-            engine = _ensure_engine()
-            provider = CodexProvider(codex_exec="codex",
-                                     output_dir=engine.config.paths.codex_output_dir)
+                   "message": "npm 安装完成，正在验证...", "percent": 0.9})
             status = provider.check()
             _result(req_id, "ok" if status.installed else "fail",
                     data={"installed": status.installed, "image_ready": status.image_ready,
                           "guidance_msg": status.guidance_msg,
                           "log": "\n".join(lines[-10:])})
-        else:
-            _result(req_id, "fail",
-                    errors=[{"message": f"安装脚本退出码 {proc.returncode}"}],
-                    data={"log": "\n".join(lines[-15:]),
-                          "hint": "可尝试手动安装：终端运行 npm i -g @openai/codex"})
+            return
+        npm_err = f"npm 安装退出码 {proc.returncode}"
     except Exception as e:
-        _result(req_id, "fail", errors=[{"message": f"安装失败: {type(e).__name__}: {e}"}],
-                data={"hint": "手动安装：终端运行 curl -fsSL https://chatgpt.com/codex/install.sh | sh"})
+        npm_err = f"npm 安装异常: {e}"
+
+    # 策略3：回退官方脚本（chatgpt.com，部分网络可能不通）
+    _emit({"id": req_id, "type": "progress", "stage": "install",
+           "message": "npm 安装未成功，尝试官方脚本...", "percent": 0.7})
+    try:
+        cmd = "curl -fsSL https://chatgpt.com/codex/install.sh | sh"
+        proc = sp.Popen(cmd, shell=True, executable="/bin/zsh",
+                        stdout=sp.PIPE, stderr=sp.STDOUT, text=True, env=env)
+        for line in proc.stdout:
+            line = line.rstrip()
+            if line:
+                lines.append(line)
+                _emit({"id": req_id, "type": "progress", "stage": "install",
+                       "message": line, "percent": 0.85})
+        proc.wait()
+        if proc.returncode == 0:
+            status = provider.check()
+            _result(req_id, "ok" if status.installed else "fail",
+                    data={"installed": status.installed, "image_ready": status.image_ready,
+                          "guidance_msg": status.guidance_msg, "log": "\n".join(lines[-10:])})
+            return
+        _result(req_id, "fail",
+                errors=[{"message": f"{npm_err}；官方脚本退出码 {proc.returncode}"}],
+                data={"log": "\n".join(lines[-15:]),
+                      "hint": "手动安装：终端运行 npm i -g @openai/codex 或 curl -fsSL https://chatgpt.com/codex/install.sh | sh"})
+    except Exception as e:
+        _result(req_id, "fail", errors=[{"message": f"{npm_err}；官方脚本异常: {e}"}],
+                data={"hint": "手动安装：终端运行 npm i -g @openai/codex"})
 
 
 def cmd_get_version(req_id, args):
