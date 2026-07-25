@@ -1,16 +1,30 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec: 打包 A 为单可执行 sticker-engine-cli（含 resources）
 # 重新打包：cd sticker_engine && source .venv/bin/activate && pyinstaller sticker-engine-cli.spec
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
+
+hiddenimports = (
+    ['sticker_engine', 'sticker_engine.cli']
+    + collect_submodules('sticker_engine.agent')
+    + collect_submodules('sticker_engine.publish')
+    + collect_submodules('flask')
+    + collect_submodules('apscheduler')
+    + collect_submodules('playwright')
+)
+
+datas = [
+    ('sticker_engine/resources', 'resources'),
+    ('sticker_engine/agent/AGENT_PROMPT.md', 'sticker_engine/agent'),
+] + collect_data_files('playwright')
 
 a = Analysis(
     ['cli_entry.py'],
     pathex=['.'],
     binaries=[],
-    datas=[('sticker_engine/resources', 'resources'),     # 含 base 图/剧本库/关键词库（修 A 评审 C3）
-           ('sticker_engine/resources/featured', 'featured')],   # E：精选表情（初心第85行）
-    hiddenimports=['sticker_engine', 'sticker_engine.cli'],
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
     excludes=[],

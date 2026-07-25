@@ -18,6 +18,10 @@ def test_publish_config_defaults():
     assert cfg.theme == "万能通用"
     assert cfg.region == "全球"
     assert "软萌可爱" in cfg.style
+    assert cfg.tip_guide_img.name == "tip-guide.png"
+    assert cfg.tip_thanks_img.name == "tip-thanks.png"
+    assert cfg.tip_guide_img.exists()
+    assert cfg.tip_thanks_img.exists()
 
 
 def test_validate_tips_images_returns_missing(tmp_path):

@@ -12,15 +12,14 @@ from typing import Optional
 
 
 def _default_tip_guide() -> Path:
-    """默认赞赏引导图：优先项目根的赞赏页/赞赏引导图.png。"""
-    # 从 publish 包往上找到项目根（微信表情包/）
-    root = Path(__file__).resolve().parents[3]
-    return root / "赞赏页" / "赞赏引导图.png"
+    """随引擎打包的默认赞赏引导图。"""
+    from .. import resources_path
+    return resources_path() / "publish" / "tip-guide.png"
 
 
 def _default_tip_thanks() -> Path:
-    root = Path(__file__).resolve().parents[3]
-    return root / "赞赏页" / "赞赏致谢图.png"
+    from .. import resources_path
+    return resources_path() / "publish" / "tip-thanks.png"
 
 
 def _default_storage_state() -> Path:

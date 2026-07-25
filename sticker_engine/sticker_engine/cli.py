@@ -21,6 +21,13 @@ _engine = None
 _stop_events = {}
 _memory_logs = deque(maxlen=50)
 _SENSITIVE_LOG_KEYS = {"token", "password", "authorization", "secret"}
+_agent_state = {
+    "server": None,
+    "thread": None,
+    "scheduler": None,
+    "token": None,
+    "port": None,
+}
 
 
 def _scrub_log_value(value):
@@ -429,6 +436,210 @@ def cmd_clear_logs(req_id, args):
     _result(req_id, "ok")
 
 
+def _publish_episode(episode_dir, progress):
+    """运行现有微信 Publisher，给桌面层返回结构化结果。"""
+    from .publish.browser import BrowserSession
+    from .publish.config import PublishConfig
+    from .publish.publisher import Publisher
+
+    episode_dir = Path(episode_dir)
+    progress("prepare", "正在检查发布素材…", 0.05)
+    config = PublishConfig.from_env()
+    publisher = Publisher(config, BrowserSession(config))
+    progress("browser", "正在打开微信表情开放平台…", 0.15)
+    result = publisher.publish(episode_dir, headless=False)
+    screenshot = episode_dir / "_publish_error.png"
+    if screenshot.exists():
+        result["screenshot"] = str(screenshot)
+    progress(
+        result.get("step", "done"),
+        "提交完成" if result.get("success") else "提交未完成",
+        1.0,
+    )
+    return result
+
+
+def cmd_check_publish(req_id, args):
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as playwright:
+            executable = Path(playwright.chromium.executable_path)
+            ready = executable.exists()
+        _result(req_id, "ok" if ready else "fail", data={
+            "ready": ready,
+            "browser_path": str(executable) if ready else None,
+            "guidance": "" if ready else "未找到发布浏览器，请先安装 Google Chrome 或 Playwright Chromium。",
+        })
+    except Exception as exc:
+        _result(req_id, "fail", data={
+            "ready": False,
+            "guidance": f"发布组件不可用：{type(exc).__name__}: {exc}",
+        })
+
+
+def cmd_publish_episode(req_id, args):
+    episode_dir = Path(args.get("episode_dir") or "")
+    if not episode_dir.is_dir():
+        _result(
+            req_id, "fail",
+            errors=[{"message": f"作品目录不存在：{episode_dir}"}],
+        )
+        return
+
+    def progress(stage, message, percent):
+        _log(
+            "info", message, command="publish_episode",
+            command_id=req_id, stage=stage, percent=percent,
+        )
+        _emit({
+            "id": req_id, "type": "progress", "stage": "publish",
+            "phase": stage, "message": message, "percent": percent,
+            "eta_seconds": None,
+        })
+
+    try:
+        result = _publish_episode(episode_dir, progress)
+    except Exception as exc:
+        result = {
+            "success": False,
+            "step": "runtime",
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    if result.get("success"):
+        _result(req_id, "ok", data=result)
+    else:
+        _result(
+            req_id, "fail", data=result,
+            errors=[{"message": result.get("error") or "发布未完成"}],
+        )
+
+
+def _run_scheduled_action(action, args):
+    """Scheduler 的真实动作映射；失败进入内存日志。"""
+    _log("info", f"定时任务触发：{action}", action=action)
+    try:
+        if action == "run":
+            _ensure_engine().run()
+        elif action == "publish":
+            _publish_episode(
+                args.get("episode_dir"),
+                lambda stage, message, percent: _log(
+                    "info", message, action=action, stage=stage, percent=percent),
+            )
+        elif action == "batch":
+            from .publish.batch import BatchPublisher
+            from .publish.config import PublishConfig
+            engine = _ensure_engine()
+            BatchPublisher(PublishConfig.from_env(), engine.config.paths.output_root).run(
+                start=args.get("start"), end=args.get("end"),
+                only=args.get("only"), resume=args.get("resume", False),
+                retry=args.get("retry", 2), headless=args.get("headless", False),
+            )
+        elif action == "shelf":
+            from .publish.browser import BrowserSession
+            from .publish.config import PublishConfig
+            from .publish.shelf import Shelf
+            config = PublishConfig.from_env()
+            Shelf(config, BrowserSession(config)).shelve_all(
+                max_pages=args.get("max_pages", 5), limit=args.get("limit"),
+                dry_run=args.get("dry_run", False),
+                headless=args.get("headless", False),
+            )
+        else:
+            raise ValueError(f"不支持的定时动作：{action}")
+    except Exception as exc:
+        _log(
+            "error", f"定时任务失败：{action}：{type(exc).__name__}: {exc}",
+            action=action,
+        )
+
+
+def _start_agent_server(port=7432):
+    """在线程内启动 loopback Agent 服务；重复调用保持幂等。"""
+    if _agent_state["server"] is not None:
+        return {
+            "running": True, "already_running": True,
+            "host": "127.0.0.1", "port": _agent_state["port"],
+            "token": _agent_state["token"],
+        }
+
+    from werkzeug.serving import make_server
+    from .agent.cli import _ensure_token
+    from .agent.scheduler import Scheduler
+    from .agent.server import _create_app
+
+    paths = _ensure_engine().config.paths
+    token = _ensure_token(paths)
+    scheduler = Scheduler(
+        state_file=paths.user_data / "schedules.json",
+        trigger_fn=_run_scheduled_action,
+    )
+    scheduler.start()
+    app = _create_app(token=token, scheduler=scheduler)
+    server = make_server("127.0.0.1", int(port), app, threaded=True)
+    thread = threading.Thread(
+        target=server.serve_forever, name="sticker-agent-server", daemon=True)
+    thread.start()
+    actual_port = int(server.server_port)
+    _agent_state.update({
+        "server": server, "thread": thread, "scheduler": scheduler,
+        "token": token, "port": actual_port,
+    })
+    _log("info", "AI Agent 服务已启动", host="127.0.0.1", port=actual_port)
+    return {
+        "running": True, "already_running": False,
+        "host": "127.0.0.1", "port": actual_port, "token": token,
+    }
+
+
+def _stop_agent_server():
+    server = _agent_state.get("server")
+    scheduler = _agent_state.get("scheduler")
+    if server is not None:
+        server.shutdown()
+        server.server_close()
+    if scheduler is not None:
+        scheduler.shutdown()
+    _agent_state.update({
+        "server": None, "thread": None, "scheduler": None,
+        "token": None, "port": None,
+    })
+    _log("info", "AI Agent 服务已停止")
+    return {"running": False}
+
+
+def cmd_agent_start(req_id, args):
+    try:
+        data = _start_agent_server(port=args.get("port", 7432))
+        _result(req_id, "ok", data=data)
+    except Exception as exc:
+        _result(
+            req_id, "fail",
+            errors=[{"message": f"Agent 启动失败：{type(exc).__name__}: {exc}"}],
+        )
+
+
+def cmd_agent_status(req_id, args):
+    running = _agent_state["server"] is not None
+    _result(req_id, "ok", data={
+        "running": running,
+        "host": "127.0.0.1",
+        "port": _agent_state["port"],
+        "token": _agent_state["token"] if running else None,
+    })
+
+
+def cmd_agent_prompt(req_id, args):
+    prompt_path = Path(__file__).parent / "agent" / "AGENT_PROMPT.md"
+    _result(req_id, "ok", data={
+        "prompt": prompt_path.read_text(encoding="utf-8"),
+    })
+
+
+def cmd_agent_stop(req_id, args):
+    _result(req_id, "ok", data=_stop_agent_server())
+
+
 def _prefs_to_dict(prefs):
     if prefs is None:
         return None
@@ -462,6 +673,9 @@ HANDLERS = {
     "featured": cmd_featured,
     "load_promotion": cmd_load_promotion, "save_promotion": cmd_save_promotion,
     "get_logs": cmd_get_logs, "clear_logs": cmd_clear_logs,
+    "check_publish": cmd_check_publish, "publish_episode": cmd_publish_episode,
+    "agent_start": cmd_agent_start, "agent_status": cmd_agent_status,
+    "agent_prompt": cmd_agent_prompt, "agent_stop": cmd_agent_stop,
 }
 
 

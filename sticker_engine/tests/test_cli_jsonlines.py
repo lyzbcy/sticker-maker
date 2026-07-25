@@ -212,3 +212,56 @@ def test_get_and_clear_logs_commands(monkeypatch):
     cli.cmd_clear_logs("clear", {})
     assert emitted[-1]["status"] == "ok"
     assert cli._safe_logs() == []
+
+
+def test_publish_episode_command_returns_structured_result(tmp_path, monkeypatch):
+    from sticker_engine import cli
+
+    episode_dir = tmp_path / "一弹"
+    episode_dir.mkdir()
+    monkeypatch.setattr(
+        cli,
+        "_publish_episode",
+        lambda episode_dir, progress: {
+            "success": True,
+            "step": "done",
+            "album_name": Path(episode_dir).name,
+        },
+    )
+    emitted = []
+    monkeypatch.setattr(cli, "_emit", emitted.append)
+
+    cli.cmd_publish_episode("publish-1", {"episode_dir": str(episode_dir)})
+
+    result = emitted[-1]
+    assert result["type"] == "result"
+    assert result["status"] == "ok"
+    assert result["data"]["album_name"] == "一弹"
+
+
+def test_publish_episode_requires_existing_directory(monkeypatch):
+    from sticker_engine import cli
+
+    emitted = []
+    monkeypatch.setattr(cli, "_emit", emitted.append)
+
+    cli.cmd_publish_episode("publish-2", {"episode_dir": "/missing/episode"})
+
+    assert emitted[-1]["status"] == "fail"
+    assert "不存在" in emitted[-1]["errors"][0]["message"]
+
+
+def test_agent_service_start_is_idempotent_and_stoppable():
+    from sticker_engine import cli
+
+    cli._stop_agent_server()
+    first = cli._start_agent_server(port=0)
+    try:
+        second = cli._start_agent_server(port=0)
+        assert first["running"] is True
+        assert second["already_running"] is True
+        assert first["token"] == second["token"]
+        assert first["port"] > 0
+    finally:
+        stopped = cli._stop_agent_server()
+    assert stopped["running"] is False
