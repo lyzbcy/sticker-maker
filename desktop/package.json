@@ -1,6 +1,6 @@
 {
   "name": "sticker-maker-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "表情包一键制作 - Mac 桌面应用",
   "main": "src/main/index.js",
   "scripts": {

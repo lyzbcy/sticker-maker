@@ -1,6 +1,6 @@
 [project]
 name = "sticker-engine"
-version = "0.1.0"
+version = "0.2.0"
 description = "表情包一键制作 - 核心生图引擎"
 requires-python = ">=3.9"
 dependencies = [
@@ -32,6 +32,7 @@ sticker_engine = [
     "resources/*.json",
     "resources/base_images/*/*",
     "resources/featured/*",
+    "resources/promotion/*",
     "resources/prompts/*",
     "resources/publish/*",
 ]

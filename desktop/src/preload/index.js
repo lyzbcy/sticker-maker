@@ -18,4 +18,5 @@ contextBridge.exposeInMainWorld('api', {
   selectDirectory: async () => ipcRenderer.invoke('select-directory'),
   toFileUrl: (filePath) => filePath ? pathToFileURL(filePath).href : '',
   copyText: (text) => clipboard.writeText(String(text || '')),
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
 })

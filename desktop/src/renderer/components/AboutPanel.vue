@@ -12,6 +12,7 @@
         <p class="version">版本 {{ version }}</p>
         <p class="author">作者：{{ promo.author_name }}</p>
         <p class="tagline">把你的表情包创意变成现实 ✨</p>
+        <button class="update-btn" @click="checkUpdates">手动检查更新</button>
       </div>
 
       <!-- 二维码区 -->
@@ -41,7 +42,7 @@ import { ref, computed, onMounted } from 'vue'
 
 defineEmits(['back'])
 
-const version = ref('0.1.0')
+const version = ref('0.2.0')
 const promo = ref({ reward_qr: null, group_qr: null, sticker_qr: null, author_name: '捞鱼真不吃鱼' })
 
 const hasQr = computed(() => promo.value.reward_qr || promo.value.group_qr || promo.value.sticker_qr)
@@ -58,6 +59,8 @@ function onImgError(e) {
 onMounted(async () => {
   if (!window.api) return
   try {
+    const versionRes = await window.api.send('get_version')
+    if (versionRes?.status === 'ok') version.value = versionRes.data.version
     const res = await window.api.send('load_promotion')
     if (res && res.status === 'ok' && res.data) {
       promo.value = res.data
@@ -66,6 +69,9 @@ onMounted(async () => {
     // 静默（推广是锦上添花）
   }
 })
+async function checkUpdates() {
+  if (window.api?.checkForUpdates) await window.api.checkForUpdates()
+}
 </script>
 <style scoped>
 .about { padding: 32px; max-width: 600px; margin: 0 auto; }
@@ -119,6 +125,7 @@ h2 {
 .version { margin: 0 0 4px; color: var(--forest); font-weight: 600; font-size: 13px; }
 .author { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
 .tagline { margin: 0; color: var(--forest); font-size: 14px; font-weight: 600; }
+.update-btn { margin-top: 16px; padding: 9px 16px; border: 1.5px solid var(--sage); border-radius: var(--r-pill); background: var(--card); color: var(--forest); cursor: pointer; font-weight: 700; }
 
 /* 二维码区 */
 .qr-section {

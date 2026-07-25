@@ -77,6 +77,11 @@ app.whenReady().then(() => {
     return { canceled: false, path: result.filePaths[0] }
   })
 
+  ipcMain.handle('check-for-updates', async () => {
+    const { checkForUpdates } = require('./updater')
+    return checkForUpdates(mainWindow, { manual: true })
+  })
+
   createWindow()
 
   // 启动 2 秒后检查更新

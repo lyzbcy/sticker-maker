@@ -35,12 +35,12 @@ def test_sample_featured_seed_reproducible():
     assert [p.name for p in s1] == [p.name for p in s2]
 
 
-def test_promotion_config_defaults_empty():
+def test_promotion_config_defaults_bundle_all_three_qr_codes():
     cfg = PromotionConfig()
-    assert cfg.reward_qr is None
-    assert cfg.group_qr is None
-    assert cfg.sticker_qr is None
-    assert cfg.has_any() is False
+    assert cfg.reward_qr.exists()
+    assert cfg.group_qr.exists()
+    assert cfg.sticker_qr.exists()
+    assert cfg.has_any() is True
 
 
 def test_promotion_config_has_any():

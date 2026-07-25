@@ -1,82 +1,198 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-version="0.2.0">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>表情包一键制作 · 下载</title>
+  <meta name="description" content="把角色 base 图变成完整微信表情专辑：AI 生图、切图、抠图、素材与提交，一款 Mac 软件完成。" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
+  <title>表情包一键制作 · 捞鱼工作室</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; color: #333; }
-    .container { max-width: 720px; margin: 0 auto; padding: 40px 20px; }
-    .card { background: #fff; border-radius: 16px; padding: 40px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
-    h1 { font-size: 28px; margin-bottom: 8px; color: #333; }
-    .tagline { color: #888; font-size: 16px; margin-bottom: 28px; }
-    .features { list-style: none; margin: 24px 0; }
-    .features li { padding: 8px 0; padding-left: 28px; position: relative; color: #555; }
-    .features li::before { content: "✨"; position: absolute; left: 0; }
-    .download-btn { display: inline-block; background: linear-gradient(135deg, #4a90d9, #7ac67d); color: #fff; padding: 14px 36px; border-radius: 30px; text-decoration: none; font-size: 18px; font-weight: 600; margin: 16px 0; transition: transform 0.2s; }
-    .download-btn:hover { transform: translateY(-2px); }
-    .version-info { color: #999; font-size: 13px; margin-top: 16px; }
-    .update-banner { display: none; background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; }
-    .update-banner a { color: #4a90d9; }
-    .footer { text-align: center; color: rgba(255,255,255,0.7); font-size: 13px; margin-top: 24px; }
+    :root {
+      --cream:#faf6eb; --paper:#f2ead8; --card:#fff; --ink:#182019;
+      --forest:#1e3a24; --forest2:#2b5735; --sage:#afcda8; --yellow:#f5e08a;
+      --brick:#b5482a; --muted:#6f7263; --line:#d7d2c5;
+      --shadow:0 18px 50px rgba(30,58,36,.12); --radius:28px;
+    }
+    *{box-sizing:border-box} html{scroll-behavior:smooth}
+    body{margin:0;background:var(--cream);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+    a{color:inherit}.wrap{width:min(1120px,calc(100% - 36px));margin:auto}
+    nav{height:72px;display:flex;align-items:center;justify-content:space-between}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:900;color:var(--forest)}
+    .brand-mark{width:38px;height:38px;display:grid;place-items:center;border-radius:13px;background:var(--yellow);transform:rotate(-4deg)}
+    .nav-links{display:flex;align-items:center;gap:22px;font-size:14px;color:var(--muted)}
+    .nav-links a{text-decoration:none}.nav-download{padding:10px 18px;border-radius:999px;background:var(--forest);color:white!important;font-weight:800}
+    .hero{position:relative;overflow:hidden;min-height:610px;padding:76px 0 62px;background:linear-gradient(125deg,#fff5e7 0%,#ffedf2 48%,#e9f7ef 100%);border-block:1px solid rgba(30,58,36,.06)}
+    .hero-grid{display:grid;grid-template-columns:1.1fr .9fr;align-items:center;gap:54px}
+    .eyebrow{display:inline-flex;align-items:center;gap:8px;padding:8px 13px;border-radius:999px;background:white;color:var(--forest);font-size:13px;font-weight:800;box-shadow:0 8px 24px rgba(30,58,36,.08)}
+    h1{margin:20px 0 18px;font-size:clamp(42px,6vw,76px);line-height:1.03;letter-spacing:-.05em;color:var(--forest)}
+    h1 em{font-style:normal;color:var(--brick);position:relative}h1 em:after{content:"";position:absolute;left:0;right:0;bottom:3px;height:11px;background:var(--yellow);z-index:-1;transform:rotate(-2deg)}
+    .lead{max-width:620px;margin:0;color:var(--muted);font-size:18px;line-height:1.85}
+    .hero-actions{display:flex;align-items:center;gap:14px;margin-top:30px;flex-wrap:wrap}
+    .button{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:15px 24px;border-radius:999px;text-decoration:none;font-weight:900;border:0;cursor:pointer}
+    .button.primary{background:var(--forest);color:white;box-shadow:0 12px 26px rgba(30,58,36,.26)}
+    .button.secondary{background:white;color:var(--forest);border:1px solid rgba(30,58,36,.12)}
+    .meta{margin-top:14px;color:var(--muted);font-size:12px}
+    .sticker-stage{position:relative;min-height:420px}
+    .sticker-card{position:absolute;width:190px;padding:14px;background:white;border-radius:30px;box-shadow:var(--shadow);transform:rotate(var(--turn));transition:.25s}
+    .sticker-card:hover{transform:rotate(0) translateY(-10px) scale(1.04);z-index:3}
+    .sticker-card img{display:block;width:100%;border-radius:20px}.sticker-card span{display:block;margin-top:8px;text-align:center;font-weight:900;color:var(--forest)}
+    .sticker-card:nth-child(1){left:0;top:70px;--turn:-10deg}.sticker-card:nth-child(2){right:0;top:10px;--turn:8deg}.sticker-card:nth-child(3){left:150px;bottom:0;--turn:3deg}
+    section{padding:88px 0}.section-head{max-width:720px;margin:0 auto 42px;text-align:center}
+    .section-head b{color:var(--brick);letter-spacing:.14em;font-size:12px}.section-head h2{margin:10px 0 12px;font-size:clamp(30px,4vw,48px);color:var(--forest)}
+    .section-head p{margin:0;color:var(--muted);line-height:1.7}
+    .feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+    .feature{padding:28px;background:var(--card);border:1px solid var(--paper);border-radius:var(--radius);box-shadow:0 8px 26px rgba(30,58,36,.07)}
+    .feature i{width:46px;height:46px;display:grid;place-items:center;border-radius:15px;background:var(--paper);font-style:normal;font-size:22px}
+    .feature h3{margin:17px 0 8px;color:var(--forest)}.feature p{margin:0;color:var(--muted);font-size:14px;line-height:1.75}
+    .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;counter-reset:step}
+    .step{position:relative;padding:25px 20px;background:var(--forest);color:white;border-radius:24px;counter-increment:step}
+    .step:before{content:"0" counter(step);display:block;margin-bottom:36px;color:var(--yellow);font-weight:900;font-size:13px}
+    .step h3{margin:0 0 8px}.step p{margin:0;color:rgba(255,255,255,.72);font-size:13px;line-height:1.65}
+    .install{display:grid;grid-template-columns:.85fr 1.15fr;gap:30px;align-items:start}
+    .install-copy{position:sticky;top:30px;padding:30px;background:var(--yellow);border-radius:var(--radius)}
+    .install-copy h2{margin:0 0 12px;color:var(--forest);font-size:38px}.install-copy p{color:#625a33;line-height:1.7}
+    .install-list{display:flex;flex-direction:column;gap:14px}
+    .install-item{display:grid;grid-template-columns:54px 1fr;gap:15px;padding:22px;background:white;border:1px solid var(--paper);border-radius:22px}
+    .install-item b{width:44px;height:44px;display:grid;place-items:center;border-radius:50%;background:var(--sage);color:var(--forest)}
+    .install-item h3{margin:2px 0 6px;color:var(--forest)}.install-item p{margin:0;color:var(--muted);font-size:14px;line-height:1.6}
+    .agent{padding:34px;border-radius:var(--radius);background:#15281a;color:white;display:grid;grid-template-columns:1fr 1fr;gap:30px}
+    .agent h2{margin:0 0 12px;font-size:34px}.agent p{color:rgba(255,255,255,.72);line-height:1.75}.agent code{display:block;padding:18px;border-radius:18px;background:#0d1a10;color:#c7f0bd;white-space:pre-wrap;font-size:12px}
+    footer{padding:34px 0 70px;text-align:center;color:var(--muted);font-size:13px}
+    footer a{color:#1d70b8;text-decoration:underline;font-weight:800}
+    .promo-fab{position:fixed;right:20px;bottom:20px;z-index:20;padding:12px 18px;border:0;border-radius:999px;background:var(--brick);color:white;font-weight:900;box-shadow:0 12px 30px rgba(181,72,42,.3);cursor:pointer}
+    dialog{width:min(720px,calc(100% - 28px));border:0;border-radius:30px;padding:0;box-shadow:0 30px 100px rgba(0,0,0,.25)}dialog::backdrop{background:rgba(18,25,19,.58)}
+    .promo-modal{padding:30px;background:var(--cream)}.promo-head{display:flex;align-items:center;gap:16px}.avatar{width:72px;height:72px;border-radius:50%;object-fit:cover;background:var(--paper)}
+    .promo-head h3{margin:0;color:var(--forest);font-size:24px}.promo-head p{margin:5px 0;color:var(--muted)}
+    .qr-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:24px}.qr{padding:14px;background:white;border-radius:20px;text-align:center}.qr img{width:100%;border-radius:14px}.qr b{display:block;margin-top:9px;color:var(--forest)}
+    .modal-close{float:right;border:0;background:var(--paper);border-radius:999px;padding:8px 13px;cursor:pointer}
+    @media(max-width:820px){.hero-grid,.install,.agent{grid-template-columns:1fr}.sticker-stage{min-height:360px}.feature-grid{grid-template-columns:1fr 1fr}.steps{grid-template-columns:1fr 1fr}.install-copy{position:static}.nav-links a:not(.nav-download){display:none}}
+    @media(max-width:560px){.hero{padding-top:44px}.sticker-card{width:150px}.sticker-card:nth-child(3){left:95px}.feature-grid,.steps,.qr-grid{grid-template-columns:1fr}.agent{padding:24px}.nav-links{gap:8px}}
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="update-banner" id="updateBanner">
-      🎉 发现新版本 <span id="newVersion"></span>！<a href="#" id="updateLink">立即下载</a>
-    </div>
-    <div class="card">
-      <h1>🎨 表情包一键制作</h1>
-      <p class="tagline">把你的角色变成微信表情包，从生成到发布全自动。</p>
-
-      <ul class="features">
-        <li>AI 一键生成表情包（支持 codex 生图）</li>
-        <li>三模式：参考图库 / 故事模式 / 排列组合</li>
-        <li>内置洋红抠图 + 自动裁切重命名</li>
-        <li>Mac 桌面应用，双击即用（免装 Python）</li>
-        <li>一键发布到微信表情开放平台</li>
-        <li>AI Agent 接口，支持定时发布</li>
-      </ul>
-
-      <a class="download-btn" id="downloadBtn" href="#">📦 下载 Mac 版</a>
-      <p class="version-info">当前版本：<span id="currentVersion">0.1.0</span> · 需 macOS 11+ · 需自备 codex CLI</p>
-    </div>
-    <p class="footer">© 2026 捞鱼真不吃鱼 · <a href="#" style="color:rgba(255,255,255,0.9)">赞赏</a> · <a href="#" style="color:rgba(255,255,255,0.9)">入群</a></p>
+  <div class="wrap">
+    <nav>
+      <div class="brand"><span class="brand-mark">🎨</span>表情包一键制作</div>
+      <div class="nav-links"><a href="#features">功能</a><a href="#install">安装</a><a href="#agent">AI 接口</a><a class="nav-download" id="navDownload" href="#">下载 Mac 版</a></div>
+    </nav>
   </div>
 
+  <main>
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div>
+          <span class="eyebrow">🐟 捞鱼工作室 · Mac 版</span>
+          <h1>把你的角色<br>变成一整套<em>表情包</em></h1>
+          <p class="lead">从 base 图、故事生图、自动切图抠图，到微信上架素材和提交入口，都收进一个普通人也能用的软件里。</p>
+          <div class="hero-actions">
+            <a class="button primary" id="downloadBtn" href="#">📦 下载 Mac v<span data-version-text>0.2.0</span></a>
+            <a class="button secondary" href="#install">先看安装方法</a>
+          </div>
+          <p class="meta">支持 1×1 / 2×2 / 3×3 / 4×4 · macOS 11+ · 生图需要 Codex</p>
+        </div>
+        <div class="sticker-stage" aria-label="精选表情预览">
+          <div class="sticker-card"><img src="assets/stickers/开心.png" alt="开心表情"><span>开心一下</span></div>
+          <div class="sticker-card"><img src="assets/stickers/抱抱.png" alt="抱抱表情"><span>抱抱你</span></div>
+          <div class="sticker-card"><img src="assets/stickers/加油.png" alt="加油表情"><span>继续加油</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <div class="section-head"><b>真正的一条龙</b><h2>不只会“生一张图”</h2><p>角色概率、故事顺序、背景处理和微信素材都有明确规则，失败时也能看到正在卡在哪一步。</p></div>
+        <div class="feature-grid">
+          <article class="feature"><i>🧑‍🎨</i><h3>角色与 base 管理</h3><p>自己上传或用 AI 生成 base；多人模式会给每个角色各选一张，并按你设定的概率抽取。</p></article>
+          <article class="feature"><i>📚</i><h3>故事模式</h3><p>每 4 张组成起承转合的小故事，含义词和发布顺序不会被打乱。</p></article>
+          <article class="feature"><i>🖼️</i><h3>参考图库优先</h3><p>图库足量时借用姿势和表情；不足时自动回到故事或提示词模式。</p></article>
+          <article class="feature"><i>✂️</i><h3>切图、抠图、重命名</h3><p>prompt 模式固定洋红背景并自动抠图，输出 240×240 微信表情主图。</p></article>
+          <article class="feature"><i>↗️</i><h3>微信提交入口</h3><p>自动准备横幅、封面、图标、介绍和含义词，从结果页发起提交。</p></article>
+          <article class="feature"><i>🤖</i><h3>本地 AI Agent 接口</h3><p>loopback + token 保护，支持生成、发布、上架和定时任务；默认关闭。</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head"><b>一次设置，以后跳过</b><h2>四步得到一弹成品</h2></div>
+        <div class="steps">
+          <article class="step"><h3>准备角色</h3><p>检查 Codex，上传 base，设定角色和每张 base 的概率。</p></article>
+          <article class="step"><h3>选择模式</h3><p>参考图库、故事或排列组合，再选择宫格资源消耗。</p></article>
+          <article class="step"><h3>自动制作</h3><p>看进度完成生图、切图、抠图、含义预检与素材制作。</p></article>
+          <article class="step"><h3>检查并提交</h3><p>在 Finder 查看成品，确认后从软件打开微信提交流程。</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="install">
+      <div class="wrap install">
+        <div class="install-copy"><h2>三下就装好</h2><p>下载的是 zip，里面只有应用和快捷安装文件。快捷安装会处理 macOS 隔离提示、复制到「应用程序」并自动启动。</p><a class="button primary" id="installDownload" href="#">下载 v<span data-version-text>0.2.0</span></a></div>
+        <div class="install-list">
+          <article class="install-item"><b>1</b><div><h3>解压 zip</h3><p>双击下载的压缩包，保持 `.app` 和 `install.command` 在同一个文件夹。</p></div></article>
+          <article class="install-item"><b>2</b><div><h3>双击快捷安装</h3><p>系统若询问权限，按提示允许；安装器会自动复制并启动应用。</p></div></article>
+          <article class="install-item"><b>3</b><div><h3>按向导检查 Codex</h3><p>软件会先检测安装、登录和生图链路；未就绪时给出对应设置提示。</p></div></article>
+          <article class="install-item"><b>↻</b><div><h3>以后可一键更新</h3><p>发现新版本时在软件内点击「一键更新」，无需重新寻找下载文件。</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="agent">
+      <div class="wrap agent">
+        <div><h2>让你的 AI Agent 接手重复工作</h2><p>在软件的「发布与 AI 工具」中启用服务，复制 token 和现成 prompt。服务只监听本机地址，默认不会开放给局域网。</p></div>
+        <code>GET  /status
+POST /run
+POST /publish
+POST /batch
+POST /shelf
+POST /schedule
+
+Authorization: Bearer &lt;本机 token&gt;</code>
+      </div>
+    </section>
+  </main>
+
+  <footer>由 <a href="https://lyzbcy.github.io/" target="_blank" rel="noopener">捞鱼</a> 制作 · 一个弱小但有梦想的开发者</footer>
+
+  <button class="promo-fab" onclick="document.getElementById('promo').showModal()">🐟 关于捞鱼</button>
+  <dialog id="promo">
+    <div class="promo-modal">
+      <button class="modal-close" onclick="document.getElementById('promo').close()">关闭</button>
+      <div class="promo-head">
+        <img class="avatar" src="https://s41.ax1x.com/2025/12/05/pZmPZPH.png" alt="捞鱼头像">
+        <div><h3>捞鱼工作室</h3><p>作者：捞鱼 · 一个弱小但有梦想的开发者</p><a href="https://lyzbcy.github.io/about/" target="_blank" rel="noopener">了解更多 →</a></div>
+      </div>
+      <div class="qr-grid">
+        <div class="qr"><img src="assets/qrs/qq-group.jpg" alt="QQ群二维码"><b>加入交流群</b></div>
+        <div class="qr"><img src="assets/qrs/reward-qr.jpg" alt="赞赏二维码"><b>请捞鱼吃小鱼干</b></div>
+        <div class="qr"><img src="assets/qrs/sticker-qr.png" alt="表情包二维码"><b>下载更多表情</b></div>
+      </div>
+    </div>
+  </dialog>
+
   <script>
-    // 初心第77行：版本号不一致强制刷新（静态页缓存问题）
-    (async function() {
-      const CURRENT_VERSION = "0.1.0"
+    (async function () {
+      var pageVersion = document.documentElement.dataset.version;
       try {
-        const res = await fetch('version.json', { cache: 'no-store' })
-        const data = await res.json()
-        // 强制刷新逻辑：localStorage 记录上次见的版本，不一致就 reload
-        const lastSeen = localStorage.getItem('site_version')
-        if (lastSeen && lastSeen !== data.version) {
-          localStorage.setItem('site_version', data.version)
-          location.reload(true)
-          return
+        var response = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+        var data = await response.json();
+        if (data.version && data.version !== pageVersion &&
+            sessionStorage.getItem('forced_version') !== data.version) {
+          sessionStorage.setItem('forced_version', data.version);
+          var next = new URL(location.href);
+          next.searchParams.set('v', data.version);
+          location.replace(next.toString());
+          return;
         }
-        localStorage.setItem('site_version', data.version)
-
-        // 更新下载链接
-        const dlBtn = document.getElementById('downloadBtn')
-        if (data.downloadUrl) dlBtn.href = data.downloadUrl
-
-        // 版本不一致显示更新横幅
-        if (data.version !== CURRENT_VERSION) {
-          const banner = document.getElementById('updateBanner')
-          document.getElementById('newVersion').textContent = data.version
-          document.getElementById('updateLink').href = data.downloadUrl || '#'
-          banner.style.display = 'block'
-        }
-      } catch (e) {
-        console.log('version check failed', e)
+        document.querySelectorAll('[data-version-text]').forEach(function (node) {
+          node.textContent = data.version || pageVersion;
+        });
+        ['downloadBtn', 'navDownload', 'installDownload'].forEach(function (id) {
+          if (data.downloadUrl) document.getElementById(id).href = data.downloadUrl;
+        });
+      } catch (error) {
+        console.warn('版本信息暂时不可用', error);
       }
-    })()
+    })();
   </script>
 </body>
 </html>

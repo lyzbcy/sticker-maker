@@ -15,7 +15,7 @@ from .config.schema import Paths, Prefs, ModeProbsConfig
 from .config.paths import resolve_paths, current_platform
 from .config.loader import load_prefs_from_file, save_prefs
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 _engine = None
 _stop_events = {}
@@ -403,9 +403,16 @@ def cmd_featured(req_id, args):
 def cmd_load_promotion(req_id, args):
     """E：读三码推广配置（从用户数据目录 promotion.json 读，开发者本地配置）。"""
     import json as _json
+    from .promotion.config import PromotionConfig
     engine = _ensure_engine()
     promo_file = engine.config.paths.user_data / "promotion.json"
-    data = {"reward_qr": None, "group_qr": None, "sticker_qr": None, "author_name": "捞鱼真不吃鱼"}
+    defaults = PromotionConfig()
+    data = {
+        "reward_qr": str(defaults.reward_qr),
+        "group_qr": str(defaults.group_qr),
+        "sticker_qr": str(defaults.sticker_qr),
+        "author_name": defaults.author_name,
+    }
     if promo_file.exists():
         saved = _json.loads(promo_file.read_text(encoding="utf-8"))
         data.update(saved)

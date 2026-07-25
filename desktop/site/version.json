@@ -1,6 +1,6 @@
 {
-  "version": "0.1.0",
-  "downloadUrl": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.1.0/表情包一键制作-mac-v0.1.0.zip",
-  "releaseNotes": "首个完整版本：5 子项目全部交付（生图引擎 + Mac 应用 + 发布工具 + AI 接口 + 推广）",
-  "lastUpdated": "2026-07-24"
+  "version": "0.2.0",
+  "downloadUrl": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.2.0/表情包一键制作-mac-v0.2.0.zip",
+  "releaseNotes": "使命收口版：多角色多 base 概率、桌面微信提交、AI Agent、50 条内存日志、自动安装与一键更新。",
+  "lastUpdated": "2026-07-25"
 }
