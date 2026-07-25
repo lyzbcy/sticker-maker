@@ -20,7 +20,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { useEngineStore } from '../store/engine'
+import { useEngineStore, validatePrefs } from '../store/engine'
 import WizardStepCodex from './WizardStepCodex.vue'
 import WizardStepBase from './WizardStepBase.vue'
 import WizardStepMode from './WizardStepMode.vue'
@@ -34,11 +34,34 @@ const stepNames = ['检测 codex', 'base 图管理', '模式概率', '角色概�
 
 const canNext = computed(() => {
   if (step.value === 0) return store.codexStatus && store.codexStatus.image_ready
+  if (step.value === 1) {
+    const names = Object.keys(store.characters)
+    return names.length > 0 && names.every(name => {
+      const bases = Object.keys(store.characters[name]?.bases || {})
+      const sum = bases.reduce(
+        (total, key) => total + (Number(store.prefs?.base_probs?.[name]?.[key]) || 0), 0,
+      )
+      return bases.length > 0 && Math.abs(sum - 1) <= 0.001
+    })
+  }
+  if (step.value === 2) {
+    const sum = Object.values(store.prefs?.mode_probs || {}).reduce(
+      (total, value) => total + (Number(value) || 0), 0,
+    )
+    return Math.abs(sum - 1) <= 0.001
+  }
+  if (step.value === 3) {
+    const sum = Object.keys(store.characters).reduce(
+      (total, name) => total + (Number(store.prefs?.single_char_probs?.[name]) || 0), 0,
+    )
+    return Math.abs(sum - 1) <= 0.001
+  }
   return true
 })
 
-function finish() {
-  store.savePrefs(store.prefs)
+async function finish() {
+  const validation = validatePrefs(store.prefs, store.characters)
+  if (validation.ok) await store.savePrefs(store.prefs)
 }
 </script>
 

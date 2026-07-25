@@ -1,4 +1,5 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, clipboard } = require('electron')
+const { pathToFileURL } = require('url')
 
 // 暴露给渲染进程的安全 API（contextIsolation）
 contextBridge.exposeInMainWorld('api', {
@@ -15,4 +16,6 @@ contextBridge.exposeInMainWorld('api', {
   },
   selectFile: async () => ipcRenderer.invoke('select-file'),
   selectDirectory: async () => ipcRenderer.invoke('select-directory'),
+  toFileUrl: (filePath) => filePath ? pathToFileURL(filePath).href : '',
+  copyText: (text) => clipboard.writeText(String(text || '')),
 })

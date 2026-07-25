@@ -47,8 +47,7 @@ const promo = ref({ reward_qr: null, group_qr: null, sticker_qr: null, author_na
 const hasQr = computed(() => promo.value.reward_qr || promo.value.group_qr || promo.value.sticker_qr)
 
 function imgSrc(path) {
-  // 本地图片：file:// 协议；打包后 resources 路径也走 file://
-  return path ? 'file://' + path : ''
+  return path && window.api?.toFileUrl ? window.api.toFileUrl(path) : (path ? `file://${path}` : '')
 }
 
 function onImgError(e) {

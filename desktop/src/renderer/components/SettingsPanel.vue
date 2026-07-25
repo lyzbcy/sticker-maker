@@ -21,6 +21,9 @@
         <h3 class="section-title">生图偏好</h3>
         <WizardStepPref />
       </div>
+      <div v-if="store.lastError" class="settings-error">
+        {{ store.lastError[0]?.message }}
+      </div>
       <button class="save" @click="save">保存</button>
     </div>
   </div>
@@ -109,4 +112,5 @@ h2 {
 }
 .save:hover { transform: translateY(-1px); filter: brightness(1.03); }
 .save:active { transform: translateY(1px); }
+.settings-error { padding: 12px 16px; border-radius: var(--r-md); background: rgba(181,72,42,.12); color: var(--brick); font-size: 13px; font-weight: 700; }
 </style>

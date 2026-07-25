@@ -3,6 +3,9 @@
     <header>
       <h2 class="title">表情包一键制作</h2>
       <div class="icon-group">
+        <button class="icon-btn" title="发布与 AI 工具" @click="store.phase = 'tools'">
+          <span class="icon">↗</span>
+        </button>
         <button class="icon-btn" title="设置" @click="store.phase = 'settings'">
           <span class="icon">⚙</span>
         </button>
@@ -40,6 +43,9 @@
                 <p class="sticker-name">{{ ep.name }}</p>
                 <p class="sticker-meta">{{ ep.sticker_count }} 张</p>
               </div>
+              <button class="mini-publish" :disabled="store.publishing" @click="store.publishEpisode(ep.path)">
+                提交微信
+              </button>
             </div>
           </div>
         </div>
@@ -212,6 +218,19 @@ header { display: flex; justify-content: space-between; align-items: center; mar
   box-shadow: var(--shadow-soft);
   transition: all .15s ease;
 }
+.mini-publish {
+  margin-left: auto;
+  padding: 7px 12px;
+  border: 1px solid var(--sage);
+  border-radius: var(--r-pill);
+  background: var(--card);
+  color: var(--forest);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.mini-publish:hover:not(:disabled) { background: var(--sage); }
+.mini-publish:disabled { opacity: .5; cursor: wait; }
 .sticker-card:hover {
   transform: translateY(-2px);
   border-color: var(--sage);

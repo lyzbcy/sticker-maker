@@ -18,8 +18,20 @@
       <h4 class="success-title">完成！</h4>
       <p class="success-meta">{{ store.lastEpisode.stickers }} 张表情已就绪</p>
       <p class="hint">目录：{{ store.lastEpisode.episode_dir }}</p>
+      <div v-if="store.publishProgress" class="publish-progress">
+        {{ store.publishProgress.message }}
+      </div>
+      <p v-if="store.publishResult?.success" class="publish-ok">已提交到微信表情开放平台。</p>
       <div class="actions">
         <button class="btn btn-ghost" @click="openFinder">在 Finder 中显示</button>
+        <button
+          class="btn btn-publish"
+          data-test="publish"
+          :disabled="store.publishing"
+          @click="publish"
+        >
+          {{ store.publishing ? '正在提交…' : '一键提交微信' }}
+        </button>
         <button class="btn btn-primary" @click="store.runGenerate">再生成一组</button>
         <button class="btn btn-soft" @click="store.clearResult">回到主页</button>
       </div>
@@ -32,6 +44,11 @@ const store = useEngineStore()
 async function openFinder() {
   if (store.lastEpisode?.episode_dir && window.api) {
     await window.api.send('open_in_finder', { path: store.lastEpisode.episode_dir })
+  }
+}
+async function publish() {
+  if (store.lastEpisode?.episode_dir) {
+    await store.publishEpisode(store.lastEpisode.episode_dir)
   }
 }
 </script>
@@ -101,6 +118,8 @@ async function openFinder() {
   margin: 0 0 18px;
   padding: 0 8px;
 }
+.publish-progress { color: var(--forest); font-size: 13px; font-weight: 600; }
+.publish-ok { color: var(--correct); font-size: 13px; font-weight: 700; }
 
 /* ============ 按钮（胶囊） ============ */
 .actions {
@@ -127,6 +146,13 @@ async function openFinder() {
 }
 .btn-primary:hover { background: var(--forest-hover); transform: translateY(-1px); }
 .btn-primary:active { transform: translateY(1px); }
+.btn:disabled { opacity: .55; cursor: wait; transform: none; }
+.btn-publish {
+  background: var(--brick);
+  color: var(--white);
+  box-shadow: 0 8px 20px rgba(181, 72, 42, .22);
+}
+.btn-publish:hover:not(:disabled) { filter: brightness(1.06); transform: translateY(-1px); }
 
 .btn-ghost {
   background: var(--card);

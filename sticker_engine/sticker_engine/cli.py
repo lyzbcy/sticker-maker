@@ -292,9 +292,15 @@ def cmd_list_characters(req_id, args):
     engine._ensure_characters()
     _sync_custom_bases(engine)
     _apply_base_probs(engine)
+    import sticker_engine as _se
+    resources = _se.resources_path()
     chars = {}
     for name, c in engine.config.characters.items():
-        chars[name] = {"bases": c.bases, "base_probs": c.base_probs}
+        preview_bases = {}
+        for key, value in c.bases.items():
+            path = Path(value)
+            preview_bases[key] = str(path if path.is_absolute() else resources / path)
+        chars[name] = {"bases": preview_bases, "base_probs": c.base_probs}
     _result(req_id, "ok", data={"characters": chars})
 
 

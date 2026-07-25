@@ -11,7 +11,7 @@
         <span class="pct">{{ Math.round((charProbs[name] || 0) * 100) }}%</span>
       </div>
     </div>
-    <p class="hint">总和无需固定，系统会自动归一化。</p>
+    <p class="sum" :class="{ bad: sum !== 100 }">总和：{{ sum }}%（需 = 100%）</p>
   </div>
 </template>
 <script setup>
@@ -20,6 +20,11 @@ import { useEngineStore } from '../store/engine'
 const store = useEngineStore()
 if (store.prefs && !store.prefs.single_char_probs) store.prefs.single_char_probs = {}
 const charProbs = computed(() => store.prefs.single_char_probs || {})
+const sum = computed(() => Math.round(
+  Object.keys(store.characters).reduce(
+    (total, name) => total + (Number(charProbs.value[name]) || 0), 0,
+  ) * 100,
+))
 function update(name, ev) {
   store.prefs.single_char_probs[name] = parseInt(ev.target.value) / 100
 }
@@ -68,5 +73,6 @@ function update(name, ev) {
   font-weight: 700;
 }
 
-.hint { margin-top: 16px; color: var(--muted-soft); font-size: 13px; }
+.sum { margin-top: 16px; padding: 9px; border-radius: var(--r-md); background: rgba(175,205,168,.3); color: var(--forest); text-align: center; font-size: 13px; font-weight: 700; }
+.sum.bad { background: rgba(181,72,42,.12); color: var(--brick); }
 </style>

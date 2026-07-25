@@ -265,3 +265,28 @@ def test_agent_service_start_is_idempotent_and_stoppable():
     finally:
         stopped = cli._stop_agent_server()
     assert stopped["running"] is False
+
+
+def test_list_characters_returns_absolute_preview_paths(tmp_path, monkeypatch):
+    from sticker_engine import cli
+    from sticker_engine.config.schema import Character
+
+    fake_engine = MagicMock()
+    fake_engine.config.paths.user_data = tmp_path
+    fake_engine.config.characters = {
+        "甲": Character(
+            name="甲",
+            bases={"a": "base_images/星星布丁/base1.jpg"},
+            base_probs={"a": 1.0},
+        ),
+    }
+    fake_engine.config.prefs.base_probs = {}
+    emitted = []
+    monkeypatch.setattr(cli, "_engine", fake_engine)
+    monkeypatch.setattr(cli, "_emit", emitted.append)
+
+    cli.cmd_list_characters("chars", {})
+
+    preview = emitted[-1]["data"]["characters"]["甲"]["bases"]["a"]
+    assert Path(preview).is_absolute()
+    assert preview.endswith("base_images/星星布丁/base1.jpg")

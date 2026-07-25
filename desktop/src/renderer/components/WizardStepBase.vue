@@ -4,18 +4,41 @@
     <div v-if="Object.keys(store.characters).length === 0" class="loading">加载中…</div>
     <div v-else class="char-grid">
       <div v-for="(info, name) in store.characters" :key="name" class="char-card">
-        <div class="char-avatar">{{ name.charAt(0) }}</div>
-        <h4>{{ name }}</h4>
-        <p>{{ Object.keys(info.bases).length }} 张 base 图</p>
+        <div class="char-head">
+          <div class="char-avatar">{{ name.charAt(0) }}</div>
+          <div>
+            <h4>{{ name }}</h4>
+            <p>{{ Object.keys(info.bases).length }} 张 base 图</p>
+          </div>
+          <strong :class="{ bad: !baseSumOk(name) }">{{ baseSum(name) }}%</strong>
+        </div>
+        <div class="base-list">
+          <div v-for="(path, key) in info.bases" :key="key" class="base-row">
+            <img :src="fileUrl(path)" :alt="`${name} ${key}`" />
+            <span :title="key">{{ key }}</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              :value="Math.round(baseProb(name, key) * 100)"
+              @input="updateBaseProb(name, key, $event)"
+            />
+            <b>{{ Math.round(baseProb(name, key) * 100) }}%</b>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="custom-section">
       <h4>自定义 base 图</h4>
+      <label class="name-label">
+        角色名
+        <input class="prompt-input" v-model.trim="characterName" maxlength="64" placeholder="例如：小星、妈妈、搭档" />
+      </label>
 
       <!-- 上传 base -->
       <div class="action-row">
-        <button class="btn" @click="uploadBase" :disabled="uploading">
+        <button class="btn" @click="uploadBase" :disabled="uploading || !characterName">
           {{ uploading ? '处理中…' : '📤 上传 base 图' }}
         </button>
         <span class="hint" v-if="uploadedPath">已选：{{ uploadedName }}</span>
@@ -24,7 +47,7 @@
       <!-- AI 生成 base -->
       <div class="action-row">
         <input class="prompt-input" v-model="aiPrompt" placeholder="描述你想要的角色（如：粉色头发的小女孩）" />
-        <button class="btn btn-ai" @click="generateBase" :disabled="generating || !aiPrompt">
+        <button class="btn btn-ai" @click="generateBase" :disabled="generating || !aiPrompt || !characterName">
           {{ generating ? '生成中（约1分钟）…' : '✨ AI 生成 base' }}
         </button>
       </div>
@@ -42,10 +65,27 @@ const store = useEngineStore()
 const uploading = ref(false)
 const uploadedPath = ref('')
 const uploadedName = ref('')
+const characterName = ref('自定义')
 const aiPrompt = ref('')
 const generating = ref(false)
 const generateMsg = ref('')
 const generateErr = ref(false)
+const fileUrl = (path) => window.api?.toFileUrl ? window.api.toFileUrl(path) : `file://${path}`
+
+function baseProb(name, key) {
+  return Number(store.prefs?.base_probs?.[name]?.[key]) || 0
+}
+function baseSum(name) {
+  const values = Object.values(store.prefs?.base_probs?.[name] || {})
+  return Math.round(values.reduce((total, value) => total + (Number(value) || 0), 0) * 100)
+}
+function baseSumOk(name) {
+  return baseSum(name) === 100
+}
+function updateBaseProb(name, key, event) {
+  if (!store.prefs.base_probs[name]) store.prefs.base_probs[name] = {}
+  store.prefs.base_probs[name][key] = Number(event.target.value) / 100
+}
 
 onMounted(() => store.loadCharacters())
 
@@ -61,7 +101,11 @@ async function uploadBase() {
     uploadedPath.value = result.path
     uploadedName.value = result.path.split('/').pop()
     // 上传后调 add_base（复制到用户 base 目录）
-    const res = await window.api.send('add_base', { path: result.path, name: uploadedName.value })
+    const res = await window.api.send('add_base', {
+      path: result.path,
+      name: uploadedName.value,
+      character: characterName.value,
+    })
     if (res && res.status === 'ok') {
       generateMsg.value = '✅ base 图已添加'
       generateErr.value = false
@@ -83,7 +127,10 @@ async function generateBase() {
   generating.value = true
   generateMsg.value = ''
   try {
-    const res = await window.api.send('generate_base', { prompt: aiPrompt.value })
+    const res = await window.api.send('generate_base', {
+      prompt: aiPrompt.value,
+      character: characterName.value,
+    })
     if (res && res.status === 'ok' && res.data && res.data.path) {
       generateMsg.value = '✅ AI 已生成 base 图：' + res.data.path.split('/').pop()
       generateErr.value = false
@@ -108,23 +155,24 @@ async function generateBase() {
 /* 角色卡片网格（大圆角 + hover 抬升） */
 .char-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr;
   gap: 14px;
   margin: 16px 0 24px;
 }
 .char-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
+  display: block;
   padding: 20px 14px;
   background: var(--card);
   border: 1.5px solid var(--paper);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-soft);
-  text-align: center;
+  text-align: left;
   transition: all .15s ease;
 }
+.char-head { display: flex; align-items: center; gap: 10px; }
+.char-head > div:nth-child(2) { flex: 1; }
+.char-head strong { color: var(--correct); font-size: 13px; }
+.char-head strong.bad { color: var(--brick); }
 .char-card:hover {
   transform: translateY(-3px);
   border-color: var(--sage);
@@ -145,6 +193,12 @@ async function generateBase() {
 }
 .char-card h4 { margin: 0; font-family: var(--font-head); font-size: 15px; color: var(--ink); }
 .char-card p { margin: 0; font-size: 12px; color: var(--muted-soft); }
+.base-list { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.base-row { display: grid; grid-template-columns: 42px 72px 1fr 42px; align-items: center; gap: 8px; }
+.base-row img { width: 42px; height: 42px; object-fit: cover; border-radius: var(--r-sm); background: var(--paper); }
+.base-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
+.base-row input { min-width: 0; accent-color: var(--forest); }
+.base-row b { color: var(--forest); font-size: 11px; text-align: right; }
 
 /* 自定义区 */
 .custom-section {
@@ -158,6 +212,8 @@ async function generateBase() {
   font-size: 15px;
   color: var(--ink);
 }
+.name-label { display: block; color: var(--muted); font-size: 12px; }
+.name-label .prompt-input { display: block; width: 100%; margin-top: 7px; }
 
 .action-row {
   display: flex;

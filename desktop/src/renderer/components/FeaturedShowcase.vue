@@ -3,7 +3,7 @@
     <h4 class="block-title">✨ 精选表情</h4>
     <div class="grid">
       <div class="grid-item" v-for="f in featured" :key="f.path">
-        <img :src="'file://' + f.path" :alt="f.name" :title="f.name" />
+        <img :src="fileUrl(f.path)" :alt="f.name" :title="f.name" />
       </div>
     </div>
   </div>
@@ -12,6 +12,7 @@
 import { ref, onMounted } from 'vue'
 
 const featured = ref([])
+const fileUrl = (path) => window.api?.toFileUrl ? window.api.toFileUrl(path) : `file://${path}`
 
 onMounted(async () => {
   if (!window.api) return

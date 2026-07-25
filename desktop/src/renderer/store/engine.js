@@ -1,8 +1,52 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+const nearOne = (value) => Math.abs(value - 1) <= 0.001
+const sumValues = (object) => Object.values(object || {}).reduce(
+  (total, value) => total + (Number(value) || 0), 0,
+)
+
+export function validatePrefs(prefs, characters = {}) {
+  const modeSum = sumValues(prefs?.mode_probs)
+  if (!nearOne(modeSum)) {
+    return {
+      ok: false,
+      message: `模式概率总和必须为 100%，当前 ${Math.round(modeSum * 100)}%`,
+    }
+  }
+  const names = Object.keys(characters)
+  if (names.length === 0) {
+    return { ok: false, message: '至少需要一个带 base 图的角色' }
+  }
+  const charSum = names.reduce(
+    (total, name) => total + (Number(prefs?.single_char_probs?.[name]) || 0), 0,
+  )
+  if (!nearOne(charSum)) {
+    return {
+      ok: false,
+      message: `角色概率总和必须为 100%，当前 ${Math.round(charSum * 100)}%`,
+    }
+  }
+  for (const name of names) {
+    const baseKeys = Object.keys(characters[name]?.bases || {})
+    if (baseKeys.length === 0) {
+      return { ok: false, message: `角色「${name}」至少需要一张 base 图` }
+    }
+    const baseSum = baseKeys.reduce(
+      (total, key) => total + (Number(prefs?.base_probs?.[name]?.[key]) || 0), 0,
+    )
+    if (!nearOne(baseSum)) {
+      return {
+        ok: false,
+        message: `角色「${name}」的 base 概率总和必须为 100%，当前 ${Math.round(baseSum * 100)}%`,
+      }
+    }
+  }
+  return { ok: true, message: '' }
+}
+
 export const useEngineStore = defineStore('engine', () => {
-  const phase = ref('launch')   // launch | wizard | main | settings
+  const phase = ref('launch')   // launch | wizard | main | settings | tools
   const firstRun = ref(true)
   const prefs = ref(null)
   const codexStatus = ref(null)
@@ -16,6 +60,13 @@ export const useEngineStore = defineStore('engine', () => {
   // codex 安装状态
   const installing = ref(false)
   const installLog = ref([])
+  // 发布 / Agent / 内存日志
+  const publishing = ref(false)
+  const publishProgress = ref(null)
+  const publishResult = ref(null)
+  const logs = ref([])
+  const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: null })
+  const agentPrompt = ref('')
 
   // 确保 window.api 存在（开发模式 Electron 注入）
   const api = typeof window !== 'undefined' && window.api ? window.api : null
@@ -49,7 +100,7 @@ export const useEngineStore = defineStore('engine', () => {
 
   function defaultPrefs() {
     return {
-      mode_probs: { single: 0.5, duo: 0.3, trio: 0, quad: 0.2 },
+      mode_probs: { single: 1, duo: 0, trio: 0, quad: 0 },
       single_char_probs: { 星星布丁: 0.7, 捞鱼: 0.3 },
       base_probs: {},
       grid_size: 4,
@@ -94,15 +145,53 @@ export const useEngineStore = defineStore('engine', () => {
   async function loadCharacters() {
     if (!api) return
     const res = await api.send('list_characters')
-    if (res && res.status === 'ok') characters.value = res.data.characters || {}
+    if (res && res.status === 'ok') {
+      characters.value = res.data.characters || {}
+      ensureProbabilityDefaults()
+    }
+  }
+
+  function ensureProbabilityDefaults() {
+    if (!prefs.value) prefs.value = defaultPrefs()
+    if (!prefs.value.single_char_probs) prefs.value.single_char_probs = {}
+    if (!prefs.value.base_probs) prefs.value.base_probs = {}
+    const names = Object.keys(characters.value)
+    const currentCharTotal = names.reduce(
+      (total, name) => total + (Number(prefs.value.single_char_probs[name]) || 0), 0,
+    )
+    if (currentCharTotal <= 0 && names.length) {
+      const equal = 1 / names.length
+      names.forEach(name => { prefs.value.single_char_probs[name] = equal })
+    } else {
+      names.forEach(name => {
+        if (prefs.value.single_char_probs[name] == null) {
+          prefs.value.single_char_probs[name] = 0
+        }
+      })
+    }
+    names.forEach(name => {
+      const info = characters.value[name] || {}
+      const keys = Object.keys(info.bases || {})
+      const saved = prefs.value.base_probs[name] || {}
+      const backend = info.base_probs || {}
+      const candidate = {}
+      keys.forEach(key => {
+        candidate[key] = Number(saved[key] ?? backend[key] ?? 0)
+      })
+      const total = sumValues(candidate)
+      if (total <= 0 && keys.length) {
+        keys.forEach(key => { candidate[key] = 1 / keys.length })
+      } else if (total > 0) {
+        keys.forEach(key => { candidate[key] /= total })
+      }
+      prefs.value.base_probs[name] = candidate
+    })
   }
 
   async function savePrefs(newPrefs) {
-    // I2 修复：前端先校验 mode_probs 总和，避免 A 侧 ValueError 静默失败
-    const mp = newPrefs.mode_probs || {}
-    const sum = (mp.single || 0) + (mp.duo || 0) + (mp.trio || 0) + (mp.quad || 0)
-    if (Math.abs(sum - 1) > 0.001) {
-      lastError.value = [{ message: `模式概率总和必须为 100%，当前 ${Math.round(sum * 100)}%` }]
+    const validation = validatePrefs(newPrefs, characters.value)
+    if (!validation.ok) {
+      lastError.value = [{ message: validation.message }]
       return false
     }
     if (!api) { phase.value = 'main'; return true }
@@ -161,11 +250,77 @@ export const useEngineStore = defineStore('engine', () => {
     if (res && res.status === 'ok') episodes.value = res.data.episodes || []
   }
 
+  async function publishEpisode(episodeDir) {
+    if (!api || !episodeDir) return false
+    publishing.value = true
+    publishProgress.value = null
+    publishResult.value = null
+    lastError.value = null
+    try {
+      const res = await api.send('publish_episode', { episode_dir: episodeDir })
+      if (res && res.status === 'ok') {
+        publishResult.value = res.data
+        return true
+      }
+      publishResult.value = (res && res.data) || null
+      lastError.value = (res && res.errors) || [{ message: '发布未完成' }]
+      return false
+    } catch (e) {
+      lastError.value = (e && e.errors) || [{ message: (e && e.message) || '发布未完成' }]
+      return false
+    } finally {
+      publishing.value = false
+    }
+  }
+
+  async function loadLogs() {
+    if (!api) return
+    const res = await api.send('get_logs')
+    if (res && res.status === 'ok') logs.value = res.data.logs || []
+  }
+
+  async function clearLogs() {
+    if (!api) return
+    await api.send('clear_logs')
+    logs.value = []
+  }
+
+  async function refreshAgent() {
+    if (!api) return
+    const [status, prompt] = await Promise.all([
+      api.send('agent_status'),
+      api.send('agent_prompt'),
+    ])
+    if (status && status.status === 'ok') agentStatus.value = status.data
+    if (prompt && prompt.status === 'ok') agentPrompt.value = prompt.data.prompt || ''
+  }
+
+  async function startAgent() {
+    if (!api) return false
+    const res = await api.send('agent_start', { port: 7432 })
+    if (res && res.status === 'ok') {
+      agentStatus.value = res.data
+      await loadLogs()
+      return true
+    }
+    lastError.value = (res && res.errors) || [{ message: 'Agent 启动失败' }]
+    return false
+  }
+
+  async function stopAgent() {
+    if (!api) return
+    const res = await api.send('agent_stop')
+    if (res && res.status === 'ok') agentStatus.value = res.data
+    await loadLogs()
+  }
+
   // 监听 progress（run 期间更新）
   if (api) {
     api.onProgress((ev) => {
       if (ev.stage === 'install' && installing.value) {
         installLog.value.push(ev.message)
+      } else if (publishing.value) {
+        publishProgress.value = ev
       } else if (running.value) {
         progress.value = ev
       }
@@ -181,6 +336,9 @@ export const useEngineStore = defineStore('engine', () => {
     phase, firstRun, prefs, codexStatus, characters, episodes,
     running, progress, lastEpisode, lastError,
     installing, installLog,
-    init, checkCodex, installCodex, loadCharacters, savePrefs, runGenerate, stopRun, loadEpisodes, clearResult,
+    publishing, publishProgress, publishResult, logs, agentStatus, agentPrompt,
+    init, checkCodex, installCodex, loadCharacters, ensureProbabilityDefaults,
+    savePrefs, runGenerate, stopRun, loadEpisodes, clearResult,
+    publishEpisode, loadLogs, clearLogs, refreshAgent, startAgent, stopAgent,
   }
 })
