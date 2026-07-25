@@ -121,8 +121,47 @@ def test_add_base_then_list_shows_custom_character(tmp_path, monkeypatch):
     # add_base
     cli.cmd_add_base("r1", {"path": str(src)})
     # custom_bases 目录应存在 + 文件在
-    assert (tmp_path / "custom_bases" / "my_base.png").exists()
+    assert (tmp_path / "custom_bases" / "自定义" / "my_base.png").exists()
     # _sync 后"自定义"角色应挂上
     cli._sync_custom_bases(fake_engine)
     assert "自定义" in fake_engine.config.characters
     assert "my_base" in fake_engine.config.characters["自定义"].bases
+
+
+def test_add_base_assigns_image_to_named_character(tmp_path, monkeypatch):
+    from sticker_engine import cli
+    from PIL import Image
+
+    src = tmp_path / "my_base.png"
+    Image.new("RGBA", (10, 10)).save(src)
+    fake_engine = MagicMock()
+    fake_engine.config.paths.user_data = tmp_path
+    fake_engine.config.characters = {}
+    fake_engine.config.prefs.base_probs = {}
+    monkeypatch.setattr(cli, "_engine", fake_engine)
+    monkeypatch.setattr(cli, "_emit", lambda ev: None)
+
+    cli.cmd_add_base("r1", {"path": str(src), "character": "小星"})
+    cli._sync_custom_bases(fake_engine)
+
+    assert (tmp_path / "custom_bases" / "小星" / "my_base.png").exists()
+    assert "小星" in fake_engine.config.characters
+
+
+def test_add_base_rejects_path_like_character_name(tmp_path, monkeypatch):
+    from sticker_engine import cli
+    from PIL import Image
+
+    src = tmp_path / "my_base.png"
+    Image.new("RGBA", (10, 10)).save(src)
+    fake_engine = MagicMock()
+    fake_engine.config.paths.user_data = tmp_path
+    fake_engine.config.characters = {}
+    monkeypatch.setattr(cli, "_engine", fake_engine)
+    emitted = []
+    monkeypatch.setattr(cli, "_emit", emitted.append)
+
+    cli.cmd_add_base("r1", {"path": str(src), "character": "../逃逸"})
+
+    assert emitted[-1]["status"] == "fail"
+    assert not (tmp_path / "逃逸").exists()

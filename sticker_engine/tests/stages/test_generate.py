@@ -68,3 +68,19 @@ def test_generate_records_fail_and_skips_copy_when_codex_returns_none(tmp_path):
     # 应有一条 S1 FAIL 日志
     fails = [e for e in ctx.production_log if e.stage == "S1" and e.status == "FAIL"]
     assert len(fails) == 1
+
+
+def test_story_mode_sends_all_selected_character_bases(tmp_path):
+    story_selector = MagicMock()
+    story_selector.pick.return_value = []
+    stage = GenerateStage(codex=MagicMock(), story_selector=story_selector)
+    ctx = _ctx(tmp_path)
+    ctx.selected_bases = [Path("/tmp/a.png"), Path("/tmp/b.png")]
+    ctx.selected_characters = ["甲", "乙"]
+
+    prompt, refs = stage._build_prompt_and_refs(ctx, GenerationMode.STORY)
+
+    assert refs[:2] == ctx.selected_bases
+    assert "甲" in prompt and "乙" in prompt
+    story_selector.pick.assert_called_once()
+    assert story_selector.pick.call_args.kwargs["characters"] == ["甲", "乙"]

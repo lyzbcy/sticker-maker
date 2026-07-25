@@ -25,6 +25,20 @@ def _pick_by_probs(options: dict, rng: random.Random) -> str:
     return items[-1][0]
 
 
+def _pick_weighted_without_replacement(names, probs, count, rng):
+    """按权重不放回抽样；全零时退化为均匀抽样。"""
+    pool = list(names)
+    result = []
+    while pool and len(result) < count:
+        available = {name: max(0.0, probs.get(name, 0.0)) for name in pool}
+        if sum(available.values()) <= 0:
+            available = {name: 1.0 for name in pool}
+        chosen = _pick_by_probs(normalize_probs(available), rng)
+        result.append(chosen)
+        pool.remove(chosen)
+    return result
+
+
 class PrepStage:
     """S0：建目录、选模式/角色/base、写角色卡、产出 prep_state。"""
 
@@ -52,7 +66,12 @@ class PrepStage:
             chars = self._pick_characters(ctx, mode, mode_count)
         ctx.selected_characters = chars
         # 3) 按 base_probs 选 base 图（I6 修复：真正用概率，不再让 S1 取字典第一个）
-        ctx.selected_base = self._pick_base_path(ctx, chars)
+        ctx.selected_bases = [
+            base for base in (self._pick_base_path(ctx, [name]) for name in chars)
+            if base is not None
+        ]
+        # 兼容旧调用方：selected_base 仍指第一张。
+        ctx.selected_base = ctx.selected_bases[0] if ctx.selected_bases else None
         # 4) 建 episode 目录
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         episode_dir = ctx.config.paths.output_root / f"episode_{ts}"
@@ -101,11 +120,11 @@ class PrepStage:
             return []
         if mode == "single":
             probs = ctx.config.prefs.single_char_probs or {c: 1.0/len(all_chars) for c in all_chars}
+            probs = {c: probs.get(c, 0.0) for c in all_chars}
+            if sum(probs.values()) <= 0:
+                probs = {c: 1.0 for c in all_chars}
             probs = normalize_probs(probs)
             return [_pick_by_probs(probs, self.rng)]
-        else:
-            probs = ctx.config.prefs.single_char_probs or {c: 1.0 for c in all_chars}
-            pool = list(all_chars)
-            self.rng.shuffle(pool)
-            pool.sort(key=lambda c: -probs.get(c, 0))
-            return pool[:count]
+        probs = ctx.config.prefs.single_char_probs or {c: 1.0 for c in all_chars}
+        return _pick_weighted_without_replacement(
+            all_chars, probs, count, self.rng)

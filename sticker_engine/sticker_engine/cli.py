@@ -180,6 +180,12 @@ def cmd_save_prefs(req_id, args):
     prefs = _dict_to_prefs(args.get("prefs", {}))
     save_prefs(prefs, engine.config.paths.prefs_file)
     engine.config.prefs = prefs
+    engine.config.paths.reference_lib = (
+        Path(prefs.reference_lib_path)
+        if prefs.reference_lib_path
+        else engine.config.paths.user_data / "reference_library"
+    )
+    _apply_base_probs(engine)
     _result(req_id, "ok")
 
 
@@ -192,24 +198,59 @@ def _sync_custom_bases(engine):
     if not custom_dir.exists():
         return
     from .config.schema import Character
-    custom_bases = {}
+    grouped = {}
     for img in sorted(custom_dir.iterdir()):
-        if img.suffix.lower() in (".png", ".jpg", ".jpeg"):
-            # 用相对路径（绝对路径直接存，_pick_base_path 会用）
-            custom_bases[img.stem] = str(img)
-    if not custom_bases:
-        return
-    n = len(custom_bases)
-    # 均分概率
-    probs = {k: 1.0 / n for k in custom_bases}
-    engine.config.characters["自定义"] = Character(
-        name="自定义", bases=custom_bases, base_probs=probs)
+        if img.is_file() and img.suffix.lower() in (".png", ".jpg", ".jpeg"):
+            grouped.setdefault("自定义", {})[img.stem] = str(img)
+        elif img.is_dir():
+            images = {
+                child.stem: str(child)
+                for child in sorted(img.iterdir())
+                if child.is_file() and child.suffix.lower() in (".png", ".jpg", ".jpeg")
+            }
+            if images:
+                grouped[img.name] = images
+    for name, custom_bases in grouped.items():
+        existing = engine.config.characters.get(name)
+        bases = dict(existing.bases) if existing else {}
+        bases.update(custom_bases)
+        default_probs = dict(existing.base_probs) if existing else {}
+        for key in custom_bases:
+            default_probs.setdefault(key, 1.0)
+        engine.config.characters[name] = Character(
+            name=name, bases=bases, base_probs=default_probs)
+    _apply_base_probs(engine)
+
+
+def _apply_base_probs(engine):
+    """把 prefs 中每角色概率应用到当前角色对象，只接受现有 base key。"""
+    from .config.schema import normalize_probs
+    configured = getattr(engine.config.prefs, "base_probs", {}) or {}
+    for name, char in engine.config.characters.items():
+        saved = configured.get(name)
+        if not saved:
+            continue
+        probs = {key: max(0.0, float(saved.get(key, 0.0))) for key in char.bases}
+        if sum(probs.values()) > 0:
+            char.base_probs = normalize_probs(probs)
+
+
+def _safe_character_name(value):
+    name = str(value or "").strip()
+    if (
+        not name or name in {".", ".."} or len(name) > 64
+        or "/" in name or "\\" in name
+        or any(ord(ch) < 32 for ch in name)
+    ):
+        return None
+    return name
 
 
 def cmd_list_characters(req_id, args):
     engine = _ensure_engine()
     engine._ensure_characters()
     _sync_custom_bases(engine)
+    _apply_base_probs(engine)
     chars = {}
     for name, c in engine.config.characters.items():
         chars[name] = {"bases": c.bases, "base_probs": c.base_probs}
@@ -228,7 +269,11 @@ def cmd_generate_base(req_id, args):
     else:
         # C1 集成：把生成的 base 复制到 custom_bases，挂进"自定义"角色
         import shutil
-        custom_dir = engine.config.paths.user_data / "custom_bases"
+        character = _safe_character_name(args.get("character") or "自定义")
+        if character is None:
+            _result(req_id, "fail", errors=[{"message": "角色名不合法"}])
+            return
+        custom_dir = engine.config.paths.user_data / "custom_bases" / character
         custom_dir.mkdir(parents=True, exist_ok=True)
         dst = custom_dir / f"ai_{Path(path).name}"
         shutil.copy2(path, dst)
@@ -243,8 +288,12 @@ def cmd_add_base(req_id, args):
     if not src or not Path(src).exists():
         _result(req_id, "fail", errors=[{"message": f"源文件不存在: {src}"}])
         return
+    character = _safe_character_name(args.get("character") or "自定义")
+    if character is None:
+        _result(req_id, "fail", errors=[{"message": "角色名不合法"}])
+        return
     engine = _ensure_engine()
-    custom_dir = engine.config.paths.user_data / "custom_bases"
+    custom_dir = engine.config.paths.user_data / "custom_bases" / character
     custom_dir.mkdir(parents=True, exist_ok=True)
     dst = custom_dir / Path(src).name
     shutil.copy2(src, dst)

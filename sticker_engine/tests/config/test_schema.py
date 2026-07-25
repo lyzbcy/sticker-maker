@@ -2,6 +2,7 @@ import math
 from sticker_engine.config.schema import (
     Config, Prefs, Character, Paths, ModeProbsConfig, normalize_probs
 )
+from sticker_engine.config.loader import load_prefs_from_file, save_prefs
 
 
 def test_normalize_probs_handles_small_drift():
@@ -20,3 +21,17 @@ def test_prefs_validation_rejects_mode_probs_not_summing_to_one():
 def test_character_holds_base_probs():
     c = Character(name="测试角色", bases={"base1": "path/base1.png"}, base_probs={"base1": 1.0})
     assert c.base_probs["base1"] == 1.0
+
+
+def test_reference_path_and_base_probs_roundtrip(tmp_path):
+    prefs = Prefs(
+        reference_lib_path=str(tmp_path / "refs"),
+        base_probs={"甲": {"a": 0.25, "b": 0.75}},
+    )
+    prefs_path = tmp_path / "prefs.yaml"
+    save_prefs(prefs, prefs_path)
+
+    loaded = load_prefs_from_file(prefs_path)
+
+    assert loaded.reference_lib_path == str(tmp_path / "refs")
+    assert loaded.base_probs["甲"] == {"a": 0.25, "b": 0.75}

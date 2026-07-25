@@ -2,7 +2,9 @@ from pathlib import Path
 from unittest.mock import MagicMock
 from sticker_engine.stages.prep import PrepStage, PrepResult
 from sticker_engine.pipeline.context import PipelineContext, EpisodeSpec
-from sticker_engine.config.schema import Config, Paths
+from sticker_engine.config.schema import (
+    Character, Config, ModeProbsConfig, Paths, Prefs,
+)
 
 
 def _ctx(tmp_path):
@@ -52,3 +54,21 @@ def test_prep_does_not_touch_existing_reference_library(tmp_path):
     (ref_lib / "existing.png").write_bytes(b"x")
     stage.run(ctx)
     assert (ref_lib / "existing.png").exists()   # 原文件还在
+
+
+def test_multi_character_mode_selects_one_base_for_each_character(tmp_path):
+    ctx = _ctx(tmp_path)
+    ctx.config.prefs = Prefs(
+        mode_probs=ModeProbsConfig(single=0, duo=1, trio=0, quad=0),
+        single_char_probs={"甲": 0.8, "乙": 0.2},
+    )
+    ctx.config.characters = {
+        "甲": Character("甲", {"a": "base_images/a.png"}, {"a": 1.0}),
+        "乙": Character("乙", {"b": "base_images/b.png"}, {"b": 1.0}),
+    }
+
+    PrepStage(seed=1).run(ctx)
+
+    assert set(ctx.selected_characters) == {"甲", "乙"}
+    assert len(ctx.selected_bases) == 2
+    assert ctx.selected_base == ctx.selected_bases[0]

@@ -27,6 +27,7 @@ def load_prefs_from_file(prefs_path: Path) -> Optional[Prefs]:
         transparent_default=data.get("transparent_default", True),
         ref_lib_priority=data.get("ref_lib_priority", True),
         story_mode=data.get("story_mode", True),
+        reference_lib_path=data.get("reference_lib_path"),
     )
 
 
@@ -41,6 +42,7 @@ def save_prefs(prefs: Prefs, prefs_path: Path) -> None:
         "transparent_default": prefs.transparent_default,
         "ref_lib_priority": prefs.ref_lib_priority,
         "story_mode": prefs.story_mode,
+        "reference_lib_path": prefs.reference_lib_path,
     }
     if yaml is None:
         raise RuntimeError("PyYAML 未安装")

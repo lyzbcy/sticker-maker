@@ -63,13 +63,16 @@ class GenerateStage:
     def _build_prompt_and_refs(self, ctx: PipelineContext, mode: GenerationMode):
         grid = ctx.episode.grid_size
         n = grid * grid
-        # base 图始终是第一个 ref
-        base_path = self._pick_base(ctx)
-        refs = [base_path] if base_path else []
+        # 单人一张 base；多人按 selected_characters 顺序传每个角色的 base。
+        selected_bases = list(getattr(ctx, "selected_bases", []) or [])
+        if not selected_bases:
+            base_path = self._pick_base(ctx)
+            selected_bases = [base_path] if base_path else []
+        refs = selected_bases
         prompt = ""
 
         if mode == GenerationMode.REF_LIBRARY:
-            n_img = n + 1
+            n_img = n + len(selected_bases)
             prompt = REF_LIBRARY_TEMPLATE.format(grid=grid, n=n, n_img=n_img)
             refs += self._pick_refs(ctx, n)
         elif mode == GenerationMode.STORY:
@@ -80,7 +83,7 @@ class GenerateStage:
                 stories = []
             else:
                 stories = self.story_selector.pick(
-                    n=grid, characters=ctx.episode.forced_characters, seed=self.rng.random())
+                    n=grid, characters=ctx.selected_characters, seed=self.rng.random())
             if mode == GenerationMode.STORY and not stories:
                 # 池耗尽 → 降级 combo（决策 L）
                 ctx.log(LogEntry(stage="S1", status="WARN", message="剧本池耗尽，降级到排列组合模式"))
@@ -93,6 +96,16 @@ class GenerateStage:
         if mode == GenerationMode.KEYWORD_COMBO:
             panels_desc = self._random_combo_panels(ctx, n)
             prompt = KEYWORD_COMBO_TEMPLATE.format(grid=grid, n=n, panels_description=panels_desc)
+        if ctx.selected_characters:
+            identity = "、".join(
+                f"image {i + 1}={name}"
+                for i, name in enumerate(ctx.selected_characters)
+            )
+            prompt = (
+                f"Character identity references in order: {identity}. "
+                "Keep every selected character recognizable and do not merge identities. "
+                + prompt
+            )
         return prompt, refs
 
     def _pick_base(self, ctx) -> Optional[Path]:

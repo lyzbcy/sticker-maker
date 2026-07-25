@@ -73,6 +73,8 @@ class PipelineContext:
     gen_mode: Optional[str] = None   # "ref_library"/"story"/"keyword_combo"
     # S0 选中的 base 图路径（按 base_probs 概率选，I6 修复）
     selected_base: Optional[Path] = None
+    # 多人模式下每个选中角色各自的 base，顺序与 selected_characters 一致。
+    selected_bases: list = field(default_factory=list)
     # S0 选中的角色列表
     selected_characters: list = field(default_factory=list)
     stickers: list = field(default_factory=list)
