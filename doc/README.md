@@ -1,47 +1,45 @@
 # AI Memory · 表情包一键制作
 
-> **这个目录是给 AI 看的**（初心与使命第 96 行）。
-> 目标：让任何 AI 用最小上下文理解项目现状，按需深入。
+> 给 AI 的渐进式入口。先读本页，只在任务相关时继续读专题文档。
 
-## 怎么用这个目录（渐进式披露）
+## 一句话现状
 
-**只读这一篇 README，就能知道项目是什么、做到哪了、下一步干嘛。**
-需要细节时，再点进对应专题文档——每个专题文档开头都标了"何时读它"。
+`v0.2.0` 已完成 Mac（Apple Silicon）桌面闭环：首次配置、Codex 检测、生图管线、后处理、微信提交入口、AI Agent、本次运行内存日志、安装更新、介绍页与推广素材均已接入；发布前仍需真人完成一次微信开放平台冒烟。
 
-不要一上来全读。按需展开。
+## 当前交付
 
----
-
-## 项目一句话
-
-把"微信表情包制作+发布"流程打包成 Mac 桌面软件（对外品牌名"表情包一键制作"），分发给粉丝使用。核心生图依赖 codex CLI（用户自备）。
-
-## 当前进度（2026-07-24）
-
-| 子项目 | 状态 | 说明 |
+| 模块 | 状态 | 深入阅读 |
 |---|---|---|
-| **A. 核心生图引擎** | ✅ 交付 | Python 库 `sticker_engine/`，85 测试全绿 |
-| **B. Mac 应用外壳** | ✅ 交付 | Electron+Vue，打 .app + zip 分发包，5 前端测试 |
-| **C. 发布与上架** | ✅ 交付 | publish-cli（24步发布+上架+批量），46 测试，待真实平台冒烟 | | ⏳ 未开始 | 跨平台发布流、一键多平台 |
-| D. AI Agent 接口 | ⏳ 未开始 | 外部 agent 控制、定时发布 |
-| **E. 推广系统** | ✅ 交付 | 精选138张+三码配置+展示组件，9 测试 |
+| 核心生图引擎 | ✅ 165 个 Python 测试通过 | [`status-A.md`](./status-A.md) |
+| Mac 桌面应用 | ✅ 真实 arm64 `.app` 走查通过，14 个前端测试通过 | [`status-B.md`](./status-B.md) |
+| 微信发布 | 🟡 已接入桌面，自动化已测试；真实账号提交待人工冒烟 | [`status-C.md`](./status-C.md) |
+| AI Agent | ✅ 本地令牌接口、提示词、计划任务、启停已接入 | [`status-D.md`](./status-D.md) |
+| 推广与介绍页 | ✅ 精选表情、三码、版本刷新与更新清单已完成 | [`status-E.md`](./status-E.md) |
 
-**当前可做**：A+B 已交付（可分发 .app），启动 D 的 brainstorm。
+完整逐条验收与已知边界见 [`mission-acceptance.md`](./mission-acceptance.md)。
 
-## 专题文档（按需读）
-
-| 文档 | 何时读 |
-|---|---|
-| [`./architecture.md`](./architecture.md) | 要改 A 的代码、或理解 A 怎么接 B/C/D |
-| [`./decisions.md`](./decisions.md) | 要知道某个设计为什么这么定（13 个关键决策） |
-| [`./status-A.md`](./status-A.md) | 要看 A 的完成度细节、已知技术债 |
-| [`./status-B.md`](./status-B.md) | 要看 B 的完成度细节、已知技术债 |
-| [`./how-to-run.md`](./how-to-run.md) | 要跑/测 A |
-
-## 关键文件指针
+## 关键入口
 
 - 需求源头：`.openclaw/初心与使命.md`
-- A 的 spec：`docs/superpowers/specs/2026-07-24-A-核心生图引擎-design.md`
-- A 的实现计划：`docs/superpowers/plans/2026-07-24-A-核心生图引擎.md`
-- A 的代码：`sticker_engine/`
-- git 分支：`feature/A-core-engine`
+- Python 引擎：`sticker_engine/`
+- 桌面应用：`desktop/`
+- 介绍页：`desktop/site/`
+- 分发包：`desktop/表情包一键制作-mac-v0.2.0.zip`
+- 设计：`docs/superpowers/specs/2026-07-25-使命收口-design.md`
+- 实施记录：`docs/superpowers/plans/2026-07-25-使命收口.md`
+
+## AI 阅读路由
+
+- 改生图、概率、抠图：读 `architecture.md`、`status-A.md`。
+- 改 Electron、安装、更新：读 `status-B.md`。
+- 改微信开放平台自动化：读 `status-C.md`。
+- 改 Agent 或定时任务：读 `status-D.md`。
+- 改介绍页、二维码、精选展示：读 `status-E.md`。
+- 判断是否能发布：只读 `mission-acceptance.md`。
+
+## 当前版本纪律
+
+- 应用、Python 包、网站清单统一为 `0.2.0`。
+- 改网站或发布包时必须更新 `desktop/site/version.json`。
+- 发布 ZIP 后必须重算 SHA-256 并写回该清单。
+- 远端 `version.json` 是应用自动检查更新的唯一真源。
