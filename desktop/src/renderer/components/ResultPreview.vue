@@ -1,17 +1,27 @@
 <template>
   <div class="result">
-    <div v-if="store.lastError" class="error-box">
-      <h4>❌ 生成失败</h4>
-      <p v-for="(e, i) in store.lastError" :key="i">{{ e.message || e.gate }}</p>
-      <button class="btn" @click="store.runGenerate">重试</button>
+    <!-- 失败卡片（brick 红，柔和不刺眼） -->
+    <div v-if="store.lastError" class="error-card">
+      <div class="state-icon err">!</div>
+      <div class="card-body">
+        <h4 class="card-title">生成失败</h4>
+        <p v-for="(e, i) in store.lastError" :key="i" class="err-line">{{ e.message || e.gate }}</p>
+        <div class="actions">
+          <button class="btn btn-primary" @click="store.runGenerate">重试</button>
+        </div>
+      </div>
     </div>
-    <div v-else-if="store.lastEpisode" class="success">
-      <h4>✅ 完成！{{ store.lastEpisode.stickers }} 张表情</h4>
+
+    <!-- 成功卡片（sage 绿 + 庆祝感） -->
+    <div v-else-if="store.lastEpisode" class="success-card">
+      <div class="celebrate">🎉</div>
+      <h4 class="success-title">完成！</h4>
+      <p class="success-meta">{{ store.lastEpisode.stickers }} 张表情已就绪</p>
       <p class="hint">目录：{{ store.lastEpisode.episode_dir }}</p>
       <div class="actions">
-        <button class="btn" @click="openFinder">在 Finder 中显示</button>
-        <button class="btn btn-green" @click="store.runGenerate">再生成一组</button>
-        <button class="btn btn-gray" @click="store.clearResult">回到主页</button>
+        <button class="btn btn-ghost" @click="openFinder">在 Finder 中显示</button>
+        <button class="btn btn-primary" @click="store.runGenerate">再生成一组</button>
+        <button class="btn btn-soft" @click="store.clearResult">回到主页</button>
       </div>
     </div>
   </div>
@@ -26,11 +36,109 @@ async function openFinder() {
 }
 </script>
 <style scoped>
-.error-box { background: #fff0f0; padding: 16px; border-radius: 8px; color: #c33; }
-.success { background: #f0fff4; padding: 16px; border-radius: 8px; }
-.actions { display: flex; gap: 10px; margin-top: 12px; }
-.btn { padding: 6px 14px; border: none; border-radius: 6px; background: #4a90d9; color: #fff; cursor: pointer; }
-.btn-green { background: #7ac67d; }
-.btn-gray { background: #999; }
-.hint { color: #888; font-size: 12px; word-break: break-all; }
+.result { padding: 8px 0; }
+
+/* ============ 失败卡片 ============ */
+.error-card {
+  display: flex;
+  gap: 14px;
+  padding: 22px;
+  background: rgba(181, 72, 42, .10);
+  border: 1.5px solid rgba(181, 72, 42, .35);
+  border-radius: var(--r-card);
+}
+.state-icon {
+  flex-shrink: 0;
+  width: 40px; height: 40px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--white);
+}
+.state-icon.err { background: var(--brick); }
+.card-body { flex: 1; min-width: 0; }
+.card-title {
+  margin: 4px 0 8px;
+  font-family: var(--font-head);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--brick);
+}
+.err-line {
+  margin: 4px 0;
+  font-size: 13px;
+  color: var(--brick-ink);
+  word-break: break-word;
+}
+
+/* ============ 成功卡片（庆祝） ============ */
+.success-card {
+  padding: 32px;
+  background: rgba(175, 205, 168, .28);
+  border: 1.5px solid var(--sage);
+  border-radius: var(--r-card);
+  text-align: center;
+}
+.celebrate { font-size: 44px; margin-bottom: 6px; }
+.success-title {
+  margin: 0;
+  font-family: var(--font-fun);
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--forest);
+}
+.success-meta {
+  margin: 6px 0 12px;
+  font-size: 15px;
+  color: var(--forest);
+  font-weight: 600;
+}
+.hint {
+  color: var(--muted);
+  font-size: 12px;
+  word-break: break-all;
+  margin: 0 0 18px;
+  padding: 0 8px;
+}
+
+/* ============ 按钮（胶囊） ============ */
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.btn {
+  padding: 11px 22px;
+  border: none;
+  border-radius: var(--r-pill);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all .15s ease;
+  font-family: var(--font-head);
+}
+.btn-primary {
+  background: var(--forest);
+  color: var(--white);
+  box-shadow: var(--shadow-btn);
+}
+.btn-primary:hover { background: var(--forest-hover); transform: translateY(-1px); }
+.btn-primary:active { transform: translateY(1px); }
+
+.btn-ghost {
+  background: var(--card);
+  color: var(--forest);
+  border: 1.5px solid var(--sage);
+}
+.btn-ghost:hover { background: var(--sage); transform: translateY(-1px); }
+
+.btn-soft {
+  background: var(--card);
+  color: var(--muted);
+  border: 1.5px solid var(--paper);
+}
+.btn-soft:hover { background: var(--paper); color: var(--ink); transform: translateY(-1px); }
 </style>

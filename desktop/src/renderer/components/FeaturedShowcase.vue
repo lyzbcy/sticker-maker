@@ -1,8 +1,10 @@
 <template>
   <div class="featured" v-if="featured.length">
-    <h4>✨ 精选表情</h4>
+    <h4 class="block-title">✨ 精选表情</h4>
     <div class="grid">
-      <img v-for="f in featured" :key="f.path" :src="'file://' + f.path" :alt="f.name" :title="f.name" />
+      <div class="grid-item" v-for="f in featured" :key="f.path">
+        <img :src="'file://' + f.path" :alt="f.name" :title="f.name" />
+      </div>
     </div>
   </div>
 </template>
@@ -24,8 +26,36 @@ onMounted(async () => {
 })
 </script>
 <style scoped>
-.featured { margin-top: 30px; }
-.featured h4 { color: #666; margin-bottom: 10px; }
-.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.grid img { width: 100%; height: auto; border-radius: 6px; background: #f0f0f0; }
+.featured { display: flex; flex-direction: column; gap: 12px; }
+
+.block-title {
+  margin: 0;
+  font-family: var(--font-head);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  opacity: .7;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.grid-item {
+  overflow: hidden;
+  border-radius: var(--r-md);
+  background: var(--paper);
+  box-shadow: var(--shadow-soft);
+  transition: all .15s ease;
+}
+.grid-item:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-card-hover);
+}
+.grid-item img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
 </style>

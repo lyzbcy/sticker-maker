@@ -14,7 +14,30 @@ const store = useEngineStore()
 const pct = computed(() => Math.round((store.progress?.percent || 0) * 100))
 </script>
 <style scoped>
-.bar-track { height: 12px; background: #e0e0e0; border-radius: 6px; overflow: hidden; }
-.bar-fill { height: 100%; background: linear-gradient(90deg, #4a90d9, #7ac67d); transition: width 0.3s; }
-.bar-info { display: flex; justify-content: space-between; margin-top: 8px; font-size: 13px; color: #666; }
+.progress-bar { padding: 6px 0; }
+
+.bar-track {
+  height: 14px;
+  background: var(--paper);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(30, 58, 36, .06);
+}
+.bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--forest), var(--sage));
+  border-radius: var(--r-pill);
+  transition: width .3s ease;
+  box-shadow: 0 2px 6px rgba(30, 58, 36, .2);
+}
+
+.bar-info {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.msg { font-weight: 600; color: var(--ink); }
+.eta { color: var(--muted-soft); }
 </style>
