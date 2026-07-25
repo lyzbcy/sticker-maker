@@ -165,3 +165,50 @@ def test_add_base_rejects_path_like_character_name(tmp_path, monkeypatch):
 
     assert emitted[-1]["status"] == "fail"
     assert not (tmp_path / "逃逸").exists()
+
+
+def test_memory_logs_keep_only_last_50_entries():
+    from sticker_engine import cli
+
+    cli._memory_logs.clear()
+    for i in range(60):
+        cli._log("info", f"event-{i}")
+
+    logs = cli._safe_logs()
+    assert len(logs) == 50
+    assert logs[0]["message"] == "event-10"
+    assert logs[-1]["message"] == "event-59"
+
+
+def test_memory_logs_strip_sensitive_metadata():
+    from sticker_engine import cli
+
+    cli._memory_logs.clear()
+    cli._log(
+        "info",
+        "agent ready",
+        token="secret-token",
+        password="secret-password",
+        port=7432,
+    )
+
+    serialized = json.dumps(cli._safe_logs())
+    assert "secret-token" not in serialized
+    assert "secret-password" not in serialized
+    assert "7432" in serialized
+
+
+def test_get_and_clear_logs_commands(monkeypatch):
+    from sticker_engine import cli
+
+    cli._memory_logs.clear()
+    cli._log("info", "hello")
+    emitted = []
+    monkeypatch.setattr(cli, "_emit", emitted.append)
+
+    cli.cmd_get_logs("get", {})
+    assert emitted[-1]["data"]["logs"][-1]["message"] == "hello"
+
+    cli.cmd_clear_logs("clear", {})
+    assert emitted[-1]["status"] == "ok"
+    assert cli._safe_logs() == []

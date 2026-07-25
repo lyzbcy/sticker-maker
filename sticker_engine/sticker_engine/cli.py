@@ -6,6 +6,8 @@
 import json
 import sys
 import threading
+from collections import deque
+from datetime import datetime
 from pathlib import Path
 
 from . import StickerEngine, Config
@@ -17,6 +19,34 @@ VERSION = "0.1.0"
 
 _engine = None
 _stop_events = {}
+_memory_logs = deque(maxlen=50)
+_SENSITIVE_LOG_KEYS = {"token", "password", "authorization", "secret"}
+
+
+def _scrub_log_value(value):
+    if isinstance(value, dict):
+        return {
+            key: _scrub_log_value(item)
+            for key, item in value.items()
+            if str(key).lower() not in _SENSITIVE_LOG_KEYS
+        }
+    if isinstance(value, (list, tuple)):
+        return [_scrub_log_value(item) for item in value]
+    return value
+
+
+def _log(level, message, **meta):
+    """进程内日志；最多 50 条，敏感字段在写入前移除。"""
+    _memory_logs.append({
+        "time": datetime.now().isoformat(timespec="seconds"),
+        "level": str(level),
+        "message": str(message),
+        "meta": _scrub_log_value(meta),
+    })
+
+
+def _safe_logs():
+    return [_scrub_log_value(dict(entry)) for entry in _memory_logs]
 
 
 def _ensure_engine() -> StickerEngine:
@@ -45,6 +75,10 @@ def _result(req_id, status, **data):
 
 
 def _progress(req_id, ev):
+    _log(
+        "info", ev.message, command_id=req_id, stage=ev.stage,
+        phase=ev.phase, percent=ev.percent, eta_seconds=ev.eta_seconds,
+    )
     _emit({"id": req_id, "type": "progress", "stage": ev.stage, "phase": ev.phase,
            "message": ev.message, "percent": ev.percent, "eta_seconds": ev.eta_seconds})
 
@@ -386,6 +420,15 @@ def cmd_open_in_finder(req_id, args):
         _result(req_id, "fail", errors=[{"message": f"路径不存在: {path}"}])
 
 
+def cmd_get_logs(req_id, args):
+    _result(req_id, "ok", data={"logs": _safe_logs()})
+
+
+def cmd_clear_logs(req_id, args):
+    _memory_logs.clear()
+    _result(req_id, "ok")
+
+
 def _prefs_to_dict(prefs):
     if prefs is None:
         return None
@@ -418,6 +461,7 @@ HANDLERS = {
     "list_episodes": cmd_list_episodes, "open_in_finder": cmd_open_in_finder,
     "featured": cmd_featured,
     "load_promotion": cmd_load_promotion, "save_promotion": cmd_save_promotion,
+    "get_logs": cmd_get_logs, "clear_logs": cmd_clear_logs,
 }
 
 
@@ -425,11 +469,18 @@ def _handle_in_thread(req_id, cmd, args):
     """在独立线程执行 handler，避免长任务（run）阻塞 stdin 读取（C1 修复）。"""
     handler = HANDLERS.get(cmd)
     if handler is None:
+        _log("error", f"未知命令: {cmd}", command=cmd, command_id=req_id)
         _emit({"id": req_id, "type": "error", "message": f"未知命令: {cmd}"})
         return
+    _log("info", f"开始命令：{cmd}", command=cmd, command_id=req_id)
     try:
         handler(req_id, args)
+        _log("info", f"完成命令：{cmd}", command=cmd, command_id=req_id)
     except Exception as e:
+        _log(
+            "error", f"命令失败：{cmd}：{type(e).__name__}: {e}",
+            command=cmd, command_id=req_id,
+        )
         _emit({"id": req_id, "type": "error", "message": f"{type(e).__name__}: {e}"})
 
 
