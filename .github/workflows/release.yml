@@ -57,13 +57,30 @@ jobs:
         working-directory: desktop
         shell: bash
         run: |
+          set -euo pipefail
           VERSION=${GITHUB_REF_NAME#v}
+          # electron-builder 的 dir 产物目录名随 arch/版本可能是 mac/ 或 mac-arm64/，用 find 兜底
+          APP=$(find release -maxdepth 2 -name "*.app" -type d | head -1)
+          if [ -z "$APP" ]; then
+            echo "未找到 .app，release 目录内容："
+            find release -maxdepth 2 | head -30
+            exit 1
+          fi
+          echo "找到应用：$APP"
+          APP_NAME=$(basename "$APP")
           STAGE="release/stage-mac"
+          rm -rf "$STAGE"
           mkdir -p "$STAGE"
-          cp -R "release/mac/表情包一键制作.app" "$STAGE/"
+          cp -R "$APP" "$STAGE/"
           cp install.command "$STAGE/"
-          (cd "$STAGE" && /usr/bin/ditto -c -k --sequesterRsrc --keepParent "表情包一键制作.app" "sticker-maker-mac-v${VERSION}.zip" && zip -j "sticker-maker-mac-v${VERSION}.zip" install.command)
+          (
+            cd "$STAGE"
+            /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP_NAME" "sticker-maker-mac-v${VERSION}.zip"
+            /usr/bin/zip -j "sticker-maker-mac-v${VERSION}.zip" install.command
+          )
           mv "$STAGE/sticker-maker-mac-v${VERSION}.zip" "release/"
+          echo "zip 内容预览："
+          unzip -l "release/sticker-maker-mac-v${VERSION}.zip" | head -6
 
       - name: Compute sha256
         shell: bash
