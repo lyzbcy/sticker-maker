@@ -1,17 +1,17 @@
 {
   "version": "0.3.0",
   "downloadUrl": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.3.0/sticker-maker-mac-v0.3.0.zip",
-  "sha256": "",
+  "sha256": "28f233e5665c31527d8ea806178421aa8ba1bae4e889a99e2c1541abf4b060a8",
   "platforms": {
     "mac": {
       "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.3.0/sticker-maker-mac-v0.3.0.zip",
-      "sha256": ""
+      "sha256": "28f233e5665c31527d8ea806178421aa8ba1bae4e889a99e2c1541abf4b060a8"
     },
     "win": {
       "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.3.0/sticker-maker-win-v0.3.0-setup.exe",
-      "sha256": ""
+      "sha256": "ee438e5e0f4cab1cbdc227b33055817a55feabbe191d874d8983003d4926e647"
     }
   },
-  "releaseNotes": "双平台版：新增 Windows 安装包，Mac / Windows 一套代码同时发布；发布流水线自动化（打 tag 即出双平台包）。",
+  "releaseNotes": "双平台版：新增 Windows 安装包，Mac/Windows 一套代码同时发布。",
   "lastUpdated": "2026-08-24"
 }
