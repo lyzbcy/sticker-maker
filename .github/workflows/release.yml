@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # 回写 version.json 后触发 Pages 重部署（GITHUB_TOKEN 的 push 不会触发其他 workflow）
 
 jobs:
   build:
@@ -168,3 +169,13 @@ jobs:
           git add desktop/site/version.json desktop/site/index.html
           git commit -m "chore(release): 更新 version.json 至 ${GITHUB_REF_NAME}（双平台）" || echo "no changes"
           git push origin HEAD:main
+
+      # GITHUB_TOKEN 的 push 不触发其他 workflow，必须显式 dispatch Pages 部署
+      - name: Trigger Pages redeploy
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/pages.yml/dispatches" \
+            -d '{"ref":"main"}'
+          echo "pages.yml dispatch 已发送"
