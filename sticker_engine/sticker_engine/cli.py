@@ -15,7 +15,7 @@ from .config.schema import Paths, Prefs, ModeProbsConfig
 from .config.paths import resolve_paths, current_platform
 from .config.loader import load_prefs_from_file, save_prefs
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 _engine = None
 _stop_events = {}
@@ -106,10 +106,16 @@ def _login_shell_env():
 
     GUI 应用的 PATH 残缺，subprocess 跑 npm/curl 会失败。这里用 zsh -lic
     重新加载用户的 .zshrc/.zprofile，拿到完整 PATH。
+    Windows 没有 zsh：改为把 npm 全局 bin（%APPDATA%\\npm）补进 PATH。
     """
     import subprocess as sp
     import os as _os
     env = _os.environ.copy()
+    if sys.platform == "win32":
+        npm_bin = _os.path.join(_os.environ.get("APPDATA") or "", "npm")
+        if npm_bin and Path(npm_bin).is_dir() and npm_bin not in env.get("PATH", ""):
+            env["PATH"] = npm_bin + _os.pathsep + env.get("PATH", "")
+        return env
     try:
         out = sp.run(["/bin/zsh", "-lic", "print -rn -- $PATH"],
                      capture_output=True, text=True, timeout=5)
@@ -120,13 +126,25 @@ def _login_shell_env():
     return env
 
 
+def _stream_install_proc(cmd, env):
+    """启动安装命令并流式读输出。Mac 走 zsh（拿 nvm 的 node），Windows 走 cmd。"""
+    import subprocess as sp
+    if sys.platform == "darwin":
+        return sp.Popen(cmd, shell=True, executable="/bin/zsh",
+                        stdout=sp.PIPE, stderr=sp.STDOUT, text=True,
+                        encoding="utf-8", errors="replace", env=env)
+    return sp.Popen(cmd, shell=True,
+                    stdout=sp.PIPE, stderr=sp.STDOUT, text=True,
+                    encoding="utf-8", errors="replace", env=env)
+
+
 def cmd_install_codex(req_id, args):
     """一键安装 codex（用户友好，初心第3行）。
 
     策略（按优先级）：
     1. 先探测已有 codex（桌面 App / 之前装过）→ 直接用，不下载
     2. 走 npm 安装（registry.npmjs.org 通常可达）：npm i -g @openai/codex
-    3. 回退官方脚本（chatgpt.com，部分网络不通）
+    3. 回退官方脚本（chatgpt.com，部分网络不通；仅 macOS/Linux，Windows 无此脚本）
     流式把 stdout 行作为 progress 事件发出去，前端实时显示。
     """
     import subprocess as sp
@@ -155,8 +173,7 @@ def cmd_install_codex(req_id, args):
     env = _login_shell_env()
     lines = []
     try:
-        proc = sp.Popen("npm install -g @openai/codex", shell=True, executable="/bin/zsh",
-                        stdout=sp.PIPE, stderr=sp.STDOUT, text=True, env=env)
+        proc = _stream_install_proc("npm install -g @openai/codex", env)
         for line in proc.stdout:
             line = line.rstrip()
             if line:
@@ -177,13 +194,19 @@ def cmd_install_codex(req_id, args):
     except Exception as e:
         npm_err = f"npm 安装异常: {e}"
 
-    # 策略3：回退官方脚本（chatgpt.com，部分网络可能不通）
+    # 策略3：回退官方脚本（chatgpt.com，部分网络可能不通；Windows 无此脚本）
+    if sys.platform == "win32":
+        _result(req_id, "fail",
+                errors=[{"message": npm_err}],
+                data={"log": "\n".join(lines[-15:]),
+                      "hint": "手动安装：先安装 Node.js 22+（nodejs.org），"
+                              "再在命令行（cmd 或 PowerShell）运行 npm i -g @openai/codex"})
+        return
     _emit({"id": req_id, "type": "progress", "stage": "install",
            "message": "npm 安装未成功，尝试官方脚本...", "percent": 0.7})
     try:
         cmd = "curl -fsSL https://chatgpt.com/codex/install.sh | sh"
-        proc = sp.Popen(cmd, shell=True, executable="/bin/zsh",
-                        stdout=sp.PIPE, stderr=sp.STDOUT, text=True, env=env)
+        proc = _stream_install_proc(cmd, env)
         for line in proc.stdout:
             line = line.rstrip()
             if line:
@@ -431,13 +454,65 @@ def cmd_save_promotion(req_id, args):
 
 
 def cmd_open_in_finder(req_id, args):
+    """在系统文件管理器中打开目录（命令名保持不变，协议兼容）。
+
+    darwin → open（Finder）；win32 → os.startfile（资源管理器）；其他 → xdg-open。
+    """
     import subprocess as sp
     path = args.get("path")
     if path and Path(path).exists():
-        sp.run(["open", path], check=False)
+        if sys.platform == "win32":
+            import os
+            os.startfile(str(path))
+        elif sys.platform == "darwin":
+            sp.run(["open", path], check=False)
+        else:
+            sp.run(["xdg-open", path], check=False)
         _result(req_id, "ok")
     else:
         _result(req_id, "fail", errors=[{"message": f"路径不存在: {path}"}])
+
+
+def cmd_install_chromium(req_id, args):
+    """下载发布用 Chromium（playwright install chromium）。
+
+    打包版内置 playwright driver 但不含浏览器二进制；首次提交微信前调用。
+    Mac/Windows 通用：driver 缺浏览器时它会下载到用户缓存目录。
+    """
+    import subprocess as sp
+
+    def progress(message, percent):
+        _emit({"id": req_id, "type": "progress", "stage": "install",
+               "message": message, "percent": percent})
+
+    progress("正在下载发布浏览器（Chromium，约 150MB，只需一次）...", 0.05)
+    try:
+        if getattr(sys, "frozen", False):
+            # 打包版：直接调 playwright 自带的 node driver
+            from playwright._impl._driver import compute_driver_executable, get_driver_env
+            cmd = [str(compute_driver_executable()), "install", "chromium"]
+            env = get_driver_env()
+        else:
+            cmd = [sys.executable, "-m", "playwright", "install", "chromium"]
+            env = None
+        proc = sp.Popen(cmd, stdout=sp.PIPE, stderr=sp.STDOUT, text=True,
+                        encoding="utf-8", errors="replace", env=env)
+        for line in proc.stdout:
+            line = line.rstrip()
+            if line:
+                progress(line, 0.5)
+        proc.wait()
+        # 校验浏览器就位
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as playwright:
+            ready = Path(playwright.chromium.executable_path).exists()
+        ok = proc.returncode == 0 and ready
+        _result(req_id, "ok" if ok else "fail", data={
+            "ready": ready,
+            "guidance": "" if ok else "Chromium 下载未完成，请检查网络后重试。",
+        })
+    except Exception as exc:
+        _result(req_id, "fail", errors=[{"message": f"安装浏览器失败：{type(exc).__name__}: {exc}"}])
 
 
 def cmd_get_logs(req_id, args):
@@ -687,6 +762,7 @@ HANDLERS = {
     "load_promotion": cmd_load_promotion, "save_promotion": cmd_save_promotion,
     "get_logs": cmd_get_logs, "clear_logs": cmd_clear_logs,
     "check_publish": cmd_check_publish, "publish_episode": cmd_publish_episode,
+    "install_chromium": cmd_install_chromium,
     "agent_start": cmd_agent_start, "agent_status": cmd_agent_status,
     "agent_prompt": cmd_agent_prompt, "agent_stop": cmd_agent_stop,
 }
@@ -711,12 +787,27 @@ def _handle_in_thread(req_id, cmd, args):
         _emit({"id": req_id, "type": "error", "message": f"{type(e).__name__}: {e}"})
 
 
+def _force_utf8_stdio():
+    """强制 stdio 走 UTF-8。
+
+    Windows 管道默认用系统区域编码（中文系统是 GBK），JSON-lines 协议里的
+    中文/emoji（如 "✅"）会触发 UnicodeEncodeError，stdin 的中文入参也会乱码。
+    Mac/Linux 默认就是 UTF-8，reconfigure 无副作用。
+    """
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError, OSError):
+            pass   # 流被替换/关闭时静默跳过
+
+
 def main():
     """常驻读 stdin，每行一个命令 JSON。
 
     C1 修复：每个命令在独立线程执行，主线程立即返回继续读 stdin。
     这样 run（分钟级长任务）期间仍能读取 stop 命令并置位 stop_event。
     """
+    _force_utf8_stdio()
     print(f"[sticker-engine-cli] v{VERSION} 等待命令...", file=sys.stderr)
     active_threads = []
     for line in sys.stdin:

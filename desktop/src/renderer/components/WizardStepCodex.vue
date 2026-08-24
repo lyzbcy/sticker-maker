@@ -39,10 +39,16 @@
         </div>
       </div>
 
-      <!-- 手动安装指引（折叠） -->
+      <!-- 手动安装指引（折叠，按平台显示） -->
       <details class="manual-guide" v-if="!store.installing">
         <summary>安装遇到问题？看手动安装步骤</summary>
-        <div class="guide">
+        <div class="guide" v-if="isWindows">
+          <p>先安装 Node.js 22+（<a href="https://nodejs.org" target="_blank" rel="noopener" style="color:var(--forest)">nodejs.org</a> 下载 LTS 安装包），然后打开命令行（cmd 或 PowerShell），运行：</p>
+          <pre><code>npm i -g @openai/codex</code></pre>
+          <p>然后运行 <code>codex</code> 按提示登录。</p>
+          <p>完成后回来点 [重新检测]。</p>
+        </div>
+        <div class="guide" v-else>
           <p>打开终端，运行：</p>
           <pre><code>curl -fsSL https://chatgpt.com/codex/install.sh | sh</code></pre>
           <p>或（已装 node）：</p>
@@ -65,6 +71,10 @@
 import { onMounted } from 'vue'
 import { useEngineStore } from '../store/engine'
 const store = useEngineStore()
+// 平台检测（渲染层）：Windows 显示 npm 指引，Mac 显示官方脚本指引
+const isWindows = typeof navigator !== 'undefined' &&
+  (navigator.userAgentData?.platform?.toLowerCase().includes('win') ||
+   /windows/i.test(navigator.userAgent))
 onMounted(() => store.checkCodex())
 </script>
 <style scoped>

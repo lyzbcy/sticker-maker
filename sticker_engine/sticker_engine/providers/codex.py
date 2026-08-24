@@ -1,8 +1,19 @@
+import os
 import subprocess
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+
+def _install_guidance() -> str:
+    """手动安装指引，按平台给可用命令。"""
+    if sys.platform == "win32":
+        return ("未找到 codex。可通过软件的「一键安装」按钮安装，"
+                "或先安装 Node.js 22+（nodejs.org），再在命令行运行：npm i -g @openai/codex")
+    return ("未找到 codex。可通过软件的「一键安装」按钮安装，"
+            "或手动运行：curl -fsSL https://chatgpt.com/codex/install.sh | sh")
 
 
 @dataclass
@@ -40,6 +51,18 @@ class CodexProvider:
             return found
         # 3) 已知安装位置 fallback
         home = Path.home()
+        if sys.platform == "win32":
+            candidates = [
+                # npm 全局 bin（Windows 默认装到 %APPDATA%\npm）
+                Path(os.environ.get("APPDATA", "")) / "npm" / "codex.cmd",
+                Path(os.environ.get("APPDATA", "")) / "npm" / "codex.ps1",
+                # Node.js 默认安装位置（系统 PATH 可能没带上的场景）
+                Path(os.environ.get("PROGRAMFILES", "")) / "nodejs" / "codex.cmd",
+            ]
+            for c in candidates:
+                if c.is_file():
+                    return str(c)
+            return None
         candidates = [
             # 桌面 App 的 CLI（ChatGPT.app 用户最常见，本机就是这种）
             home / ".codex" / "plugins" / ".plugin-appserver" / "codex",
@@ -65,14 +88,14 @@ class CodexProvider:
         if resolved is None:
             return CodexStatus(
                 installed=False, logged_in=False, image_ready=False,
-                guidance_msg="未找到 codex。可通过软件的「一键安装」按钮安装，"
-                             "或手动运行：curl -fsSL https://chatgpt.com/codex/install.sh | sh"
+                guidance_msg=_install_guidance(),
             )
         # 用绝对路径，后续 subprocess 不再依赖 PATH
         self.codex_exec = resolved
         # 2) 试跑 --version 确认可调用
         try:
-            r = subprocess.run([self.codex_exec, "--version"], capture_output=True, text=True, timeout=15)
+            r = subprocess.run([self.codex_exec, "--version"], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=15)
             if r.returncode != 0:
                 return CodexStatus(True, False, False, "codex 存在但 --version 失败，可能未登录。")
         except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -98,7 +121,8 @@ class CodexProvider:
         refs = refs or []
         cmd = self.build_generate_command(prompt, refs)
         try:
-            subprocess.run(cmd, capture_output=True, text=True, timeout=timeout or self.timeout, check=False)
+            subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=timeout or self.timeout, check=False)
         except subprocess.TimeoutExpired:
             return None
         return self.scan_latest_image()
@@ -126,7 +150,7 @@ class CodexProvider:
         cmd.append(prompt)
         try:
             r = subprocess.run(
-                cmd, capture_output=True, text=True,
+                cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=timeout or self.timeout, check=False,
             )
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):

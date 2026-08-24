@@ -64,18 +64,62 @@ async function findInstaller(extractDir) {
   return null
 }
 
+/**
+ * 按平台选择更新资产。
+ * 新 schema：platforms.{mac,win}.{url,sha256}；旧 schema（v0.2.0 Mac 客户端）：
+ * downloadUrl/sha256 即 Mac 包。旧客户端读不到 platforms 字段，直接用顶层字段，互不影响。
+ */
+function pickUpdateAsset(data, platform) {
+  const key = platform === 'win32' ? 'win' : 'mac'
+  const fromPlatforms = data && data.platforms && data.platforms[key]
+  if (fromPlatforms && fromPlatforms.url) {
+    return { url: fromPlatforms.url, sha256: fromPlatforms.sha256 || '' }
+  }
+  if (key === 'mac' && data && data.downloadUrl) {
+    return { url: data.downloadUrl, sha256: data.sha256 || '' }
+  }
+  return null
+}
+
+async function downloadToFile(url, destPath) {
+  const response = await fetch(url, { cache: 'no-store' })
+  if (!response.ok) throw new Error(`下载失败（HTTP ${response.status}）`)
+  const bytes = Buffer.from(await response.arrayBuffer())
+  await fs.writeFile(destPath, bytes)
+  return bytes.length
+}
+
 async function downloadAndInstall(mainWindow, data) {
-  if (!validateDownloadUrl(data.downloadUrl)) {
+  const asset = pickUpdateAsset(data, process.platform)
+  if (!asset) {
+    throw new Error('版本信息里没有当前平台的更新包')
+  }
+  if (!validateDownloadUrl(asset.url)) {
     throw new Error('更新地址不是安全的 HTTPS 链接')
   }
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sticker-maker-update-'))
-  const zipPath = path.join(tempDir, 'update.zip')
   mainWindow?.setProgressBar(0.15)
-  const response = await fetch(data.downloadUrl, { cache: 'no-store' })
-  if (!response.ok) throw new Error(`下载失败（HTTP ${response.status}）`)
-  const bytes = Buffer.from(await response.arrayBuffer())
-  await fs.writeFile(zipPath, bytes)
-  if (!(await verifyChecksum(zipPath, data.sha256))) {
+
+  if (process.platform === 'win32') {
+    // Windows：下载 NSIS 安装器 → sha256 校验 → 静默安装（/S）→ 退出
+    const installerPath = path.join(tempDir, 'update-setup.exe')
+    await downloadToFile(asset.url, installerPath)
+    if (!(await verifyChecksum(installerPath, asset.sha256))) {
+      throw new Error('更新包校验失败，已停止安装')
+    }
+    mainWindow?.setProgressBar(1)
+    spawn(installerPath, ['/S'], {
+      detached: true,
+      stdio: 'ignore',
+    }).unref()
+    app.quit()
+    return
+  }
+
+  // macOS：下载 zip → 解包 → install.command --update
+  const zipPath = path.join(tempDir, 'update.zip')
+  await downloadToFile(asset.url, zipPath)
+  if (!(await verifyChecksum(zipPath, asset.sha256))) {
     throw new Error('更新包校验失败，已停止安装')
   }
 
@@ -126,10 +170,11 @@ async function checkForUpdates(mainWindow, { manual = false } = {}) {
       defaultId: 0,
       cancelId: 2,
     })
+    const asset = pickUpdateAsset(data, process.platform)
     if (choice.response === 0) {
       await downloadAndInstall(mainWindow, data)
-    } else if (choice.response === 1 && validateDownloadUrl(data.downloadUrl)) {
-      await shell.openExternal(data.downloadUrl)
+    } else if (choice.response === 1 && asset && validateDownloadUrl(asset.url)) {
+      await shell.openExternal(asset.url)
     }
     return { updateAvailable: true, version: data.version }
   } catch (error) {
@@ -151,6 +196,7 @@ module.exports = {
   checkForUpdates,
   downloadAndInstall,
   isNewerVersion,
+  pickUpdateAsset,
   validateDownloadUrl,
   verifyChecksum,
 }

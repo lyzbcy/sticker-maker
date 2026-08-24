@@ -5,7 +5,6 @@
 登录从 .env 读（base64 密码，迁移现有机制）。
 """
 import base64
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -23,9 +22,13 @@ def _default_tip_thanks() -> Path:
 
 
 def _default_storage_state() -> Path:
-    """登录态持久化路径（Mac 标准 Application Support）。"""
-    home = os.path.expanduser("~")
-    return Path(home) / "Library" / "Application Support" / "StickerEngine" / "publish_storage.json"
+    """登录态持久化路径（按平台标准用户数据目录）。
+
+    darwin → ~/Library/Application Support/StickerEngine（与历史版本一致）
+    win32  → %APPDATA%/StickerEngine
+    """
+    from ..config.paths import resolve_paths, current_platform
+    return resolve_paths(current_platform()).user_data / "publish_storage.json"
 
 
 @dataclass

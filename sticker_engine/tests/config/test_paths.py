@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 from sticker_engine.config.paths import Paths
@@ -5,11 +6,15 @@ from sticker_engine.config.paths import Paths
 
 def test_paths_resolve_mac_uses_app_support():
     p = Paths.resolve("darwin", app_name="StickerEngine")
-    assert "StickerEngine" in str(p.user_data)
-    assert p.user_data.exists() or p.user_data.parent.exists()  # 父目录在
-    # 没有任何 Windows 字面量
-    assert "\\" not in str(p.user_data)
-    assert "E:" not in str(p.user_data)
+    s = str(p.user_data)
+    assert "StickerEngine" in s
+    # "~/Library/Application Support" 只在真 Mac 上存在；Windows 上跑用例只查路径形状
+    if sys.platform == "darwin":
+        assert p.user_data.exists() or p.user_data.parent.exists()  # 父目录在
+        # 没有任何 Windows 字面量
+        assert "\\" not in s
+    assert "Library" in s
+    assert "E:" not in s
 
 
 def test_paths_codex_output_dir_under_home():

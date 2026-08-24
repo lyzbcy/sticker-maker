@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -289,4 +290,6 @@ def test_list_characters_returns_absolute_preview_paths(tmp_path, monkeypatch):
 
     preview = emitted[-1]["data"]["characters"]["甲"]["bases"]["a"]
     assert Path(preview).is_absolute()
-    assert preview.endswith("base_images/星星布丁/base1.jpg")
+    # 路径分隔符跨平台：posix 为 /，Windows 为 \
+    expected = os.path.join("base_images", "星星布丁", "base1.jpg")
+    assert preview.endswith(expected)

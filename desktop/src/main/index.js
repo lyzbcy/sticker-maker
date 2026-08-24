@@ -1,9 +1,21 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron')
+const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron')
 const path = require('path')
 const { PythonBridge } = require('./pythonBridge')
 
 let bridge
 let mainWindow
+
+// 单实例锁：防止多开（Agent 端口 7432 会冲突，双开还会重复跑引擎）
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -29,6 +41,9 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // 去掉默认菜单栏（Windows 上会显示英文 File/Edit/View，粉丝版不需要）
+  Menu.setApplicationMenu(null)
+
   const isPackaged = app.isPackaged
   bridge = new PythonBridge(isPackaged ? 'packaged' : 'dev')
   console.log('[main] isPackaged=', isPackaged, 'cliPath=', isPackaged ? 'packaged' : 'dev')

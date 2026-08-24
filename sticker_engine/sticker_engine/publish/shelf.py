@@ -4,8 +4,10 @@
 点详情→上架→选今日→预约，保证先通过审核的先上架。
 复用 BrowserSession 的登录态。
 """
+import tempfile
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 from .config import PublishConfig
 from .browser import BrowserSession
@@ -64,7 +66,8 @@ class Shelf:
             return {"summary": summary, "results": results}
         except Exception as e:
             try:
-                page.screenshot(path="/tmp/_shelf_error.png")
+                # /tmp 在 Windows 不存在，用系统临时目录
+                page.screenshot(path=str(Path(tempfile.gettempdir()) / "_shelf_error.png"))
             except Exception:
                 pass
             return {"summary": self._summarize(results), "results": results,

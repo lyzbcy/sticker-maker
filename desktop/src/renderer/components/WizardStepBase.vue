@@ -99,7 +99,7 @@ async function uploadBase() {
       return
     }
     uploadedPath.value = result.path
-    uploadedName.value = result.path.split('/').pop()
+    uploadedName.value = result.path.split(/[\\/]/).pop()
     // 上传后调 add_base（复制到用户 base 目录）
     const res = await window.api.send('add_base', {
       path: result.path,
@@ -132,7 +132,7 @@ async function generateBase() {
       character: characterName.value,
     })
     if (res && res.status === 'ok' && res.data && res.data.path) {
-      generateMsg.value = '✅ AI 已生成 base 图：' + res.data.path.split('/').pop()
+      generateMsg.value = '✅ AI 已生成 base 图：' + res.data.path.split(/[\\/]/).pop()
       generateErr.value = false
       store.loadCharacters()
     } else {

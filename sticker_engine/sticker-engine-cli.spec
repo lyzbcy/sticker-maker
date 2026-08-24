@@ -1,6 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec: 打包 A 为单可执行 sticker-engine-cli（含 resources）
-# 重新打包：cd sticker_engine && source .venv/bin/activate && pyinstaller sticker-engine-cli.spec
+# 重新打包（macOS）: cd sticker_engine && source .venv/bin/activate && pyinstaller sticker-engine-cli.spec
+# 重新打包（Windows）: cd sticker_engine && .venv\Scripts\activate && pyinstaller sticker-engine-cli.spec
+# 产物均为 onedir：dist/sticker-engine-cli/sticker-engine-cli(.exe)
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
@@ -28,8 +30,6 @@ a = Analysis(
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
     cipher=block_cipher,
 )
 

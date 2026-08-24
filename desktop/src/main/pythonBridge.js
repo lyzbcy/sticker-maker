@@ -8,6 +8,27 @@ const path = require('path')
  * - progress 事件经 progressCb 和 'progress' EventEmitter 事件流出
  * - 进程崩溃自动 reject 所有 pending
  */
+/**
+ * 解析 CLI 可执行路径（packaged 模式）。
+ * onedir 产物：resources/sticker-engine-cli/sticker-engine-cli(.exe)
+ */
+function resolvePackagedCliPath(resourcesPath, platform = process.platform) {
+  const exeName = platform === 'win32' ? 'sticker-engine-cli.exe' : 'sticker-engine-cli'
+  return path.join(resourcesPath, 'sticker-engine-cli', exeName)
+}
+
+/**
+ * 解析 dev 模式的 venv python 路径（相对仓库根的 sticker_engine/.venv）。
+ * 可用环境变量 STICKER_ENGINE_PYTHON 覆盖（本机 venv 不在默认位置时）。
+ */
+function resolveDevPython(repoRoot, platform = process.platform) {
+  if (process.env.STICKER_ENGINE_PYTHON) return process.env.STICKER_ENGINE_PYTHON
+  const venvPython = platform === 'win32'
+    ? ['sticker_engine', '.venv', 'Scripts', 'python.exe']
+    : ['sticker_engine', '.venv', 'bin', 'python']
+  return path.join(repoRoot, ...venvPython)
+}
+
 class PythonBridge extends EventEmitter {
   constructor(cliPath) {
     super()
@@ -25,11 +46,12 @@ class PythonBridge extends EventEmitter {
     this._stopped = false
     let cmd, args
     if (this.cliPath === 'dev') {
-      cmd = '/Users/zeen/Documents/共享/星星布丁/微信表情包/sticker_engine/.venv/bin/python'
+      // desktop/src/main → 上三级 = 仓库根
+      const repoRoot = path.join(__dirname, '..', '..', '..')
+      cmd = resolveDevPython(repoRoot)
       args = ['-m', 'sticker_engine.cli']
     } else if (this.cliPath === 'packaged') {
-      // onedir 模式：可执行在 sticker-engine-cli/sticker-engine-cli
-      cmd = path.join(process.resourcesPath, 'sticker-engine-cli', 'sticker-engine-cli')
+      cmd = resolvePackagedCliPath(process.resourcesPath)
       args = []
     } else {
       cmd = this.cliPath
@@ -139,4 +161,4 @@ class PythonBridge extends EventEmitter {
   }
 }
 
-module.exports = { PythonBridge }
+module.exports = { PythonBridge, resolvePackagedCliPath, resolveDevPython }

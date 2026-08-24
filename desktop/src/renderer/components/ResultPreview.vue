@@ -23,7 +23,7 @@
       </div>
       <p v-if="store.publishResult?.success" class="publish-ok">已提交到微信表情开放平台。</p>
       <div class="actions">
-        <button class="btn btn-ghost" @click="openFinder">在 Finder 中显示</button>
+        <button class="btn btn-ghost" @click="openFinder">在文件夹中显示</button>
         <button
           class="btn btn-publish"
           data-test="publish"

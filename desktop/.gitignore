@@ -1,3 +1,6 @@
+# 注意：build/ 下的图标（icon.icns/.ico/.png）需要入库（Windows/Mac CI 构建都要用），
+# 用 `git add -f desktop/build/icon.*` 强制加入；已入库的文件不受 ignore 影响。
+# 其余构建临时产物（如 entitlements）仍被忽略。
 build/
 dist/
 node_modules/

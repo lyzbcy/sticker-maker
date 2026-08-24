@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-version="0.2.0">
+<html lang="zh-CN" data-version="0.3.0">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="把角色 base 图变成完整微信表情专辑：AI 生图、切图、抠图、素材与提交，一款 Mac 软件完成。" />
+  <meta name="description" content="把角色 base 图变成完整微信表情专辑：AI 生图、切图、抠图、素材与提交，Mac 和 Windows 一款软件完成。" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>">
   <title>表情包一键制作 · 捞鱼工作室</title>
   <style>
@@ -51,6 +51,10 @@
     .install{display:grid;grid-template-columns:.85fr 1.15fr;gap:30px;align-items:start}
     .install-copy{position:sticky;top:30px;padding:30px;background:var(--yellow);border-radius:var(--radius)}
     .install-copy h2{margin:0 0 12px;color:var(--forest);font-size:38px}.install-copy p{color:#625a33;line-height:1.7}
+    .os-tabs{display:flex;gap:8px;margin-top:18px}
+    .os-tab{flex:1;padding:11px 14px;border:1.5px solid rgba(30,58,36,.18);border-radius:999px;background:rgba(255,255,255,.55);color:var(--forest);font-weight:800;font-size:14px;cursor:pointer;transition:.15s}
+    .os-tab.on{background:var(--forest);color:white;border-color:var(--forest)}
+    .current-tag{font-style:normal;font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;background:var(--yellow);color:var(--forest);margin-left:6px}
     .install-list{display:flex;flex-direction:column;gap:14px}
     .install-item{display:grid;grid-template-columns:54px 1fr;gap:15px;padding:22px;background:white;border:1px solid var(--paper);border-radius:22px}
     .install-item b{width:44px;height:44px;display:grid;place-items:center;border-radius:50%;background:var(--sage);color:var(--forest)}
@@ -73,7 +77,7 @@
   <div class="wrap">
     <nav>
       <div class="brand"><span class="brand-mark">🎨</span>表情包一键制作</div>
-      <div class="nav-links"><a href="#features">功能</a><a href="#install">安装</a><a href="#agent">AI 接口</a><a class="nav-download" id="navDownload" href="#">下载 Mac 版</a></div>
+      <div class="nav-links"><a href="#features">功能</a><a href="#install">安装</a><a href="#agent">AI 接口</a><a class="nav-download" id="navDownload" href="#">下载</a></div>
     </nav>
   </div>
 
@@ -81,14 +85,14 @@
     <section class="hero">
       <div class="wrap hero-grid">
         <div>
-          <span class="eyebrow">🐟 捞鱼工作室 · Mac 版</span>
+          <span class="eyebrow">🐟 捞鱼工作室 · Mac / Windows 双平台</span>
           <h1>把你的角色<br>变成一整套<em>表情包</em></h1>
           <p class="lead">从 base 图、故事生图、自动切图抠图，到微信上架素材和提交入口，都收进一个普通人也能用的软件里。</p>
           <div class="hero-actions">
-            <a class="button primary" id="downloadBtn" href="#">📦 下载 Mac v<span data-version-text>0.2.0</span></a>
-            <a class="button secondary" href="#install">先看安装方法</a>
+            <a class="button primary os-btn" id="downloadMac" href="#"> 下载 Mac 版 v<span data-version-text>0.3.0</span><i class="current-tag" hidden>当前系统</i></a>
+            <a class="button secondary os-btn" id="downloadWin" href="#"> 下载 Windows 版 v<span data-version-text>0.3.0</span><i class="current-tag" hidden>当前系统</i></a>
           </div>
-          <p class="meta">支持 1×1 / 2×2 / 3×3 / 4×4 · macOS 11+ · 生图需要 Codex</p>
+          <p class="meta">支持 1×1 / 2×2 / 3×3 / 4×4 · macOS 11+ / Windows 10+ · 生图需要 Codex</p>
         </div>
         <div class="sticker-stage" aria-label="精选表情预览">
           <div class="sticker-card"><img src="assets/stickers/开心.png" alt="开心表情"><span>开心一下</span></div>
@@ -119,19 +123,30 @@
           <article class="step"><h3>准备角色</h3><p>检查 Codex，上传 base，设定角色和每张 base 的概率。</p></article>
           <article class="step"><h3>选择模式</h3><p>参考图库、故事或排列组合，再选择宫格资源消耗。</p></article>
           <article class="step"><h3>自动制作</h3><p>看进度完成生图、切图、抠图、含义预检与素材制作。</p></article>
-          <article class="step"><h3>检查并提交</h3><p>在 Finder 查看成品，确认后从软件打开微信提交流程。</p></article>
+          <article class="step"><h3>检查并提交</h3><p>在文件夹查看成品，确认后从软件打开微信提交流程。</p></article>
         </div>
       </div>
     </section>
 
     <section id="install">
       <div class="wrap install">
-        <div class="install-copy"><h2>三下就装好</h2><p>下载的是 zip，里面只有应用和快捷安装文件。快捷安装会处理 macOS 隔离提示、复制到「应用程序」并自动启动。</p><a class="button primary" id="installDownload" href="#">下载 v<span data-version-text>0.2.0</span></a></div>
-        <div class="install-list">
+        <div class="install-copy"><h2>几步就装好</h2><p>Mac 下载的是 zip，里面有应用和快捷安装文件；Windows 下载的是安装器，双击即可。装好后在软件里按向导检查 Codex，以后都能一键更新。</p>
+          <div class="os-tabs" role="tablist">
+            <button class="os-tab" id="tabMac" role="tab" data-os="mac">🍎 Mac</button>
+            <button class="os-tab" id="tabWin" role="tab" data-os="win">🪟 Windows</button>
+          </div>
+        </div>
+        <div class="install-list" id="installMac">
           <article class="install-item"><b>1</b><div><h3>解压 zip</h3><p>双击下载的压缩包，保持 `.app` 和 `install.command` 在同一个文件夹。</p></div></article>
           <article class="install-item"><b>2</b><div><h3>双击快捷安装</h3><p>系统若询问权限，按提示允许；安装器会自动复制并启动应用。</p></div></article>
           <article class="install-item"><b>3</b><div><h3>按向导检查 Codex</h3><p>软件会先检测安装、登录和生图链路；未就绪时给出对应设置提示。</p></div></article>
           <article class="install-item"><b>↻</b><div><h3>以后可一键更新</h3><p>发现新版本时在软件内点击「一键更新」，无需重新寻找下载文件。</p></div></article>
+        </div>
+        <div class="install-list" id="installWin" hidden>
+          <article class="install-item"><b>1</b><div><h3>下载安装器</h3><p>点击上方「下载 Windows 版」保存 `sticker-maker-win-v` 安装器。</p></div></article>
+          <article class="install-item"><b>2</b><div><h3>双击安装</h3><p>第一次运行若出现蓝色「Windows 已保护你的电脑」提示，点「更多信息」→「仍要运行」即可（因为还没购买代码签名证书）。</p></div></article>
+          <article class="install-item"><b>3</b><div><h3>按向导检查 Codex</h3><p>软件会检测 Codex（生图引擎），可一键安装；需要先装 Node.js 22+。</p></div></article>
+          <article class="install-item"><b>↻</b><div><h3>以后可一键更新</h3><p>发现新版本时在软件内点击「一键更新」，自动完成下载和安装。</p></div></article>
         </div>
       </div>
     </section>
@@ -170,6 +185,44 @@ Authorization: Bearer &lt;本机 token&gt;</code>
   </dialog>
 
   <script>
+    (function () {
+      // ---- OS 识别：自动高亮当前平台的下载按钮与安装说明 ----
+      function detectOS() {
+        var ua = navigator.userAgent || '';
+        var uaPlatform = (navigator.userAgentData && navigator.userAgentData.platform) || '';
+        if (/win/i.test(uaPlatform) || /Windows/i.test(ua)) return 'win';
+        if (/mac/i.test(uaPlatform) || /Macintosh/i.test(ua)) return 'mac';
+        return 'other';
+      }
+      var os = detectOS();
+
+      function setInstallTab(which) {
+        document.getElementById('tabMac').classList.toggle('on', which === 'mac');
+        document.getElementById('tabWin').classList.toggle('on', which === 'win');
+        document.getElementById('installMac').hidden = which !== 'mac';
+        document.getElementById('installWin').hidden = which !== 'win';
+      }
+      document.getElementById('tabMac').addEventListener('click', function () { setInstallTab('mac'); });
+      document.getElementById('tabWin').addEventListener('click', function () { setInstallTab('win'); });
+      setInstallTab(os === 'win' ? 'win' : 'mac');   // 未识别系统时默认 Mac（老用户群）
+
+      // hero 双按钮：当前系统 primary + 「当前系统」角标，另一个 secondary
+      var macBtn = document.getElementById('downloadMac');
+      var winBtn = document.getElementById('downloadWin');
+      var currentBtn = os === 'win' ? winBtn : macBtn;   // 'other' 默认高亮 Mac
+      var otherBtn = os === 'win' ? macBtn : winBtn;
+      currentBtn.classList.add('primary');
+      currentBtn.classList.remove('secondary');
+      otherBtn.classList.add('secondary');
+      otherBtn.classList.remove('primary');
+      var tag = currentBtn.querySelector('.current-tag');
+      if (tag) tag.hidden = os !== 'other';
+
+      // 顶部导航跟随当前系统
+      var nav = document.getElementById('navDownload');
+      if (nav) nav.textContent = os === 'win' ? '下载 Windows 版' : '下载 Mac 版';
+    })();
+
     (async function () {
       var pageVersion = document.documentElement.dataset.version;
       try {
@@ -186,9 +239,15 @@ Authorization: Bearer &lt;本机 token&gt;</code>
         document.querySelectorAll('[data-version-text]').forEach(function (node) {
           node.textContent = data.version || pageVersion;
         });
-        ['downloadBtn', 'navDownload', 'installDownload'].forEach(function (id) {
-          if (data.downloadUrl) document.getElementById(id).href = data.downloadUrl;
-        });
+        // 双平台下载地址：新 schema platforms.{mac,win}，回退旧 downloadUrl（=Mac）
+        var macUrl = (data.platforms && data.platforms.mac && data.platforms.mac.url) || data.downloadUrl;
+        var winUrl = data.platforms && data.platforms.win && data.platforms.win.url;
+        if (macUrl) document.getElementById('downloadMac').href = macUrl;
+        if (winUrl) document.getElementById('downloadWin').href = winUrl;
+        // 导航跟随当前系统平台的地址
+        var os = /Windows/i.test(navigator.userAgent) ? 'win' : 'mac';
+        var navUrl = os === 'win' ? winUrl : macUrl;
+        if (navUrl) document.getElementById('navDownload').href = navUrl;
       } catch (error) {
         console.warn('版本信息暂时不可用', error);
       }
