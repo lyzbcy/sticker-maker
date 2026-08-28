@@ -1,7 +1,7 @@
 <template>
   <div class="result">
-    <!-- 失败卡片（brick 红，柔和不刺眼） -->
-    <div v-if="store.lastError" class="error-card">
+    <!-- 失败卡片（brick 红，柔和不刺眼）——只管"生成"失败；发布失败在成功卡内展示 -->
+    <div v-if="store.lastError && !store.lastEpisode" class="error-card">
       <div class="state-icon err">!</div>
       <div class="card-body">
         <h4 class="card-title">生成失败</h4>
@@ -22,6 +22,12 @@
         {{ store.publishProgress.message }}
       </div>
       <p v-if="store.publishResult?.success" class="publish-ok">已提交到微信表情开放平台。</p>
+      <!-- 发布失败详情：就地展示具体原因（截图路径若有也给出），不吞掉成功卡片 -->
+      <div v-else-if="publishFailed" class="publish-fail">
+        <p class="publish-fail-title">发布未完成（{{ publishFailedStep }}）</p>
+        <p class="publish-fail-detail">{{ publishFailed.error }}</p>
+        <p v-if="publishFailed.screenshot" class="publish-fail-shot">现场截图：{{ publishFailed.screenshot }}</p>
+      </div>
       <div class="actions">
         <button class="btn btn-ghost" @click="openFinder">在文件夹中显示</button>
         <button
@@ -30,7 +36,7 @@
           :disabled="store.publishing"
           @click="publish"
         >
-          {{ store.publishing ? '正在提交…' : '一键提交微信' }}
+          {{ store.publishing ? '正在提交…' : (publishFailed ? '重试发布' : '一键提交微信') }}
         </button>
         <button class="btn btn-primary" @click="store.runGenerate">再生成一组</button>
         <button class="btn btn-soft" @click="store.clearResult">回到主页</button>
@@ -39,8 +45,22 @@
   </div>
 </template>
 <script setup>
+import { computed } from 'vue'
 import { useEngineStore } from '../store/engine'
 const store = useEngineStore()
+
+const publishFailed = computed(() =>
+  !store.publishing && store.publishResult && store.publishResult.success === false
+    ? store.publishResult : null)
+const STEP_LABELS = {
+  prepare: '素材检查', browser: '浏览器', login: '登录', form: '打开表单',
+  upload: '上传表情', meanings: '含义词', album: '专辑信息', copyright: '版权',
+  assets: '宣传图', categories: '分类', price: '价格', tips: '赞赏图',
+  submit: '提交', runtime: '运行环境', unknown: '未知步骤',
+}
+const publishFailedStep = computed(() =>
+  STEP_LABELS[publishFailed.value?.step] || publishFailed.value?.step || '')
+
 async function openFinder() {
   if (store.lastEpisode?.episode_dir && window.api) {
     await window.api.send('open_in_finder', { path: store.lastEpisode.episode_dir })
@@ -120,6 +140,20 @@ async function publish() {
 }
 .publish-progress { color: var(--forest); font-size: 13px; font-weight: 600; }
 .publish-ok { color: var(--correct); font-size: 13px; font-weight: 700; }
+
+/* 发布失败详情（就地展示，不吞成功卡片） */
+.publish-fail {
+  margin: 6px 0;
+  padding: 10px 16px;
+  background: rgba(181, 72, 42, .07);
+  border: 1.5px solid rgba(181, 72, 42, .35);
+  border-radius: var(--r-md);
+  text-align: left;
+  animation: pageFadeIn .25s ease both;
+}
+.publish-fail-title { margin: 0; color: var(--brick); font-weight: 700; font-size: 13px; }
+.publish-fail-detail { margin: 4px 0 0; color: var(--ink); font-size: 12px; line-height: 1.6; word-break: break-all; }
+.publish-fail-shot { margin: 4px 0 0; color: var(--muted-soft); font-size: 11px; word-break: break-all; }
 
 /* ============ 按钮（胶囊） ============ */
 .actions {

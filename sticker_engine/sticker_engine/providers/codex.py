@@ -1,10 +1,25 @@
 import os
-import subprocess
 import shutil
+import subprocess
 import sys
+import tempfile
+import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
+
+
+def _flatten_prompt(prompt: str) -> str:
+    """把 prompt 压成单行（换行→空格）。
+
+    2026-08-27 事故根因：Windows 下经 npm 的 codex.cmd（cmd.exe 包装）调用时，
+    含换行的 prompt 参数会破坏参数解析——codex 把 -i 参考图全部静默丢弃
+    （会话 input_image=0、无任何报错），模型看不到角色 base 图，凭空造出
+    非 IP 角色或输出全黑废图。实测同一路径单行 prompt 100% 正常附加。
+    模板无需换行（模型对单行同样敏感），统一拍平以绝后患。
+    """
+    return " ".join(str(prompt).split()) if prompt else prompt
 
 
 def _install_guidance() -> str:
@@ -31,10 +46,14 @@ class CodexProvider:
     """
 
     def __init__(self, codex_exec: str = "codex", output_dir: Optional[Path] = None,
-                 timeout: int = 300):
+                 timeout: int = 600):
         self.codex_exec = codex_exec
         self.output_dir = Path(output_dir) if output_dir else Path.home() / ".codex" / "generated_images"
-        self.timeout = timeout
+        self.timeout = timeout   # 4×4 网格 codex 会自我迭代多轮（初稿→修分隔线→重绘），300s 不够
+        # 等待 codex 期间的心跳间隔（秒），测试时可调小
+        self.heartbeat_interval = 5.0
+        # 最近一次 generate 的失败原因（人类可读，供上层展示；成功时为空串）
+        self.last_error = ""
 
     def _resolve_codex_path(self) -> Optional[str]:
         """多路径探测 codex 可执行文件。
@@ -109,23 +128,151 @@ class CodexProvider:
         )
 
     def build_generate_command(self, prompt: str, refs: list) -> list:
-        """构建 codex exec 命令。返回参数数组（安全，不经 shell）。"""
-        cmd = [self.codex_exec, "exec", "--enable", "image_generation", "--sandbox", "read-only"]
+        """构建 codex exec 命令。返回参数数组（安全，不经 shell）。
+
+        参数顺序是 codex 0.134+ (clap) 的硬性要求，错一个就挂：
+        - prompt 必须放在 -i 之前：-i/--image 是多值参数，会贪婪吞掉其后的
+          所有位置参数（原实现把 prompt 放最后，被当成第二个图片文件名，
+          codex 转而读 stdin 并永远挂起 → 300s 超时零输出）。
+        - --skip-git-repo-check：引擎的工作目录不在 git 仓库内，
+          没有该 flag 时 codex 直接拒绝执行（Not inside a trusted directory）。
+        """
+        cmd = [self.codex_exec, "exec", "--skip-git-repo-check",
+               "--enable", "image_generation", "--sandbox", "read-only"]
+        cmd.append(_flatten_prompt(prompt))
         for r in refs:
             cmd += ["-i", str(r)]
-        cmd.append(prompt)
         return cmd
 
-    def generate(self, prompt: str, refs: list = None, timeout: int = None) -> Optional[Path]:
-        """调用 codex 生图，返回最新生成图的路径。失败返回 None。"""
-        refs = refs or []
+    def _stage_refs_ascii(self, refs: list) -> list:
+        """把参考图复制到纯 ASCII 临时路径后再传给 codex（2026-08-27 事故修复）。
+
+        复盘：在 App（GUI 无控制台）环境下经 cmd.exe 包装调 codex 时，路径含
+        中文（如 base_images\\捞鱼\\base2.png）的 -i 图片会被 codex 静默丢弃
+        ——会话里 input_image=0、无任何报错，模型只能凭空造角色/输出废图；
+        而纯 ASCII 路径的图片 100% 正常附加。终端环境虽能附加中文路径，但
+        为统一行为、彻底规避编码类问题，一律暂存为 ASCII 路径再传。
+        顺带剔除不存在的路径，不让 codex 白吞。
+        """
+        staged = []
+        for i, r in enumerate(refs):
+            p = Path(r)
+            try:
+                if not p.is_file():
+                    continue
+                s = str(p.resolve())
+                if s.isascii():
+                    staged.append(p)
+                    continue
+                base = None
+                for cand in (Path(tempfile.gettempdir()), Path("C:/Temp"),
+                             Path("C:/Windows/Temp")):
+                    if str(cand).isascii():
+                        base = cand / "sticker_refs" / uuid.uuid4().hex[:12]
+                        break
+                if base is None:
+                    continue
+                base.mkdir(parents=True, exist_ok=True)
+                dst = base / f"ref{i}{p.suffix or '.png'}"
+                shutil.copy2(p, dst)
+                staged.append(dst)
+            except Exception:
+                continue
+        return staged
+
+    def generate(self, prompt: str, refs: list = None, timeout: int = None,
+                 on_wait: Callable[[int, str], None] = None) -> Optional[Path]:
+        """调用 codex 生图，返回最新生成图的路径。失败返回 None。
+
+        - on_wait(elapsed_seconds, output_tail)：等待期间的心跳回调，
+          每 ~5 秒一次，用于向上层报告"在等什么"（codex 静默期长，必须有心跳）。
+        - 失败原因写入 self.last_error（超时/退出码/输出尾部/无产出图），
+          供调用方展示给用户，不再静默吞掉。
+        """
+        import threading
+        refs = self._stage_refs_ascii(refs or [])
         cmd = self.build_generate_command(prompt, refs)
+        self.last_error = ""
+        deadline_secs = timeout or self.timeout
         try:
-            subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
-                           errors="replace", timeout=timeout or self.timeout, check=False)
-        except subprocess.TimeoutExpired:
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL,   # 显式空 stdin：codex 在管道环境会附加读取 stdin，不给会挂住
+                text=True, encoding="utf-8", errors="replace")
+        except (FileNotFoundError, OSError) as e:
+            self.last_error = f"无法启动 codex：{e}"
             return None
-        return self.scan_latest_image()
+
+        # 后台线程持续泵取输出（避免 PIPE 缓冲区满导致死锁，也攒出"尾部"给心跳）
+        chunks = {"out": [], "err": []}
+
+        def _pump(stream, key):
+            try:
+                for line in iter(stream.readline, ""):
+                    chunks[key].append(line)
+            except Exception:
+                pass
+            finally:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+
+        pump_out = threading.Thread(target=_pump, args=(proc.stdout, "out"), daemon=True)
+        pump_err = threading.Thread(target=_pump, args=(proc.stderr, "err"), daemon=True)
+        pump_out.start()
+        pump_err.start()
+
+        start = time.time()
+        deadline = start + deadline_secs
+        last_beat = 0.0
+        while proc.poll() is None:
+            time.sleep(0.5)
+            now = time.time()
+            if now >= deadline:
+                proc.kill()
+                proc.wait()
+                tail = ("".join(chunks["out"]) + "".join(chunks["err"]))[-200:].strip()
+                # 超时收割：codex 迭代期间可能已写出中间版图片，杀了进程也先扫一次，
+                # 有图就宽容地用上（用户体验远好于直接判死）
+                img = self.scan_latest_image()
+                if img is not None:
+                    self.last_error = (
+                        f"codex 超时（{deadline_secs}s）被终止，但已收割到此前生成的图片。"
+                        f"最后输出：{tail or '（无输出）'}")
+                    return img
+                self.last_error = (
+                    f"codex 超时（{deadline_secs}s）被终止。"
+                    f"最后输出：{tail or '（无输出）'}")
+                return None
+            # 每 heartbeat_interval 秒发一次心跳（elapsed 秒数 + codex 输出尾部）
+            if on_wait is not None and now - last_beat >= self.heartbeat_interval:
+                last_beat = now
+                # codex 的进度信息可能在 stdout 或 stderr，都带上
+                tail = ("".join(chunks["out"]) + "".join(chunks["err"]))[-200:].strip()
+                try:
+                    on_wait(int(now - start), tail)
+                except Exception:
+                    pass
+
+        elapsed = int(time.time() - start)
+        stdout = "".join(chunks["out"])
+        stderr = "".join(chunks["err"])
+
+        if proc.returncode != 0:
+            err_tail = stderr.strip()[-300:] or stdout.strip()[-300:]
+            self.last_error = (
+                f"codex 退出码 {proc.returncode}（耗时 {elapsed}s）。"
+                f"输出尾部：{err_tail or '（无输出）'}")
+            return None
+
+        img = self.scan_latest_image()
+        if img is None:
+            out_tail = stdout.strip()[-300:]
+            self.last_error = (
+                f"codex 正常退出（耗时 {elapsed}s）但没有产出新图。"
+                f"输出尾部：{out_tail or '（无输出）'}")
+        return img
 
     def generate_base_image(self, prompt: str, timeout: int = None) -> Optional[Path]:
         """决策 J1：生成新 base 图（无参考图）。"""
@@ -142,16 +289,18 @@ class CodexProvider:
         失败语义：非零退出 / 超时 / 文件缺失 一律返回空字符串 ``""``，
         不抛异常（调用方据空串降级，保持管线不崩）。
         """
-        refs = refs or []
+        refs = self._stage_refs_ascii(refs or [])
         # 文本任务：普通 codex exec，不带 image_generation flag
-        cmd = [self.codex_exec, "exec"]
+        # 参数顺序同 build_generate_command：prompt 必须在 -i 之前（-i 是多值参数会吞掉它），
+        # 且需要 --skip-git-repo-check（工作目录不在 git 仓库时 codex 拒绝执行）
+        cmd = [self.codex_exec, "exec", "--skip-git-repo-check"]
+        cmd.append(_flatten_prompt(prompt))
         for r in refs:
             cmd += ["-i", str(r)]
-        cmd.append(prompt)
         try:
             r = subprocess.run(
                 cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                timeout=timeout or self.timeout, check=False,
+                stdin=subprocess.DEVNULL, timeout=timeout or self.timeout, check=False,
             )
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             return ""

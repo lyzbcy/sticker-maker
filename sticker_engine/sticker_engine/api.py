@@ -60,14 +60,21 @@ class StickerEngine:
             if self._test_mocks.get("codex_ready"):
                 codex = MagicMock()
 
-                def _fake_gen(prompt, refs=None, timeout=None):
+                def _fake_gen(prompt, refs=None, timeout=None, on_wait=None):
                     import os
                     import tempfile
                     fd, p = tempfile.mkstemp(
                         suffix=".png", dir=str(self.config.paths.user_data))
                     os.close(fd)
                     from PIL import Image
-                    Image.new("RGBA", (400, 400), (255, 0, 255, 255)).save(p)
+                    # 洋红底 + 深洋红方块：不能是纯色图（S1 废图质检会拦），
+                    # 且两种色都在洋红键控范围内，不影响后续抠图
+                    im = Image.new("RGBA", (400, 400), (255, 0, 255, 255))
+                    for i in range(0, 400, 100):
+                        for j in range(0, 400, 100):
+                            if (i + j) // 100 % 2 == 0:
+                                im.paste((220, 0, 220, 255), (i + 25, j + 25, i + 75, j + 75))
+                    im.save(p)
                     return Path(p)
 
                 codex.generate.side_effect = _fake_gen
@@ -137,6 +144,23 @@ class StickerEngine:
             aborted_reason = f"运行异常：{type(e).__name__}: {e}"
         # C2 修复：success 由关卡 errors / 异常决定，调用方可据 success 区分成功失败
         success = not ctx.errors and not aborted_reason
+        # 成功后自动按默认系列编号命名（prefs.default_series_id）：
+        # 「周思涵做表情系列」起始 60 → 专辑名「周思涵做表情 60」，同系列下一个 61
+        if success and ctx.episode_dir is not None:
+            try:
+                from .config.series import (find_series, assign_to_series,
+                                            load_series, save_series)
+                sid = getattr(self.config.prefs, "default_series_id", None)
+                target = find_series(sid) if sid else None
+                if target is not None:
+                    assign_to_series(ctx.episode_dir, target)
+                    all_series = load_series()
+                    for s in all_series:
+                        if s.id == target.id:
+                            s.next_number = target.next_number
+                    save_series(all_series)
+            except Exception:
+                pass   # 命名失败不影响作品产出
         ep = Episode(
             episode_dir=ctx.episode_dir, stickers=ctx.stickers,
             meaning_map=ctx.meaning_map, assets=ctx.assets,

@@ -25,7 +25,10 @@ def _codex_output_dir() -> Path:
 
 
 def resolve_paths(platform: str, app_name: str = "StickerEngine") -> Paths:
-    user_data = _app_data_dir(platform, app_name)
+    # 测试隔离口（也方便高级用户整体搬数据目录）：
+    # STICKER_ENGINE_USER_DATA 指定后，全部用户数据（episodes/prefs/…）随之迁移
+    override = os.environ.get("STICKER_ENGINE_USER_DATA")
+    user_data = Path(override) if override else _app_data_dir(platform, app_name)
     return Paths(
         user_data=user_data,
         output_root=user_data / "episodes",

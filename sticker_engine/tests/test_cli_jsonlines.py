@@ -220,6 +220,9 @@ def test_publish_episode_command_returns_structured_result(tmp_path, monkeypatch
 
     episode_dir = tmp_path / "一弹"
     episode_dir.mkdir()
+    # 发布前置校验要求正式命名（时间戳/空名会被拦截），写 meta
+    (episode_dir / "meta.json").write_text(
+        '{"album_name": "一弹"}', encoding="utf-8")
     monkeypatch.setattr(
         cli,
         "_publish_episode",

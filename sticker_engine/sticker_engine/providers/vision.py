@@ -53,16 +53,28 @@ class VisionProvider:
         text = self.codex.exec_text(prompt=prompt, refs=[contact])
         return self._parse_meanings_from_text(text, n)
 
-    def write_intro(self, meanings: list, episode_name: str = "") -> str:
+    def write_intro(self, meanings: list, episode_name: str = "",
+                    custom_prompt: str = "") -> str:
         """写 1-80 字软萌介绍。
 
+        custom_prompt：系列级自定义提示词（用户可配）。含 {name}/{meanings}
+        占位符则替换（name=专辑名、meanings=含义词）；否则整体作为提示词并附上下文。
         codex 成功 → 返回 codex 文本（硬截断 80 字）。
         codex 失败（空串）→ 降级到一个基于含义词的简单模板（非固定字面量）。
         """
-        prompt = (
-            f"为表情包《{episode_name}》写一句 1-80 字的软萌介绍，不要模板腔。"
-            f"这些表情的含义：{','.join(meanings[:8])}。只返回介绍文本。"
-        )
+        meanings_text = ",".join((meanings or [])[:8])
+        tpl = (custom_prompt or "").strip()
+        if tpl:
+            if "{" in tpl:
+                prompt = tpl.format(name=episode_name, meanings=meanings_text)
+            else:
+                prompt = (tpl + "\n（表情包《" + episode_name + "》，含义："
+                          + meanings_text + "。只返回介绍文本。）")
+        else:
+            prompt = (
+                f"为表情包《{episode_name}》写一句 1-80 字的软萌介绍，不要模板腔。"
+                f"这些表情的含义：{meanings_text}。只返回介绍文本。"
+            )
         text = self.codex.exec_text(prompt=prompt)
         text = (text or "").strip()
         if text:

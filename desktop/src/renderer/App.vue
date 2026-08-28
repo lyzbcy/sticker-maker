@@ -5,9 +5,14 @@
     </div>
     <Wizard v-else-if="store.phase === 'wizard'" class="page-fade" />
     <MainScreen v-else-if="store.phase === 'main'" class="page-fade" />
+    <EpisodesPanel v-else-if="store.phase === 'episodes'" class="page-fade" />
+    <EpisodeDetailPanel v-else-if="store.phase === 'episodeDetail'" class="page-fade" />
     <SettingsPanel v-else-if="store.phase === 'settings'" class="page-fade" />
     <ToolsPanel v-else-if="store.phase === 'tools'" class="page-fade" />
     <AboutPanel v-else-if="store.phase === 'about'" class="page-fade" @back="store.phase = 'main'" />
+    <StatusBar />
+    <!-- 求好评小弹窗（发布≥2次触发，15 天不打扰） -->
+    <ReviewAskModal :visible="store.reviewAskVisible" @dismiss="store.dismissReviewAsk()" />
   </div>
 </template>
 
@@ -16,9 +21,13 @@ import { onMounted } from 'vue'
 import { useEngineStore } from './store/engine'
 import Wizard from './components/Wizard.vue'
 import MainScreen from './components/MainScreen.vue'
+import EpisodesPanel from './components/EpisodesPanel.vue'
+import EpisodeDetailPanel from './components/EpisodeDetailPanel.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import ToolsPanel from './components/ToolsPanel.vue'
 import AboutPanel from './components/AboutPanel.vue'
+import StatusBar from './components/StatusBar.vue'
+import ReviewAskModal from './components/ReviewAskModal.vue'
 
 const store = useEngineStore()
 onMounted(() => store.init())
@@ -95,7 +104,7 @@ body {
 
 * { box-sizing: border-box; }
 
-.app { min-height: 100vh; }
+.app { min-height: 100vh; padding-bottom: 40px; }  /* 底部留出状态栏高度 */
 
 .center {
   display: flex;

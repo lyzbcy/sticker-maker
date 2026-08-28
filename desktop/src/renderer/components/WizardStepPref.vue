@@ -36,6 +36,21 @@
       <label for="story" class="check-label">故事模式（每 4 张一个小故事，推荐）</label>
     </div>
 
+    <!-- 默认系列（run 完成自动命名） -->
+    <div class="field">
+      <label class="field-label">默认系列（生图完成后自动按系列编号命名）</label>
+      <select v-model="store.prefs.default_series_id">
+        <option :value="null">不自动命名（生成后到详情页手动命名）</option>
+        <option v-for="s in seriesOptions" :key="s.id" :value="s.id">
+          {{ s.name }}（下一个：{{ s.name }} {{ s.next_number }}）
+        </option>
+      </select>
+      <p class="hint">
+        选了系列后，每次生图完成自动命名（如「{{ firstSeriesName }} {{ firstSeriesNext }}"），
+        同系列编号自动 +1。系列可在作品详情页创建。
+      </p>
+    </div>
+
     <!-- 参考图库位置 -->
     <div class="field">
       <label class="field-label">参考图库位置</label>
@@ -49,8 +64,21 @@
   </div>
 </template>
 <script setup>
+import { computed, onMounted, ref } from 'vue'
 import { useEngineStore } from '../store/engine'
 const store = useEngineStore()
+const seriesOptions = ref([])
+
+onMounted(async () => {
+  if (!window.api) return
+  try {
+    const res = await window.api.send('list_series')
+    if (res && res.status === 'ok') seriesOptions.value = res.data.series || []
+  } catch { /* 列表加载失败不阻塞 */ }
+})
+
+const firstSeriesName = computed(() => seriesOptions.value[0]?.name || '系列名')
+const firstSeriesNext = computed(() => seriesOptions.value[0]?.next_number ?? 1)
 
 async function selectRefDir() {
   if (!window.api || !window.api.selectDirectory) return

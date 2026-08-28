@@ -1,27 +1,64 @@
-"""三模式的 prompt 模板（移植自现有 reference/prompt-templates.md）。"""
+"""三模式的 prompt 模板。
+
+2026-08 重写：吸收 GitHub 优秀 sticker prompt 案例（awesome-gpt4o-images
+Case 21/27/28 等）的共性技巧——
+1. 每格动作/表情要"画面级具体"（tearful eyes and slightly trembling lips），
+   而不是抽象词（happy）；
+2. Chibi 美学显式规格：夸张大眼、柔和圆脸线、大头身比；
+3. 贴纸质感：白描边（die-cut sticker look）、每格留白、肢体完整不断裂、
+   无漂浮多余元素；
+4. 负面约束显式化：无文字/水印/阴影。
+"""
+
+# ---- 统一风格块（三个模式共用，保证一套里风格严格一致） ----
+_STYLE_BLOCK = (
+    "STYLE (strictly identical across all panels):\n"
+    "- Chibi aesthetic: exaggerated expressive big eyes, soft rounded facial "
+    "lines, large head-to-body ratio (about 1:1)\n"
+    "- 3D clay style, soft matte clay material, soft studio lighting\n"
+    "- Each sticker gets a uniform thin white outline (die-cut sticker look) "
+    "and a clean margin around it inside its cell\n"
+    "- Every character fully visible inside its own cell: no cropped "
+    "limbs/tails/hair, nothing floating or detached, no extra stray elements\n"
+    "- Characters must never touch or cross the grid divider lines: keep "
+    "completely empty background gutters between neighboring cells\n"
+    "- Background: solid magenta (#ff00ff), completely flat — no shadows, "
+    "no gradients, no scenery\n"
+    "- Absolutely no text, letters, numbers or watermarks in any panel"
+)
 
 # 参考图库模式：base + N 张参考图，每张参考图对应一个 panel
+# （良品率本就最高的模式：只加强贴纸质感与完整性的约束）
 REF_LIBRARY_TEMPLATE = (
-    "Generate a {grid}x{grid} sticker grid ({n} panels). "
-    "Image 1 is the BASE character (主角，必须出现在每个 panel，保持身份一致). "
-    "Images 2-{n_img} are REFERENCE stickers (仅借用姿势/表情，不要用参考图里的角色). "
-    "Each panel maps to one reference. 3D clay style, soft cute. "
-    "Background: keep reference backgrounds. No text in image."
+    "Generate a {grid}x{grid} sticker sheet ({n} panels, evenly spaced grid).\n"
+    "Image 1 is the BASE character — the protagonist who must appear in EVERY "
+    "panel with identical identity, outfit, hairstyle and colors.\n"
+    "Images 2-{n_img} are REFERENCE stickers: borrow ONLY the pose/expression "
+    "idea of each reference into the matching panel; never copy the reference "
+    "characters themselves.\n"
+    "One panel per reference, same order as given.\n"
+    + _STYLE_BLOCK
 )
 
-# 故事模式：每行一个 4 格小故事
+# 故事模式：每行一个 4 格小故事（起承转合）
 STORY_TEMPLATE = (
-    "Generate a {grid}x{grid} sticker grid. Each ROW is one 4-panel mini-story (起承转合). "
-    "BASE character (image 1) is the protagonist in all panels. "
-    "Stories and panels: {stories_description}. "
-    "3D clay style, soft cute, chat-friendly. Magenta (#ff00ff) solid background. "
-    "No shadows on background. No text in image."
+    "Generate a {grid}x{grid} sticker sheet ({n} panels, evenly spaced grid). "
+    "Each ROW is one 4-panel mini-story with a clear setup-turn-resolution "
+    "arc; panels inside a row read left to right.\n"
+    "Image 1 is the BASE character — the protagonist of every panel, "
+    "identical identity/outfit/hairstyle throughout.\n"
+    "Stories and panels: {stories_description}\n"
+    "For every panel make the emotion readable at chat-icon size: exaggerated "
+    "facial expression plus one unmistakable body action.\n"
+    + _STYLE_BLOCK
 )
 
-# 排列组合模式：关键词随机组合
+# 排列组合模式：情绪+动作+点缀 随机组合
+# panels_description 由 keywords.json 的画面级描述拼成（不再是抽象单词）
 KEYWORD_COMBO_TEMPLATE = (
-    "Generate a {grid}x{grid} sticker grid ({n} panels). "
-    "BASE character (image 1) in all panels. "
-    "Each panel: random emotion + action from lists. Panels: {panels_description}. "
-    "3D clay style, soft cute. Magenta (#ff00ff) solid background, no shadows. No text."
+    "Generate a {grid}x{grid} sticker sheet ({n} panels, evenly spaced grid).\n"
+    "Image 1 is the BASE character — the protagonist of every panel, "
+    "identical identity/outfit/hairstyle throughout.\n"
+    "Panels (one scene per panel, follow this order):\n{panels_description}\n"
+    + _STYLE_BLOCK
 )

@@ -57,13 +57,7 @@ class AssetsStage:
                          message="横幅/封面/图标/介绍 生成完成"))
 
     def _make_banner(self, src_paths: list, out: Path) -> None:
-        """前 4 张横向拼成 750×400 宽幅拼贴（横幅）。"""
-        cell_w = _BANNER_W // max(len(src_paths), 1)
-        banner = Image.new("RGBA", (_BANNER_W, _BANNER_H), (255, 255, 255, 0))
-        for i, p in enumerate(src_paths):
-            im = Image.open(p).convert("RGBA").resize((cell_w, _BANNER_H), Image.LANCZOS)
-            banner.paste(im, (i * cell_w, 0), im)
-        banner.save(out)
+        make_banner(src_paths, out)
 
     def _pick_best_face(self, paths: list) -> Path:
         """选最具辨识度的正面像做封面源。
@@ -74,4 +68,20 @@ class AssetsStage:
         return paths[0]
 
     def _resize_save(self, src: Path, out: Path, w: int, h: int) -> None:
-        Image.open(src).convert("RGBA").resize((w, h), Image.LANCZOS).save(out)
+        resize_save(src, out, w, h)
+
+
+# ---- 模块级函数：供 AssetsStage 与作品详情页 regen_assets 复用 ----
+
+def make_banner(src_paths: list, out: Path) -> None:
+    """前 4 张横向拼成 750×400 宽幅拼贴（横幅）。"""
+    cell_w = _BANNER_W // max(len(src_paths), 1)
+    banner = Image.new("RGBA", (_BANNER_W, _BANNER_H), (255, 255, 255, 0))
+    for i, p in enumerate(src_paths):
+        im = Image.open(p).convert("RGBA").resize((cell_w, _BANNER_H), Image.LANCZOS)
+        banner.paste(im, (i * cell_w, 0), im)
+    banner.save(out)
+
+
+def resize_save(src: Path, out: Path, w: int, h: int) -> None:
+    Image.open(src).convert("RGBA").resize((w, h), Image.LANCZOS).save(out)

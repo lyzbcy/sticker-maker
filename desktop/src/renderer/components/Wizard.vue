@@ -13,14 +13,20 @@
       <button v-if="step > 0" @click="step--" class="btn-secondary">上一步</button>
       <span v-else></span>
       <button v-if="step < 4" :disabled="!canNext" @click="step++" class="btn-primary">下一步</button>
-      <button v-else @click="finish" class="btn-finish">完成</button>
+      <button v-else :disabled="finishing" @click="finish" class="btn-finish">
+        {{ finishing ? '保存中…' : '完成' }}
+      </button>
+    </div>
+    <div v-if="finishErrors.length" class="finish-error">
+      <p v-for="(msg, i) in finishErrors" :key="i">{{ msg }}</p>
+      <p class="finish-error-tip">请点「上一步」返回对应步骤（模式概率 / 角色概率 / base 图管理），把总和调整到 100% 后再点完成。</p>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { useEngineStore, validatePrefs } from '../store/engine'
+import { ref, computed, watch } from 'vue'
+import { useEngineStore } from '../store/engine'
 import WizardStepCodex from './WizardStepCodex.vue'
 import WizardStepBase from './WizardStepBase.vue'
 import WizardStepMode from './WizardStepMode.vue'
@@ -59,9 +65,31 @@ const canNext = computed(() => {
   return true
 })
 
+const finishing = ref(false)
+const finishErrors = ref([])
+
+// 用户返回修改任何一步时，清掉上次的完成错误
+watch(step, () => { finishErrors.value = [] })
+
 async function finish() {
-  const validation = validatePrefs(store.prefs, store.characters)
-  if (validation.ok) await store.savePrefs(store.prefs)
+  if (finishing.value) return
+  finishing.value = true
+  finishErrors.value = []
+  try {
+    // savePrefs 内部会先做 validatePrefs 校验：
+    // 失败原因会写入 store.lastError 并返回 false，这里负责展示给用户
+    const ok = await store.savePrefs(store.prefs)
+    if (!ok) {
+      const errors = (store.lastError && store.lastError.length)
+        ? store.lastError.map(e => e.message)
+        : ['保存失败，请重试']
+      finishErrors.value = errors
+    }
+  } catch (e) {
+    finishErrors.value = [(e && e.message) || '保存失败，请重试']
+  } finally {
+    finishing.value = false
+  }
 }
 </script>
 
@@ -144,6 +172,21 @@ button {
   color: var(--forest);
   box-shadow: 0 8px 20px rgba(175, 205, 168, .5);
 }
-.btn-finish:hover { transform: translateY(-1px); filter: brightness(1.03); }
-.btn-finish:active { transform: translateY(1px); }
+.btn-finish:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.03); }
+.btn-finish:active:not(:disabled) { transform: translateY(1px); }
+.btn-finish:disabled { opacity: .65; cursor: wait; box-shadow: none; }
+
+.finish-error {
+  margin-top: 16px;
+  padding: 12px 18px;
+  background: rgba(181, 72, 42, .07);
+  border: 1.5px solid rgba(181, 72, 42, .35);
+  border-radius: var(--r-md);
+  color: var(--brick);
+  font-size: 13px;
+  line-height: 1.7;
+  animation: pageFadeIn .25s ease both;
+}
+.finish-error p { margin: 0; }
+.finish-error-tip { margin-top: 4px; color: var(--muted); font-size: 12px; }
 </style>

@@ -242,6 +242,11 @@ def cmd_load_prefs(req_id, args):
 def cmd_save_prefs(req_id, args):
     engine = _ensure_engine()
     prefs = _dict_to_prefs(args.get("prefs", {}))
+    # 防御：default_series_id 必须指向真实存在的系列（防脏数据存入）
+    if prefs.default_series_id:
+        from .config.series import find_series
+        if find_series(prefs.default_series_id) is None:
+            prefs.default_series_id = None
     save_prefs(prefs, engine.config.paths.prefs_file)
     engine.config.prefs = prefs
     engine.config.paths.reference_lib = (
@@ -403,13 +408,342 @@ def cmd_stop(req_id, args):
 def cmd_list_episodes(req_id, args):
     engine = _ensure_engine()
     root = engine.config.paths.output_root
+    from .config.series import load_meta
     episodes = []
     if root.exists():
         for ep_dir in sorted(root.iterdir(), reverse=True):
-            if ep_dir.is_dir():
+            if ep_dir.is_dir() and ep_dir.name.startswith("episode"):
                 stickers = list((ep_dir / "最终版").glob("*.png")) if (ep_dir / "最终版").exists() else []
-                episodes.append({"name": ep_dir.name, "path": str(ep_dir), "sticker_count": len(stickers)})
+                cover = ep_dir / "封面" / "封面.png"
+                if not cover.exists():
+                    cover = stickers[0] if stickers else None
+                meta = load_meta(ep_dir)
+                episodes.append({
+                    "name": ep_dir.name, "path": str(ep_dir),
+                    "sticker_count": len(stickers),
+                    "cover": str(cover) if cover else "",
+                    # 元数据（无 meta.json 的历史作品返回默认值）
+                    "album_name": meta.album_name,
+                    "series_id": meta.series_id,
+                    "series_name": meta.series_name,
+                    "number": meta.number,
+                    "published": meta.published,
+                    "published_at": meta.published_at,
+                    "created_at": meta.created_at,
+                    # 平台状态（一键更新回写）
+                    "platform_status": meta.platform_status,
+                    "platform_downloads": meta.platform_downloads,
+                    "platform_sends": meta.platform_sends,
+                    "platform_tips": meta.platform_tips,
+                    "platform_updated_at": meta.platform_updated_at,
+                    "complete": len(stickers) > 0,
+                })
     _result(req_id, "ok", data={"episodes": episodes})
+
+
+# ---------------- 系列 / 作品元数据命令 ----------------
+
+def cmd_list_series(req_id, args):
+    from .config.series import load_series
+    series = load_series()
+    _result(req_id, "ok", data={"series": [{
+        **s.to_dict(), "next_number": s.peek_next_number(),
+    } for s in series]})
+
+
+def cmd_save_series(req_id, args):
+    """整表保存系列（增删改一体）。保留已有系列的编号进度。"""
+    from .config.series import save_series_list_from_dicts, load_series
+    items = args.get("series") or []
+    # 基本校验：name 必填、start_number >= 1
+    for item in items:
+        if not str(item.get("name") or "").strip():
+            _result(req_id, "fail", errors=[{"message": "系列名称不能为空"}])
+            return
+    saved = save_series_list_from_dicts(items)
+    _result(req_id, "ok", data={"series": [{
+        **s.to_dict(), "next_number": s.peek_next_number(),
+    } for s in saved]})
+
+
+def _episode_characters(episode_dir: Path) -> list:
+    """从 本次制作角色.md 读角色列表（无文件返回空）。"""
+    f = Path(episode_dir) / "本次制作角色.md"
+    if not f.exists():
+        return []
+    for line in f.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("角色："):
+            return [c for c in line[len("角色："):].split("、") if c]
+    return []
+
+
+def _episode_meanings(episode_dir: Path) -> list:
+    """读含义词列表（按 meaning_map.json 数字序；降级用文件名）。"""
+    episode_dir = Path(episode_dir)
+    final = episode_dir / "最终版"
+    mm = episode_dir / "meaning_map.json"
+    if mm.exists():
+        try:
+            data = json.loads(mm.read_text(encoding="utf-8"))
+            return [str(data[k]) for k in sorted(data, key=lambda x: int(x))]
+        except (json.JSONDecodeError, ValueError, OSError):
+            pass
+    if final.exists():
+        return [p.stem for p in sorted(final.glob("*.png"), key=lambda x: x.stem)]
+    return []
+
+
+def _regen_episode_assets(episode_dir: Path, meta, series=None) -> list:
+    """按 meta 的素材模式重新生成横幅/封面/图标。返回 warnings 列表。"""
+    from .stages.assets import make_banner, resize_save
+    import shutil as _shutil
+    episode_dir = Path(episode_dir)
+    final = episode_dir / "最终版"
+    paths = sorted(final.glob("*.png"), key=lambda x: x.stem) if final.exists() else []
+    warnings = []
+    chars = _episode_characters(episode_dir)
+    role_map = (series.role_asset_map if series else None) or {}
+    # 单人包默认套角色映射（用户需求：单人表情包直接用角色对应素材）
+    role_key = next((c for c in chars if c in role_map), None)
+
+    def _copy_or_warn(src, dst, label):
+        if src and Path(src).is_file():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            _shutil.copy2(src, dst)
+        else:
+            warnings.append(f"{label}源文件不存在：{src}")
+
+    # ---- 横幅 ----
+    banner_out = episode_dir / "横幅" / "横幅.png"
+    if meta.banner_mode == "custom" and meta.banner_custom:
+        _copy_or_warn(meta.banner_custom, banner_out, "横幅")
+    elif meta.banner_mode == "role" and role_key and role_map[role_key].get("banner"):
+        _copy_or_warn(role_map[role_key]["banner"], banner_out, f"角色[{role_key}]横幅")
+    else:
+        if paths:
+            banner_out.parent.mkdir(parents=True, exist_ok=True)
+            make_banner(paths[:4], banner_out)
+        else:
+            warnings.append("无成品图，横幅未生成")
+
+    # ---- 封面 ----
+    cover_out = episode_dir / "封面" / "封面.png"
+    cover_src = None
+    if meta.cover_mode == "custom" and meta.cover_custom:
+        if Path(meta.cover_custom).is_file():
+            _copy_or_warn(meta.cover_custom, cover_out, "封面")
+        else:
+            warnings.append(f"封面源文件不存在：{meta.cover_custom}")
+    elif meta.cover_mode == "role" and role_key and role_map[role_key].get("cover"):
+        _copy_or_warn(role_map[role_key]["cover"], cover_out, f"角色[{role_key}]封面")
+    else:
+        if meta.cover_mode == "pick":
+            idx = int(meta.cover_pick or 0)
+            if 0 <= idx < len(paths):
+                cover_src = paths[idx]
+            else:
+                warnings.append(f"封面选图越界（第 {idx + 1} 张不存在），回退第 1 张")
+        if cover_src is None and paths:
+            cover_src = paths[0]
+        if cover_src is not None:
+            cover_out.parent.mkdir(parents=True, exist_ok=True)
+            resize_save(cover_src, cover_out, 240, 240)
+        elif not paths:
+            warnings.append("无成品图，封面未生成")
+
+    # ---- 图标（50×50；custom 直接复制，否则与封面同源） ----
+    icon_out = episode_dir / "图标" / "图标.png"
+    if meta.icon_mode == "custom" and meta.icon_custom:
+        _copy_or_warn(meta.icon_custom, icon_out, "图标")
+    elif meta.icon_mode == "role" and role_key and role_map[role_key].get("icon"):
+        _copy_or_warn(role_map[role_key]["icon"], icon_out, f"角色[{role_key}]图标")
+    elif cover_src is not None:
+        icon_out.parent.mkdir(parents=True, exist_ok=True)
+        resize_save(cover_src, icon_out, 50, 50)
+    elif cover_out.exists():
+        resize_save(cover_out, icon_out, 50, 50)
+    elif not paths:
+        warnings.append("无成品图，图标未生成")
+    return warnings
+
+
+def cmd_sync_platform_status(req_id, args):
+    """一键更新：打开平台管理页抓取全部作品状态，回写本地 meta.json。"""
+    from .publish.status import sync_status
+    engine = _ensure_engine()
+
+    def _say(msg):
+        try:
+            _log("info", msg, command="sync_platform_status", command_id=req_id)
+            _emit({"id": req_id, "type": "progress", "stage": "sync",
+                   "phase": "sync", "message": msg, "percent": None,
+                   "eta_seconds": None})
+        except Exception:
+            pass
+
+    res = sync_status(engine, on_status=_say)
+    if "error" in res:
+        _result(req_id, "fail", errors=[{"message": res["error"]}])
+        return
+    _result(req_id, "ok", data=res)
+
+
+def cmd_delete_episode(req_id, args):
+    """物理删除：连同 episode 本地文件夹一起删掉。
+
+    纪律（doc/reference/series.md）：
+    - 路径必须在 episodes 输出目录内（防误删任意目录）
+    - 若该作品占着系列的最后一个编号（number == next_number-1），回滚
+      next_number，编号不浪费；中间编号删除则留空档（盲回滚会撞号）
+    """
+    import shutil
+    from .config.series import load_series, save_series
+    engine = _ensure_engine()
+    root = engine.config.paths.output_root.resolve()
+    ep_dir = Path(args.get("episode_dir") or "").resolve()
+    if not ep_dir.is_dir() or root not in ep_dir.parents:
+        _result(req_id, "fail",
+                errors=[{"message": f"非法的作品目录：{ep_dir}"}])
+        return
+    from .config.series import load_meta
+    meta = load_meta(ep_dir)
+    # 编号回滚（仅当占的是该系列最新一号）
+    rolled_back = None
+    if meta.series_id and meta.number is not None:
+        series_list = load_series()   # list[Series]（dataclass）
+        for s in series_list:
+            if s.id == meta.series_id and s.next_number == meta.number + 1:
+                s.next_number = meta.number
+                save_series(series_list)
+                rolled_back = f"{s.name} next_number → {meta.number}"
+                break
+    shutil.rmtree(ep_dir)
+    _result(req_id, "ok", data={"deleted": str(ep_dir), "rolled_back": rolled_back})
+
+
+def cmd_get_episode(req_id, args):
+    """作品详情：meta + 表情列表 + 含义词 + 素材文件 + 角色。"""
+    episode_dir = Path(args.get("episode_dir") or "")
+    if not episode_dir.is_dir():
+        _result(req_id, "fail", errors=[{"message": f"作品目录不存在：{episode_dir}"}])
+        return
+    from .config.series import load_meta
+    meta = load_meta(episode_dir)
+    final = episode_dir / "最终版"
+    stickers = []
+    if final.exists():
+        meanings = _episode_meanings(episode_dir)
+        for i, p in enumerate(sorted(final.glob("*.png"), key=lambda x: x.stem)):
+            stickers.append({
+                "file": p.name, "path": str(p),
+                "meaning": meanings[i] if i < len(meanings) else p.stem,
+            })
+    def _exists(sub):
+        f = episode_dir / sub
+        return str(f) if f.exists() else None
+    _result(req_id, "ok", data={
+        "name": episode_dir.name, "path": str(episode_dir),
+        "meta": meta.to_dict(),
+        "stickers": stickers,
+        "characters": _episode_characters(episode_dir),
+        "banner": _exists("横幅/横幅.png"),
+        "cover": _exists("封面/封面.png"),
+        "icon": _exists("图标/图标.png"),
+        "grid": _exists("原图/grid_4x4.png") or _exists("原图"),
+        "intro_file": _exists("介绍.txt"),
+    })
+
+
+def cmd_update_episode_meta(req_id, args):
+    """更新作品元数据：改名 / 编入系列 / 介绍 / 素材设置。
+
+    args: {episode_dir, album_name?, assign_series_id?, intro?, regen_assets?,
+           cover_mode?, cover_pick?, cover_custom?, banner_mode?, banner_custom?,
+           icon_mode?, icon_custom?}
+    """
+    from .config import series as S
+    episode_dir = Path(args.get("episode_dir") or "")
+    if not episode_dir.is_dir():
+        _result(req_id, "fail", errors=[{"message": f"作品目录不存在：{episode_dir}"}])
+        return
+    meta = S.load_meta(episode_dir)
+
+    if args.get("assign_series_id"):
+        target = S.find_series(str(args["assign_series_id"]))
+        if target is None:
+            _result(req_id, "fail", errors=[{"message": "系列不存在"}])
+            return
+        meta = S.assign_to_series(episode_dir, target)
+        all_series = S.load_series()
+        for s in all_series:
+            if s.id == target.id:
+                s.next_number = target.next_number
+        S.save_series(all_series)
+
+    if "album_name" in args:
+        meta = S.rename_album(episode_dir, str(args.get("album_name") or ""))
+
+    if "intro" in args:
+        meta.intro = str(args.get("intro") or "")[:80]
+        (episode_dir / "介绍.txt").write_text(meta.intro, encoding="utf-8")
+        S.save_meta(episode_dir, meta)
+
+    for key in ("cover_mode", "cover_pick", "cover_custom",
+                "banner_mode", "banner_custom", "icon_mode", "icon_custom"):
+        if key in args:
+            setattr(meta, key, args.get(key))
+    S.save_meta(episode_dir, meta)
+
+    warnings = []
+    if args.get("regen_assets"):
+        series = S.find_series(meta.series_id) if meta.series_id else None
+        warnings = _regen_episode_assets(episode_dir, meta, series)
+        S.save_meta(episode_dir, meta)
+        if warnings:
+            _log("warn", "素材重生成警告：" + "；".join(warnings), command_id=req_id)
+
+    _result(req_id, "ok", data={"meta": meta.to_dict(), "warnings": warnings})
+
+
+def cmd_regen_intro(req_id, args):
+    """AI 重新生成介绍（系列提示词优先，回退全局默认模板）。"""
+    episode_dir = Path(args.get("episode_dir") or "")
+    if not episode_dir.is_dir():
+        _result(req_id, "fail", errors=[{"message": f"作品目录不存在：{episode_dir}"}])
+        return
+    from .config.series import load_meta, find_series, save_meta
+    from .providers.codex import CodexProvider
+    from .providers.vision import VisionProvider
+    meta = load_meta(episode_dir)
+    series = find_series(meta.series_id) if meta.series_id else None
+    album = meta.album_name or episode_dir.name
+    meanings = _episode_meanings(episode_dir)
+    vision = VisionProvider(CodexProvider())
+    intro = vision.write_intro(
+        meanings, episode_name=album,
+        custom_prompt=(series.intro_prompt if series else ""))
+    meta.intro = intro
+    (episode_dir / "介绍.txt").write_text(intro, encoding="utf-8")
+    save_meta(episode_dir, meta)
+    _result(req_id, "ok", data={"intro": intro, "meta": meta.to_dict()})
+
+
+def cmd_regen_assets(req_id, args):
+    """按 meta 素材设置重新生成横幅/封面/图标。"""
+    episode_dir = Path(args.get("episode_dir") or "")
+    if not episode_dir.is_dir():
+        _result(req_id, "fail", errors=[{"message": f"作品目录不存在：{episode_dir}"}])
+        return
+    from .config.series import load_meta, find_series, save_meta
+    meta = load_meta(episode_dir)
+    series = find_series(meta.series_id) if meta.series_id else None
+    warnings = _regen_episode_assets(episode_dir, meta, series)
+    save_meta(episode_dir, meta)
+    _result(req_id, "ok", data={"meta": meta.to_dict(), "warnings": warnings,
+                                "banner": str(episode_dir / "横幅" / "横幅.png"),
+                                "cover": str(episode_dir / "封面" / "封面.png"),
+                                "icon": str(episode_dir / "图标" / "图标.png")})
 
 
 def cmd_featured(req_id, args):
@@ -435,6 +769,11 @@ def cmd_load_promotion(req_id, args):
         "group_qr": str(defaults.group_qr),
         "sticker_qr": str(defaults.sticker_qr),
         "author_name": defaults.author_name,
+        "studio_name": defaults.studio_name,
+        "homepage_url": defaults.homepage_url,
+        "avatar_url": defaults.avatar_url,
+        "repo_url": defaults.repo_url,
+        "discussions_url": defaults.discussions_url,
     }
     if promo_file.exists():
         saved = _json.loads(promo_file.read_text(encoding="utf-8"))
@@ -526,14 +865,21 @@ def cmd_clear_logs(req_id, args):
 
 def _publish_episode(episode_dir, progress):
     """运行现有微信 Publisher，给桌面层返回结构化结果。"""
-    from .publish.browser import BrowserSession
-    from .publish.config import PublishConfig
-    from .publish.publisher import Publisher
+    try:
+        from .publish.browser import BrowserSession
+        from .publish.config import PublishConfig
+        from .publish.publisher import Publisher
+    except ImportError as exc:
+        # 发布组件缺失时给出可操作的指引，而不是裸 ModuleNotFoundError
+        return {"success": False, "step": "browser", "error":
+                f"发布组件未安装（{exc}）。"
+                "开发预览环境请运行：pip install playwright && python -m playwright install chromium；"
+                "正式安装包请联系作者更新版本。"}
 
     episode_dir = Path(episode_dir)
     progress("prepare", "正在检查发布素材…", 0.05)
     config = PublishConfig.from_env()
-    publisher = Publisher(config, BrowserSession(config))
+    publisher = Publisher(config, BrowserSession(config), progress=progress)
     progress("browser", "正在打开微信表情开放平台…", 0.15)
     result = publisher.publish(episode_dir, headless=False)
     screenshot = episode_dir / "_publish_error.png"
@@ -545,6 +891,28 @@ def _publish_episode(episode_dir, progress):
         1.0,
     )
     return result
+
+
+def cmd_save_publish_credentials(req_id, args):
+    """保存发布账号密码到系统凭据库（Win 凭据管理器 / Mac 钥匙串）。"""
+    from .publish.credentials import save_credentials
+    try:
+        info = save_credentials(str(args.get("account") or ""), str(args.get("password") or ""))
+        _result(req_id, "ok", data=info)
+    except ValueError as e:
+        _result(req_id, "fail", errors=[{"message": str(e)}])
+
+
+def cmd_publish_credentials_status(req_id, args):
+    """凭据配置状态（不回传密码本体）。"""
+    from .publish.credentials import credentials_status
+    _result(req_id, "ok", data=credentials_status())
+
+
+def cmd_clear_publish_credentials(req_id, args):
+    from .publish.credentials import clear_credentials
+    clear_credentials()
+    _result(req_id, "ok")
 
 
 def cmd_check_publish(req_id, args):
@@ -574,6 +942,19 @@ def cmd_publish_episode(req_id, args):
         )
         return
 
+    # 前置校验：专辑名必须是正式命名。时间戳目录名（episode_xxx）或空名
+    # 提交出去就是平台上的作品名——先阻断，指引到详情页命名。
+    from .config.series import load_meta
+    meta = load_meta(episode_dir)
+    album = (meta.album_name or "").strip()
+    if not album or album.startswith("episode_"):
+        _result(
+            req_id, "fail",
+            data={"success": False, "step": "prepare",
+                  "error": "作品还没有正式命名（当前是时间戳目录名）。请先打开作品详情页：编入系列自动编号（如「周思涵做表情 61」）或手动命名，然后再提交。"},
+        )
+        return
+
     def progress(stage, message, percent):
         _log(
             "info", message, command="publish_episode",
@@ -594,6 +975,12 @@ def cmd_publish_episode(req_id, args):
             "error": f"{type(exc).__name__}: {exc}",
         }
     if result.get("success"):
+        # 发布成功：回写作品元数据（作品库显示已发布）
+        try:
+            from .config.series import mark_published
+            mark_published(Path(episode_dir))
+        except Exception:
+            pass
         _result(req_id, "ok", data=result)
     else:
         _result(
@@ -736,7 +1123,8 @@ def _prefs_to_dict(prefs):
             "single_char_probs": prefs.single_char_probs, "base_probs": prefs.base_probs,
             "grid_size": prefs.grid_size, "transparent_default": prefs.transparent_default,
             "ref_lib_priority": prefs.ref_lib_priority, "story_mode": prefs.story_mode,
-            "reference_lib_path": prefs.reference_lib_path}
+            "reference_lib_path": prefs.reference_lib_path,
+            "default_series_id": prefs.default_series_id}
 
 
 def _dict_to_prefs(d):
@@ -747,7 +1135,8 @@ def _dict_to_prefs(d):
         single_char_probs=d.get("single_char_probs", {}), base_probs=d.get("base_probs", {}),
         grid_size=d.get("grid_size", 4), transparent_default=d.get("transparent_default", True),
         ref_lib_priority=d.get("ref_lib_priority", True), story_mode=d.get("story_mode", True),
-        reference_lib_path=d.get("reference_lib_path"))
+        reference_lib_path=d.get("reference_lib_path"),
+        default_series_id=d.get("default_series_id"))
 
 
 HANDLERS = {
@@ -758,10 +1147,18 @@ HANDLERS = {
     "add_base": cmd_add_base,
     "run": cmd_run, "stop": cmd_stop,
     "list_episodes": cmd_list_episodes, "open_in_finder": cmd_open_in_finder,
+    "list_series": cmd_list_series, "save_series": cmd_save_series,
+    "sync_platform_status": cmd_sync_platform_status,
+    "delete_episode": cmd_delete_episode,
+    "get_episode": cmd_get_episode, "update_episode_meta": cmd_update_episode_meta,
+    "regen_intro": cmd_regen_intro, "regen_assets": cmd_regen_assets,
     "featured": cmd_featured,
     "load_promotion": cmd_load_promotion, "save_promotion": cmd_save_promotion,
     "get_logs": cmd_get_logs, "clear_logs": cmd_clear_logs,
     "check_publish": cmd_check_publish, "publish_episode": cmd_publish_episode,
+    "save_publish_credentials": cmd_save_publish_credentials,
+    "publish_credentials_status": cmd_publish_credentials_status,
+    "clear_publish_credentials": cmd_clear_publish_credentials,
     "install_chromium": cmd_install_chromium,
     "agent_start": cmd_agent_start, "agent_status": cmd_agent_status,
     "agent_prompt": cmd_agent_prompt, "agent_stop": cmd_agent_stop,

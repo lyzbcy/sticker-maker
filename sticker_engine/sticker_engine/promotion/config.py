@@ -23,6 +23,12 @@ class PromotionConfig:
     sticker_qr: Optional[Path] = field(
         default_factory=lambda: _bundled_qr("sticker-qr.png"))
     author_name: str = "捞鱼真不吃鱼"     # 署名
+    # 个人推广页素材（prompt「个人推广页」必选项）：链接类允许用户在 promotion.json 覆盖
+    studio_name: str = "捞鱼工作室"
+    homepage_url: str = "https://lyzbcy.github.io/"
+    avatar_url: str = "https://s41.ax1x.com/2025/12/05/pZmPZPH.png"
+    repo_url: str = "https://github.com/lyzbcy/sticker-maker"
+    discussions_url: str = "https://github.com/lyzbcy/sticker-maker/discussions"
 
     def has_any(self) -> bool:
         """是否有任一二维码配置（决定 About 页是否展示推广区）。"""

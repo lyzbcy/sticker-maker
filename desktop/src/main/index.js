@@ -1,4 +1,5 @@
 const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron')
+const fs = require('fs')
 const path = require('path')
 const { PythonBridge } = require('./pythonBridge')
 
@@ -92,6 +93,16 @@ app.whenReady().then(() => {
     return { canceled: false, path: result.filePaths[0] }
   })
 
+  // 打开外部链接（关于页/求好评一键直达；集中管控协议白名单）
+  ipcMain.handle('open-external', async (_e, url) => {
+    const { shell } = require('electron')
+    if (typeof url === 'string' && /^https:\/\//.test(url)) {
+      await shell.openExternal(url)
+      return { ok: true }
+    }
+    return { ok: false }
+  })
+
   ipcMain.handle('check-for-updates', async () => {
     const { checkForUpdates } = require('./updater')
     return checkForUpdates(mainWindow, { manual: true })
@@ -99,14 +110,36 @@ app.whenReady().then(() => {
 
   createWindow()
 
-  // 启动 2 秒后检查更新
+  // 启动 2 秒后检查更新（每天只自动检查一次：prompt「自适应更新检测」——
+  // 每次启动都查既费流量也容易打扰，同一天内重复启动直接跳过；手动检查不受限）
   const { checkForUpdates } = require('./updater')
-  setTimeout(() => checkForUpdates(mainWindow), 2000)
+  setTimeout(() => {
+    if (shouldAutoCheckToday()) checkForUpdates(mainWindow)
+  }, 2000)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+
+/** 每日首检门控：userData/update-check.json 记录上次自动检查日期，
+ * 同一天内的后续启动不再自动查（手动「检查更新」不经过这里）。 */
+function shouldAutoCheckToday() {
+  try {
+    const stateFile = path.join(app.getPath('userData'), 'update-check.json')
+    const today = new Date().toISOString().slice(0, 10)
+    let last = ''
+    try {
+      last = JSON.parse(fs.readFileSync(stateFile, 'utf-8')).lastDate || ''
+    } catch { /* 首次或文件损坏都视为需要检查 */ }
+    if (last === today) return false
+    fs.writeFileSync(stateFile, JSON.stringify({ lastDate: today }))
+    return true
+  } catch (error) {
+    console.error('[updater] 读写检查日期失败，默认执行检查', error)
+    return true
+  }
+}
 
 app.on('window-all-closed', async () => {
   if (bridge) await bridge.stopAll()

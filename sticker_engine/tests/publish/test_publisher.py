@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
@@ -262,6 +262,7 @@ def test_publish_happy_path_calls_steps_in_order_and_closes(tmp_path):
     publisher, session, page = _make_publisher(tmp_path)
     # _step_submit 直接返回 True（不进真实 page.click）
     publisher._step_submit = MagicMock(return_value=True)
+    publisher._verify_form = MagicMock(return_value=[])
     # 其余 step 用 spy（不抛）
     for name in ("_step_open_submit_form", "_step_upload_stickers",
                  "_step_fill_meanings", "_step_fill_album_info",
@@ -276,7 +277,8 @@ def test_publish_happy_path_calls_steps_in_order_and_closes(tmp_path):
     assert result["step"] == "done"
     assert result["album_name"] == "episode_test"
     # 登录、开表单、上传表情图都应被调用
-    session.ensure_login.assert_called_once_with(page)
+    session.ensure_login.assert_called_once()
+    session.ensure_login.assert_called_once_with(page, on_status=ANY)
     publisher._step_open_submit_form.assert_called_once()
     publisher._step_upload_stickers.assert_called_once()
     publisher._step_fill_meanings.assert_called_once()
@@ -336,7 +338,7 @@ def test_publish_early_exit_on_login_failure(tmp_path):
     result = publisher.publish(ep)
     assert result["success"] is False
     assert result["step"] == "login"
-    assert result["error"] == "登录失败"
+    assert result["error"].startswith("登录超时")
     # 后续步骤不应执行
     assert step_calls == []
     session.close.assert_called_once()
@@ -377,6 +379,7 @@ def test_publish_passes_headless_to_session(tmp_path):
     ep = make_episode(tmp_path)
     publisher, session, page = _make_publisher(tmp_path)
     publisher._step_submit = MagicMock(return_value=True)
+    publisher._verify_form = MagicMock(return_value=[])
     for name in ("_step_open_submit_form", "_step_upload_stickers",
                  "_step_fill_meanings", "_step_fill_album_info",
                  "_step_fill_copyright", "_step_upload_assets",
@@ -402,13 +405,15 @@ def test_step_fill_meanings_passes_meanings_and_selector(tmp_path):
 
 
 def test_step_open_submit_form_uses_selector_constants(tmp_path):
-    """步骤3-5 用 S.SUBMIT_WORK_BUTTON_TEXT / ALBUM_TYPE_TEXT / STATIC_RADIO。"""
+    """步骤3-4 用常量按钮；步骤5 改为点「静态表情」label（平台隐藏了 radio input）。"""
     publisher, session, page = _make_publisher(tmp_path)
     publisher._step_open_submit_form(page)
     click_selectors = [c.args[0] for c in page.click.call_args_list]
     assert any(S.SUBMIT_WORK_BUTTON_TEXT in c for c in click_selectors)
     assert any(S.ALBUM_TYPE_TEXT in c for c in click_selectors)
-    assert any(c == S.STATIC_RADIO for c in click_selectors)
+    # 静态表情走 evaluate label 点击：payload 首参是 ["静态表情", True]
+    payloads = [c.args[1] for c in page.evaluate.call_args_list if len(c.args) > 1]
+    assert any(p and p[0] == "静态表情" for p in payloads)
 
 
 def test_step_fill_album_info_uses_constants_and_intro(tmp_path):
@@ -427,22 +432,18 @@ def test_step_fill_copyright_uses_config(tmp_path):
 
 
 def test_step_select_categories_clicks_all_constants(tmp_path):
-    """步骤14-18：类型/角色/风格/主题/地区 都点对应常量。"""
-    ep = make_episode(tmp_path, contains_laoyu=True)
-    assets = EpisodeAssets.from_dir(ep)
+    """2026-08 实测改版：所有选项点可见 label（input 被隐藏），不再用 input 选择器。"""
     publisher, session, page = _make_publisher(tmp_path)
+    page.evaluate.return_value = True
+    ep = make_episode(tmp_path)
+    assets = EpisodeAssets.from_dir(ep)
     publisher._step_select_categories(page, assets)
-    click_sels = [c.args[0] for c in page.click.call_args_list]
-    # 类型 value=1
-    assert f'input[type="radio"][value="{S.CATEGORY_RADIO_VALUE}"]' in click_sels
-    # 风格
-    assert S.STYLE_CHECKBOX_SOFT in click_sels
-    assert S.STYLE_CHECKBOX_DAILY in click_sels
-    # 主题
-    assert f'input[type="radio"][value="{S.THEME_RADIO_VALUE}"]' in click_sels
-    # 地区
-    assert f'input[type="radio"][value="{S.REGION_RADIO_VALUE}"]' in click_sels
-
+    payloads = [c.args[1] for c in page.evaluate.call_args_list if len(c.args) > 1]
+    texts = [p[0] if isinstance(p, list) else p for p in payloads]
+    for expected in ("卡通表情/其他", "软萌可爱", "日常", "万能通用"):
+        assert any(t == expected for t in texts), f"应点过 label「{expected}」, 实际: {texts}"
+    # 两组地区（全球）走 _click_label_all_unchecked（payload 不是 list）
+    assert any(not isinstance(p, list) and p == "全球" for p in payloads)
 
 def test_select_role_uses_laoyu_title_when_contains_laoyu(tmp_path):
     """含捞鱼→点 ROLE_WITH_LAOYU_TITLE 对应 title。"""
@@ -468,11 +469,13 @@ def test_select_role_uses_woman_title_when_no_laoyu(tmp_path):
 
 def test_step_tips_fills_thanks_text_and_clicks_accept(tmp_path):
     publisher, session, page = _make_publisher(tmp_path)
+    page.evaluate.return_value = True
     # 让 _upload_tip_images 不真跑（避免 mock query 复杂度）
     publisher._upload_tip_images = MagicMock()
     publisher._step_tips(page)
-    click_sels = [c.args[0] for c in page.click.call_args_list]
-    assert any("接受赞赏" in c for c in click_sels)
+    # 接受赞赏走 evaluate label 点击（防 toggle 取消）
+    payloads = [c.args[1] for c in page.evaluate.call_args_list if len(c.args) > 1]
+    assert any(p and p[0] == "接受赞赏" for p in payloads)
     page.fill.assert_called_once_with(
         S.TIPS_TEXT_INPUT, publisher.config.thanks_text, timeout=3000
     )
@@ -481,12 +484,11 @@ def test_step_tips_fills_thanks_text_and_clicks_accept(tmp_path):
 
 def test_step_select_price_prefers_free_label(tmp_path):
     publisher, session, page = _make_publisher(tmp_path)
+    page.evaluate.return_value = True
     publisher._step_select_price(page)
-    click_sels = [c.args[0] for c in page.click.call_args_list]
-    expected = (
-        f'label:has-text("免费") input[type="radio"][value="{S.PRICE_FREE_RADIO_VALUE}"]'
-    )
-    assert expected in click_sels
+    # 改版后点可见 label「免费」（已选跳过）
+    payloads = [c.args[1] for c in page.evaluate.call_args_list if len(c.args) > 1]
+    assert any(p and p[0] == "免费" and p[1] is True for p in payloads)
 
 
 def test_step_submit_returns_true_on_success_text(tmp_path):
@@ -496,16 +498,37 @@ def test_step_submit_returns_true_on_success_text(tmp_path):
 
 
 def test_step_submit_returns_true_on_auditing_text(tmp_path):
+    """提交成功后管理页出现"审核中"（含 home/index URL）→ 成功。"""
     publisher, session, page = _make_publisher(tmp_path)
     page.inner_text.return_value = "表情包审核中"
+    page.url = "https://sticker.weixin.qq.com/cgi-bin/mmemoticon-bin/readtemplate?t=home/index"
     assert publisher._step_submit(page) is True
 
 
 def test_step_submit_returns_true_when_url_leaves_form(tmp_path):
+    """回到管理首页（home/index）→ 成功。"""
     publisher, session, page = _make_publisher(tmp_path)
     page.inner_text.return_value = "无关文案"
-    page.url = "https://sticker.weixin.qq.com/cgi-bin/mmemoticon-bin/manage"
+    page.url = "https://sticker.weixin.qq.com/cgi-bin/mmemoticon-bin/readtemplate?t=home/index"
     assert publisher._step_submit(page) is True
+
+
+def test_step_submit_rejects_unknown_url_now(tmp_path):
+    """回归守护（修复假提交成功）：不再是"URL 不含 login/readtemplate 就成功"——
+    未知 URL（错误页/空白页）不得判成功。"""
+    publisher, session, page = _make_publisher(tmp_path)
+    page.inner_text.return_value = "无关文案"
+    page.url = "https://sticker.weixin.qq.com/some/unknown/page"
+    assert publisher._step_submit(page) is False
+
+
+def test_step_submit_detects_validation_error(tmp_path):
+    """表单校验错误（必填提示）→ 明确失败并记录告警。"""
+    publisher, session, page = _make_publisher(tmp_path)
+    page.inner_text.return_value = "请填写必填项"
+    page.url = "https://sticker.weixin.qq.com/cgi-bin/mmemoticon-bin/readtemplate?t=form/apply"
+    assert publisher._step_submit(page) is False
+    assert any("平台校验未通过" in w for w in publisher.warnings)
 
 
 def test_step_submit_returns_false_when_stuck_on_form(tmp_path):
@@ -523,18 +546,17 @@ def test_confirm_crop_swallows_failure(tmp_path):
     publisher._confirm_crop(page)
 
 
-def test_step_upload_assets_uses_png_input_for_icon(tmp_path):
-    """图标走 accept=image/png 的 file input。"""
+def test_step_upload_assets_uses_visible_file_inputs(tmp_path):
+    """2026-08 改版：横幅/封面/图标按可见 file input 槽位打标上传。"""
     ep = make_episode(tmp_path)
     assets = EpisodeAssets.from_dir(ep)
     publisher, session, page = _make_publisher(tmp_path)
-    # 横幅/封面上传打桩（避免 uploader mock）
-    publisher._upload_uploader_at = MagicMock()
-    png_input = MagicMock(name="png_input")
-    page.query_selector_all.return_value = [png_input]
+    page.evaluate.return_value = True
 
     publisher._step_upload_assets(page, assets)
 
-    publisher._upload_uploader_at.assert_any_call(page, 0, assets.banner)
-    publisher._upload_uploader_at.assert_any_call(page, 1, assets.cover)
-    png_input.set_input_files.assert_called_once_with(str(assets.icon))
+    # 三张素材各上传一次（打标后 set_input_files('._asset_target', path)）
+    calls = [c.args for c in page.set_input_files.call_args_list]
+    assert any(c[0] == '._asset_target' and c[1] == str(assets.banner) for c in calls)
+    assert any(c[0] == '._asset_target' and c[1] == str(assets.cover) for c in calls)
+    assert any(c[0] == '._asset_target' and c[1] == str(assets.icon) for c in calls)

@@ -10,7 +10,11 @@ function toFileUrl(filePath) {
 
 // 暴露给渲染进程的安全 API（contextIsolation）
 const api = {
-  send: async (cmd, args) => ipcRenderer.invoke('python-command', { cmd, args }),
+  // 统一深拷贝：渲染进程传入的 args 常含 Vue 响应式 Proxy，
+  // Electron IPC 的 structured clone 无法序列化 Proxy（"An object could not be cloned"）。
+  // 在通信层一次性剥掉，所有命令永久免疫此问题。
+  send: async (cmd, args) => ipcRenderer.invoke(
+    'python-command', { cmd, args: JSON.parse(JSON.stringify(args ?? {})) }),
   stop: (targetId) => ipcRenderer.invoke('python-stop', targetId),
   onProgress: (cb) => {
     ipcRenderer.on('python-progress', (_, ev) => cb(ev))
@@ -26,6 +30,11 @@ const api = {
   toFileUrl,
   copyText: (text) => clipboard.writeText(String(text || '')),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  // 更新下载进度（main 的 updater 流式回报：stage=download/verify, percent, MB）
+  onUpdateProgress: (cb) => {
+    ipcRenderer.on('update-progress', (_, ev) => cb(ev))
+  },
 }
 
 if (contextBridge && contextBridge.exposeInMainWorld) {

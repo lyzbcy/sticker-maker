@@ -54,6 +54,8 @@ class PublishConfig:
     # 超时
     navigation_timeout_ms: int = 60000
     action_timeout_ms: int = 15000
+    # 人工登录等待（秒）：登录页打开后等用户扫码/输入，期间轮询登录态
+    login_wait_seconds: int = 180
 
     @classmethod
     def from_env(cls, env_path: Optional[Path] = None) -> "PublishConfig":

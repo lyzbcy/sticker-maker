@@ -17,6 +17,7 @@ from PIL import Image
 from ..pipeline.context import PipelineContext, LogEntry
 from ..providers.chromakey import ChromaKeyProvider
 from ..providers.vision import VisionProvider
+from .grid_cutter import cut_grid
 
 # 微信表情主图目标尺寸（spec：240×240）
 _TARGET_SIZE = 240
@@ -65,10 +66,14 @@ class PostprocessStage:
             transparent = ctx.episode.transparent_default
         grid_size = ctx.episode.grid_size
         # 1) 裁切（或 1×1 直接用）
+        # 2026-08-27：等分切割 → 内容感知切割（投影找沟 + 连通域归属），
+        # 解决 codex 网格不齐/贴纸越界时"切到邻格内容、自己被切半"的问题
         if should_crop(grid_size):
-            panels = self._crop_grid(
+            panels, cut_notes = cut_grid(
                 ctx.grid_image, grid_size,
                 ctx.episode_dir / "原图" / "_panels")
+            for note in cut_notes:
+                ctx.log(LogEntry(stage="S2", status="OK", message=f"切图：{note}"))
         else:
             panels = [ctx.grid_image]
         # 2) 含义预检
@@ -109,25 +114,23 @@ class PostprocessStage:
             stage="S2", status="OK",
             message=f"后处理完成：{len(ctx.stickers)} 张，抠图={need_key}"))
 
-    def _crop_grid(self, grid_image: Path, grid: int, out_dir: Path) -> List[Path]:
-        """按行优先（r*grid+c+1）裁切宫格图，返回 panel 路径列表。"""
-        out_dir.mkdir(parents=True, exist_ok=True)
-        img = Image.open(grid_image)
-        w, h = img.size
-        cell_w, cell_h = w // grid, h // grid
-        panels: List[Path] = []
-        for r in range(grid):
-            for c in range(grid):
-                idx = r * grid + c + 1
-                cell = img.crop(
-                    (c * cell_w, r * cell_h, (c + 1) * cell_w, (r + 1) * cell_h))
-                out = out_dir / f"panel_{idx:02d}.png"
-                cell.save(out)
-                panels.append(out)
-        return panels
-
     def _ensure_size(self, img: Image.Image, target: int = _TARGET_SIZE) -> Image.Image:
-        """尺寸校验：非 target×target 则缩放（LANCZOS）。"""
+        """尺寸校验：先补成方形（不拉伸变形），再缩放到 target×target（LANCZOS）。
+
+        2026-08-27：切图改为按贴纸连通域 bbox 裁剪后，panel 可能不是正方形；
+        直接 resize 会把贴纸压扁/拉长。先居中补方（透明或背景色），再等比缩放。
+        """
+        if img.width != img.height:
+            # 补方颜色：四角一致且不透明 → 用该色；否则透明
+            corners = [img.getpixel(p) for p in
+                       [(0, 0), (img.width - 1, 0), (0, img.height - 1),
+                        (img.width - 1, img.height - 1)]]
+            same = all(c[:3] == corners[0][:3] and c[3] == corners[0][3] for c in corners)
+            fill = corners[0] if (same and corners[0][3] > 0) else (0, 0, 0, 0)
+            side = max(img.width, img.height)
+            canvas = Image.new("RGBA", (side, side), fill)
+            canvas.paste(img, ((side - img.width) // 2, (side - img.height) // 2))
+            img = canvas
         if img.width != target or img.height != target:
             img = img.resize((target, target), Image.LANCZOS)
         return img

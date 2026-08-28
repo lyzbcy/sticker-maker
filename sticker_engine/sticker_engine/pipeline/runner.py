@@ -113,7 +113,12 @@ class PipelineRunner:
                         message=f"关卡 {gate_name} 未通过：{result.message}", percent=pct))
                     return  # 关卡 FAIL 必停
             else:
-                obj.run(ctx)
+                # 注入 stage 内进度通道：stage 内部可发细粒度进度（做什么/输入/输出/在等什么）
+                ctx.stage_progress = self._stage_emitter(progress_callback, label, pct)
+                try:
+                    obj.run(ctx)
+                finally:
+                    ctx.stage_progress = None
             _record_stage_time(label, time.time() - stage_start)
 
             pct_after = (i + 1) / n if n > 0 else 1.0
@@ -125,3 +130,17 @@ class PipelineRunner:
     def _emit(cb: Optional[Callable[[ProgressEvent], None]], ev: ProgressEvent) -> None:
         if cb is not None:
             cb(ev)
+
+    @staticmethod
+    def _stage_emitter(cb: Optional[Callable[[ProgressEvent], None]],
+                       label: str, pct: float) -> Optional[Callable]:
+        """构造注入 ctx.stage_progress 的回调；无 progress_callback 时返回 None。"""
+        if cb is None:
+            return None
+
+        def emit(message: str) -> None:
+            cb(ProgressEvent(
+                stage=label, phase="stage_progress",
+                message=message, percent=pct))
+
+        return emit

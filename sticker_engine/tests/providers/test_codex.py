@@ -77,8 +77,12 @@ def test_build_generate_command_includes_refs_and_prompt(tmp_path):
     )
     assert "codex" in cmd[0] or cmd[0].endswith("codex")
     assert "--enable" in cmd and "image_generation" in cmd
+    assert "--skip-git-repo-check" in cmd   # 非 git 目录必须带，否则 codex 拒绝执行
     assert "-i" in cmd   # 有参考图参数
-    assert "draw a cute sticker" in cmd[-1]
+    # 回归守护：prompt 必须出现在所有 -i 之前。
+    # codex 0.134+ 的 -i/--image 是多值参数，会贪婪吞掉其后的位置参数；
+    # prompt 放在 -i 后会被当成图片文件名 → codex 转而读 stdin → 挂到超时（0 输出）。
+    assert cmd.index("draw a cute sticker") < cmd.index("-i")
 
 
 def test_exec_text_returns_stdout_string(tmp_path, monkeypatch):
@@ -144,8 +148,14 @@ def test_exec_text_passes_refs_as_i_args(tmp_path, monkeypatch):
 
     import sticker_engine.providers.codex as codex_mod
     monkeypatch.setattr(codex_mod.subprocess, "run", fake_run)
+    # 2026-08-27：refs 现在会先经 ASCII 暂存（不存在的文件会被剔除），测试需真实文件
+    (tmp_path / "big.png").write_bytes(b"png")
     provider.exec_text("describe this", refs=[tmp_path / "big.png"])
     cmd = captured["cmd"]
     assert "-i" in cmd
     assert "image_generation" not in cmd   # 文本任务不开生图 flag
-    assert cmd[-1] == "describe this"
+    assert "--skip-git-repo-check" in cmd
+    # 回归守护：prompt 在 -i 之前（同 build_generate_command 的顺序要求）
+    assert cmd.index("describe this") < cmd.index("-i")
+    # stdin 必须显式关闭（DEVNULL），否则管道环境下 codex 会附加读取 stdin
+    assert captured["kw"].get("stdin") is not None
