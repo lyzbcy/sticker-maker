@@ -44,6 +44,7 @@ class Prefs:
     story_mode: bool = False
     reference_lib_path: Optional[str] = None   # I2：用户可改参考图库位置（None=默认）
     default_series_id: Optional[str] = None    # 默认系列：run 成功后自动编号命名（None=不自动）
+    prompt_set_id: Optional[str] = None        # 默认 Prompt 方案（None=内置萌系大头）
 
     def __post_init__(self):
         s = self.mode_probs.single + self.mode_probs.duo + self.mode_probs.trio + self.mode_probs.quad

@@ -99,15 +99,32 @@
         </div>
       </section>
 
-      <!-- 表情预览 -->
+      <!-- 表情预览 + 打分（打分自动存 rating.json，可整文件发给 AI 反哺优化 prompt） -->
       <section class="card">
-        <h3 class="card-title">表情（{{ ep.stickers.length }} 张）<span class="muted">角色：{{ ep.characters.join('、') || '—' }}</span></h3>
+        <h3 class="card-title">
+          表情（{{ ep.stickers.length }} 张）<span class="muted">角色：{{ ep.characters.join('、') || '—' }}</span>
+          <span class="rate-hint">👆 点星星打分（1-5，自动保存；评分文件可发给 AI 优化 prompt）</span>
+        </h3>
         <div class="sticker-grid">
           <div v-for="(st, i) in ep.stickers" :key="st.file" class="sticker-cell" :title="st.meaning">
             <img :src="fileUrl(st.path)" />
             <span class="meaning">{{ st.meaning }}</span>
             <span class="idx">{{ i + 1 }}</span>
+            <div class="stars">
+              <button v-for="s in 5" :key="s" class="star"
+                      :class="{ on: (ratings[st.meaning] || {}).score >= s }"
+                      @click="rate(st.meaning, s)" :title="`${s} 分`">★</button>
+            </div>
           </div>
+        </div>
+        <div class="overall-row">
+          <span class="overall-label">整组总评：</span>
+          <button v-for="s in 5" :key="s" class="star big"
+                  :class="{ on: (overall || 0) >= s }"
+                  @click="overall = (overall === s ? null : s); saveRating()">{{ s }}</button>
+          <input class="overall-note" v-model="note" placeholder="一句话总评（哪里好/哪里不行，AI 反哺时用得上）"
+                 @change="saveRating" />
+          <span v-if="ratingSavedAt" class="saved-tip">✓ {{ ratingSavedAt }}</span>
         </div>
       </section>
 
@@ -166,6 +183,44 @@ const picks = ref({ banner: 0, cover: 0, icon: 0 })
 const customPaths = ref({})
 
 onMounted(() => { if (!store.selectedEpisode) store.phase = 'episodes' })
+
+// ---- 打分（自动存 rating.json）----
+const ratings = ref({})
+const overall = ref(null)
+const note = ref('')
+const ratingSavedAt = ref('')
+let ratingTimer = null
+
+async function loadRating() {
+  if (!ep.value?.path || !window.api) return
+  try {
+    const res = await window.api.send('get_rating', { episode_dir: ep.value.path })
+    if (res?.status === 'ok') {
+      ratings.value = res.data.ratings || {}
+      overall.value = res.data.overall ?? null
+      note.value = res.data.note || ''
+    }
+  } catch { /* 静默 */ }
+}
+function rate(meaning, score) {
+  const cur = (ratings.value[meaning] || {}).score
+  ratings.value = { ...ratings.value, [meaning]: { score: cur === score ? 0 : score, note: '' } }
+  saveRating()
+}
+function saveRating() {
+  if (!ep.value?.path || !window.api) return
+  clearTimeout(ratingTimer)
+  ratingTimer = setTimeout(async () => {
+    try {
+      const res = await window.api.send('save_rating', {
+        episode_dir: ep.value.path,
+        ratings: ratings.value, overall: overall.value, note: note.value,
+      })
+      if (res?.status === 'ok') ratingSavedAt.value = '已保存 ' + new Date().toLocaleTimeString()
+    } catch { /* 静默 */ }
+  }, 400)
+}
+loadRating()
 watch(ep, (v) => {
   if (v) {
     albumName.value = v.meta.album_name || ''
@@ -405,7 +460,27 @@ header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; fle
 .custom-path { font-size: 11px; color: var(--muted-soft); word-break: break-all; }
 .warn-text { color: var(--brick); font-size: 12px; }
 
-.sticker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; }
+.sticker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
+.rate-hint { font-size: 11px; color: var(--muted-soft); font-weight: 500; margin-left: 8px; }
+.stars { display: flex; gap: 1px; justify-content: center; margin-top: 2px; }
+.star {
+  border: none; background: none; padding: 0; font-size: 15px; line-height: 1;
+  color: var(--line); cursor: pointer; transition: transform .1s ease, color .1s ease;
+}
+.star.on { color: #f5a623; }
+.star:hover { transform: scale(1.25); }
+.star.big { font-size: 16px; padding: 2px 6px; border: 1px solid var(--paper); border-radius: 6px; margin-right: 4px; background: var(--card); }
+.star.big.on { border-color: #f5a623; }
+.overall-row {
+  display: flex; align-items: center; gap: 4px; margin-top: 14px; flex-wrap: wrap;
+  padding: 10px 12px; background: var(--bg-cream, #faf6eb); border-radius: 10px;
+}
+.overall-label { font-size: 13px; font-weight: 700; color: var(--ink); }
+.overall-note {
+  flex: 1; min-width: 220px; padding: 7px 12px; border: 1.5px solid var(--paper);
+  border-radius: 8px; font-size: 12.5px; background: var(--card);
+}
+.saved-tip { font-size: 11px; color: var(--correct); }
 .sticker-cell {
   position: relative; background: var(--bg-cream); border: 1.5px solid var(--paper);
   border-radius: var(--r-md); padding: 6px; text-align: center;

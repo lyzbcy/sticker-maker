@@ -110,7 +110,7 @@ def test_generate_stage_emits_detailed_progress(tmp_path):
     assert any("生成模式已选定" in m for m in messages)
     assert any("输入就绪" in m and "prompt" in m for m in messages)
     assert any("调用 codex" in m for m in messages)
-    assert any("等待 codex 响应… 已等 5s" in m for m in messages)
+    assert any("等待 codex 响应" in m and "已等 5s" in m for m in messages)
     assert any("输出就绪" in m for m in messages)
     assert codex.calls[0]["on_wait"] is not None
 

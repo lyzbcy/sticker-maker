@@ -8,6 +8,7 @@ from ..pipeline.context import PipelineContext, LogEntry
 from ..providers.codex import CodexProvider
 from ..resources.prompts.templates import (
     REF_LIBRARY_TEMPLATE, STORY_TEMPLATE, KEYWORD_COMBO_TEMPLATE)
+from ..config.prompts import apply_set as _apply_prompt_set
 
 
 # ---- IP 身份门禁（2026-08-27 事故复盘）----
@@ -109,6 +110,14 @@ class GenerateStage:
         size_kb = dst.stat().st_size // 1024
         self._emit(ctx, f"输出就绪：{dst.name}（{size_kb} KB，耗时 {int(time.time() - t0)}s）")
         ctx.log(LogEntry(stage="S1", status="OK", message=f"生图完成 mode={mode.value} → {dst.name}"))
+        # 落盘当次 prompt：打分 JSON 会嵌入它，发给 AI 即可反哺优化方案
+        ps = self._active_prompt_set(ctx)
+        nl = chr(10)
+        prompt_header = (
+            "# mode: " + mode.value + nl +
+            "# prompt_set: " + ps.id + " (" + ps.name + ")" + nl)
+        (ctx.episode_dir / "原图" / "prompt.txt").write_text(
+            prompt_header + prompt, encoding="utf-8")
         # 参考图=弹药：成功后把用过的库图归档（复用会产出雷同贴纸，2026-08-27 产品定型）
         if mode == GenerationMode.REF_LIBRARY and getattr(ctx.config.prefs, "ref_consume", True):
             self._archive_used_refs(ctx, refs, bases)
@@ -217,6 +226,15 @@ class GenerateStage:
                          message="IP 校验识图无明确回复，放行并留痕"))
         return True, "识图无明确回复，本次放行（留痕）"
 
+    def _active_prompt_set(self, ctx):
+        """当前生效的 Prompt 方案（prefs.prompt_set_id 指定，缺省=内置）。"""
+        if getattr(self, "_prompt_set_cache", None) is None:
+            from ..config.prompts import find_set
+            user_data = ctx.config.paths.user_data
+            self._prompt_set_cache = find_set(
+                user_data, getattr(ctx.config.prefs, "prompt_set_id", None))
+        return self._prompt_set_cache
+
     def _gather_bases(self, ctx) -> list:
         """本次要保真的角色 base 图（单/多人）。"""
         selected_bases = list(getattr(ctx, "selected_bases", []) or [])
@@ -234,7 +252,9 @@ class GenerateStage:
 
         if mode == GenerationMode.REF_LIBRARY:
             n_img = n + len(selected_bases)
-            prompt = REF_LIBRARY_TEMPLATE.format(grid=grid, n=n, n_img=n_img)
+            prompt = _apply_prompt_set(
+                "ref_library", self._active_prompt_set(ctx)).format(
+                grid=grid, n=n, n_img=n_img)
             refs += self._pick_refs(ctx, n)
         elif mode == GenerationMode.STORY:
             # selector 未注入或池耗尽 → 降级 combo（决策 L）
@@ -253,10 +273,14 @@ class GenerateStage:
                 desc = " | ".join(
                     f"Row{i+1}: " + " → ".join(p.cn for p in s.panels[:grid])
                     for i, s in enumerate(stories))
-                prompt = STORY_TEMPLATE.format(grid=grid, n=n, stories_description=desc)
+                prompt = _apply_prompt_set(
+                    "story", self._active_prompt_set(ctx)).format(
+                    grid=grid, n=n, stories_description=desc)
         if mode == GenerationMode.KEYWORD_COMBO:
             panels_desc = self._random_combo_panels(ctx, n)
-            prompt = KEYWORD_COMBO_TEMPLATE.format(grid=grid, n=n, panels_description=panels_desc)
+            prompt = _apply_prompt_set(
+                "keyword_combo", self._active_prompt_set(ctx)).format(
+                grid=grid, n=n, panels_description=panels_desc)
         if ctx.selected_characters:
             identity = "、".join(
                 f"image {i + 1}={name}"

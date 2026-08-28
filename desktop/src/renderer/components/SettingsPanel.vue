@@ -8,11 +8,70 @@
     <!-- 顶部 tab：一个主题一屏，不再长条滚动 -->
     <div class="tab-bar">
       <button class="tab" :class="{ active: tab === 'gen' }" @click="tab = 'gen'">🎨 生图设置</button>
+      <button class="tab" :class="{ active: tab === 'prompts' }" @click="switchPrompts">📝 Prompt 方案</button>
       <button class="tab" :class="{ active: tab === 'publish' }" @click="switchPublish">
         📤 发布账号
         <span v-if="credStatus.configured" class="tab-dot ok" title="已配置"></span>
         <span v-else class="tab-dot warn" title="未配置，提交微信前需要填写"></span>
       </button>
+    </div>
+
+    <!-- Prompt 方案：多套可切换，评分数据可反哺 AI 来调这里 -->
+    <div v-if="tab === 'prompts'" class="settings-body">
+      <div class="section">
+        <h3>生图 Prompt 方案</h3>
+        <p class="hint" style="margin-bottom:12px;">
+          每套方案 = 风格块（STYLE）+ 各模式附加指令。生成时按「默认方案」套用；
+          把作品详情页的评分文件（rating.json）发给 AI，AI 就能按打分反向优化这里的方案。
+        </p>
+        <div class="ps-list">
+          <div v-for="s in promptSets" :key="s.id" class="ps-item"
+               :class="{ active: s.id === activePromptSet }" @click="editSet(s)">
+            <div class="ps-head">
+              <span class="ps-name">{{ s.name }}</span>
+              <span v-if="s.id === activePromptSet" class="ps-badge">使用中</span>
+              <span v-if="s.id === 'builtin-2026-08-28-moe'" class="ps-badge dim">内置</span>
+            </div>
+            <p class="ps-meta">{{ (s.style_block || '').slice(0, 80) }}…</p>
+            <div class="ps-ops" @click.stop>
+              <button v-if="s.id !== 'builtin-2026-08-28-moe'" class="ps-btn danger" @click="deleteSet(s)">删除</button>
+              <button class="ps-btn" @click="dupSet(s)">复制</button>
+              <button v-if="s.id !== activePromptSet" class="ps-btn primary" @click="setDefault(s)">设为默认</button>
+            </div>
+          </div>
+          <button class="ps-item add" @click="newSet">＋ 新建方案</button>
+        </div>
+      </div>
+      <div class="section" v-if="editing">
+        <h3>编辑：{{ editing.name || '新方案' }}</h3>
+        <div class="field">
+          <label class="field-label">方案名</label>
+          <input class="dir-input" v-model="editing.name" placeholder="例如：黏土风·实验" />
+        </div>
+        <div class="field">
+          <label class="field-label">风格块 STYLE（替换内置萌系规格；留空=用内置）</label>
+          <textarea class="ps-editor" v-model="editing.style_block" rows="8"
+                    placeholder="STYLE (strictly identical across all panels):&#10;- ..."></textarea>
+        </div>
+        <div class="field">
+          <label class="field-label">排列组合模式附加指令（追加在模板末尾）</label>
+          <textarea class="ps-editor" v-model="editing.combo_extra" rows="3"></textarea>
+        </div>
+        <div class="field">
+          <label class="field-label">故事模式附加指令</label>
+          <textarea class="ps-editor" v-model="editing.story_extra" rows="2"></textarea>
+        </div>
+        <div class="field">
+          <label class="field-label">参考图模式附加指令</label>
+          <textarea class="ps-editor" v-model="editing.ref_extra" rows="2"></textarea>
+        </div>
+        <div class="row-actions">
+          <button class="save" @click="saveSet">保存方案</button>
+          <button class="save" v-if="!editing.id || editing.id === 'builtin-2026-08-28-moe'"
+                  @click="saveSet(true)">另存为新方案并设为默认</button>
+        </div>
+        <p v-if="psSavedTip" class="hint">{{ psSavedTip }}</p>
+      </div>
     </div>
 
     <!-- 生图设置 -->
@@ -111,6 +170,77 @@ async function switchPublish() {
   } catch { /* 状态加载失败不阻塞 */ }
 }
 
+// ---- Prompt 方案管理 ----
+const promptSets = ref([])
+const activePromptSet = ref('')
+const editing = ref(null)
+const psSavedTip = ref('')
+
+async function switchPrompts() {
+  tab.value = 'prompts'
+  psSavedTip.value = ''
+  editing.value = null
+  await loadPromptSets()
+}
+
+async function loadPromptSets() {
+  if (!window.api) return
+  try {
+    const res = await window.api.send('list_prompt_sets')
+    if (res?.status === 'ok') {
+      promptSets.value = res.data.sets || []
+      activePromptSet.value = res.data.active || ''
+    }
+  } catch { /* 静默 */ }
+}
+
+function editSet(s) {
+  editing.value = { ...s }
+  psSavedTip.value = ''
+}
+
+function newSet() {
+  editing.value = { id: '', name: '新方案', style_block: '', combo_extra: '', story_extra: '', ref_extra: '' }
+}
+
+function dupSet(s) {
+  editing.value = { ...s, id: '', name: s.name + ' 副本' }
+}
+
+async function setDefault(s) {
+  if (!window.api) return
+  const res = await window.api.send('save_prompt_set', { set: s, is_default: true })
+  if (res?.status === 'ok') {
+    activePromptSet.value = res.data.set.id
+    // 同步进当前 prefs（向导/生成读同一份）
+    if (store.prefs) store.prefs.prompt_set_id = res.data.set.id
+    await loadPromptSets()
+  }
+}
+
+async function saveSet(asNew = false) {
+  if (!window.api || !editing.value) return
+  const payload = { ...editing.value }
+  if (asNew) payload.id = ''
+  const res = await window.api.send('save_prompt_set', {
+    set: payload, is_default: !asNew && payload.id === activePromptSet.value,
+  })
+  if (res?.status === 'ok') {
+    editing.value = res.data.set
+    psSavedTip.value = '✓ 已保存' + (res.data.active === res.data.set.id ? '（默认方案）' : '')
+    await loadPromptSets()
+  }
+}
+
+async function deleteSet(s) {
+  if (!window.api || !confirm(`确定删除方案「${s.name}」？`)) return
+  const res = await window.api.send('delete_prompt_set', { id: s.id })
+  if (res?.status === 'ok') {
+    if (editing.value?.id === s.id) editing.value = null
+    await loadPromptSets()
+  }
+}
+
 onMounted(() => { if (!window.api) return })
 
 async function saveCredentials() {
@@ -194,6 +324,41 @@ h2 {
 
 /* 顶部 tab */
 .tab-bar { display: flex; gap: 8px; margin-bottom: 18px; }
+
+/* ---- Prompt 方案管理 ---- */
+.ps-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.ps-item {
+  padding: 14px; border: 1.5px solid var(--paper); border-radius: 12px;
+  background: var(--card); cursor: pointer; transition: all .15s ease;
+}
+.ps-item:hover { border-color: var(--sage); }
+.ps-item.active { border-color: var(--forest); box-shadow: var(--shadow-soft); }
+.ps-item.add { border-style: dashed; color: var(--muted-soft); text-align: center; }
+.ps-head { display: flex; align-items: center; gap: 6px; }
+.ps-name { font-weight: 700; font-size: 13.5px; color: var(--ink); }
+.ps-badge {
+  font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 999px;
+  background: var(--forest); color: #fff;
+}
+.ps-badge.dim { background: var(--paper); color: var(--muted); }
+.ps-meta {
+  margin: 8px 0; font-size: 11px; color: var(--muted-soft);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ps-ops { display: flex; gap: 6px; }
+.ps-btn {
+  padding: 4px 10px; font-size: 11px; font-weight: 700; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--card);
+  color: var(--forest);
+}
+.ps-btn.primary { border-color: var(--forest); }
+.ps-btn.danger { color: var(--brick); }
+.ps-editor {
+  width: 100%; padding: 10px 12px; border: 1.5px solid var(--paper);
+  border-radius: 10px; font-family: Consolas, monospace; font-size: 12px;
+  background: var(--card); resize: vertical; box-sizing: border-box;
+}
+.row-actions { display: flex; gap: 10px; }
 .tab {
   flex: 1;
   display: flex; align-items: center; justify-content: center; gap: 8px;

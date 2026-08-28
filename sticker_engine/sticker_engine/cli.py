@@ -816,6 +816,104 @@ def cmd_replenish_refs(req_id, args):
                               if p.suffix.lower() in (".png", ".jpg", ".jpeg")])})
 
 
+def cmd_list_prompt_sets(req_id, args):
+    """列出全部 Prompt 方案（用户文件 + 内置兜底）。"""
+    engine = _ensure_engine()
+    from .config.prompts import list_sets
+    _result(req_id, "ok", data={
+        "sets": [s.to_dict() for s in list_sets(engine.config.paths.user_data)],
+        "active": engine.config.prefs.prompt_set_id or "builtin-2026-08-28-moe"})
+
+
+def cmd_save_prompt_set(req_id, args):
+    """新建/更新一套 Prompt 方案；is_default=true 时同时设为默认。"""
+    engine = _ensure_engine()
+    from .config.prompts import save_set, find_set
+    data = args.get("set") or {}
+    if not str(data.get("name") or "").strip():
+        _result(req_id, "fail", errors=[{"message": "方案名不能为空"}])
+        return
+    ps = save_set(engine.config.paths.user_data, data)
+    if args.get("is_default"):
+        engine.config.prefs.prompt_set_id = ps.id
+        save_prefs(engine.config.prefs, engine.config.paths.prefs_file)
+    _result(req_id, "ok", data={"set": ps.to_dict(),
+                               "active": engine.config.prefs.prompt_set_id or ""})
+
+
+def cmd_delete_prompt_set(req_id, args):
+    engine = _ensure_engine()
+    from .config.prompts import delete_set, BUILTIN_ID
+    set_id = args.get("id") or ""
+    ok = delete_set(engine.config.paths.user_data, set_id)
+    if ok and engine.config.prefs.prompt_set_id == set_id:
+        engine.config.prefs.prompt_set_id = None
+        save_prefs(engine.config.prefs, engine.config.paths.prefs_file)
+    _result(req_id, "ok" if ok else "fail",
+            errors=None if ok else [{"message": "内置方案不可删除"}])
+
+
+def cmd_save_rating(req_id, args):
+    """保存打分到 episode/rating.json（自动嵌入当次 prompt/模式 = AI 反哺原料）。"""
+    import json as _json
+    import time as _time
+    engine = _ensure_engine()
+    ep_dir = Path(args.get("episode_dir") or "")
+    if not ep_dir.is_dir():
+        _result(req_id, "fail", errors=[{"message": f"作品目录不存在：{ep_dir}"}])
+        return
+    from .config.series import load_meta
+    meta = load_meta(ep_dir)
+    prompt_txt = ""
+    pfile = ep_dir / "原图" / "prompt.txt"
+    if pfile.exists():
+        prompt_txt = pfile.read_text(encoding="utf-8")
+    mm_path = ep_dir / "meaning_map.json"
+    meaning_map = {}
+    if mm_path.exists():
+        try:
+            meaning_map = _json.loads(mm_path.read_text(encoding="utf-8"))
+        except Exception:
+            meaning_map = {}
+    rating = {
+        "album_name": meta.album_name or ep_dir.name,
+        "episode_dir": str(ep_dir),
+        "created_at": meta.created_at,
+        "rated_at": _time.strftime("%Y-%m-%d %H:%M:%S"),
+        # ---- 过程数据（AI 反哺的上下文）----
+        "production": {
+            "mode": (prompt_txt.splitlines()[0].replace("# mode:", "").strip()
+                     if prompt_txt.startswith("# mode:") else ""),
+            "prompt_file_content": prompt_txt,
+            "meaning_map": meaning_map,
+            "characters": (ep_dir / "本次制作角色.md").read_text(encoding="utf-8")
+                          if (ep_dir / "本次制作角色.md").exists() else "",
+        },
+        # ---- 用户打分 ----
+        "overall": args.get("overall"),
+        "note": args.get("note", ""),
+        "ratings": args.get("ratings") or {},   # {含义词: {"score":1-5,"note":""}}
+    }
+    (ep_dir / "rating.json").write_text(
+        _json.dumps(rating, ensure_ascii=False, indent=2), encoding="utf-8")
+    _result(req_id, "ok", data={"path": str(ep_dir / "rating.json"),
+                                "rated": len(rating["ratings"])})
+
+
+def cmd_get_rating(req_id, args):
+    engine = _ensure_engine()
+    ep_dir = Path(args.get("episode_dir") or "")
+    f = ep_dir / "rating.json"
+    if not f.exists():
+        _result(req_id, "ok", data={"ratings": {}, "overall": None, "note": ""})
+        return
+    import json as _json
+    try:
+        _result(req_id, "ok", data=_json.loads(f.read_text(encoding="utf-8")))
+    except Exception:
+        _result(req_id, "ok", data={"ratings": {}, "overall": None, "note": ""})
+
+
 def cmd_featured(req_id, args):
     """E：随机抽 N 张精选表情（初心第85行：软件里多用精选）。"""
     from .promotion.featured import sample_featured, featured_count
@@ -1208,7 +1306,8 @@ def _dict_to_prefs(d):
         ref_consume=d.get("ref_consume", True),
         story_mode=d.get("story_mode", True),
         reference_lib_path=d.get("reference_lib_path"),
-        default_series_id=d.get("default_series_id"))
+        default_series_id=d.get("default_series_id"),
+        prompt_set_id=d.get("prompt_set_id"))
 
 
 HANDLERS = {
@@ -1222,6 +1321,11 @@ HANDLERS = {
     "list_series": cmd_list_series, "save_series": cmd_save_series,
     "sync_platform_status": cmd_sync_platform_status,
     "replenish_refs": cmd_replenish_refs,
+    "list_prompt_sets": cmd_list_prompt_sets,
+    "save_prompt_set": cmd_save_prompt_set,
+    "delete_prompt_set": cmd_delete_prompt_set,
+    "save_rating": cmd_save_rating,
+    "get_rating": cmd_get_rating,
     "delete_episode": cmd_delete_episode,
     "get_episode": cmd_get_episode, "update_episode_meta": cmd_update_episode_meta,
     "regen_intro": cmd_regen_intro, "regen_assets": cmd_regen_assets,
