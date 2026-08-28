@@ -478,6 +478,35 @@ def _episode_characters(episode_dir: Path) -> list:
     return []
 
 
+def _episode_stickers(episode_dir: Path) -> list:
+    """图↔含义配对：按含义词反查文件名锁定（与发布端 from_dir 同一约定）。
+
+    历史 bug：sorted(文件名) × panel 数字序 meanings 的**位置**配对——中文
+    字典序和 panel 序天然错开，导致详情页"生气"行显示融化图、打分键错挂
+    （68 号单三条用户备注精确命中错位）。文件名==含义词是 A 产出约定，
+    此处以名字锁定，不按位置配对。
+    """
+    final = Path(episode_dir) / "最终版"
+    if not final.exists():
+        return []
+    final_pngs = {p.stem: p for p in final.glob("*.png")}
+    stickers = []
+    for meaning in _episode_meanings(episode_dir):
+        hit = final_pngs.get(meaning)
+        if hit is None:
+            # 文件名可能带后缀，包含匹配兜底（同 from_dir）
+            hit = next((p for s, p in final_pngs.items() if meaning in s), None)
+        if hit is not None:
+            stickers.append({"file": hit.name, "path": str(hit), "meaning": meaning})
+    # meaning_map 没覆盖的文件（改名后 map 未同步）按文件名补齐，不丢图
+    if len(stickers) < len(final_pngs):
+        seen = {s["file"] for s in stickers}
+        for stem, p in sorted(final_pngs.items()):
+            if p.name not in seen:
+                stickers.append({"file": p.name, "path": str(p), "meaning": stem})
+    return stickers
+
+
 def _episode_meanings(episode_dir: Path) -> list:
     """读含义词列表（按 meaning_map.json 数字序；降级用文件名）。"""
     episode_dir = Path(episode_dir)
@@ -633,12 +662,7 @@ def cmd_get_episode(req_id, args):
     final = episode_dir / "最终版"
     stickers = []
     if final.exists():
-        meanings = _episode_meanings(episode_dir)
-        for i, p in enumerate(sorted(final.glob("*.png"), key=lambda x: x.stem)):
-            stickers.append({
-                "file": p.name, "path": str(p),
-                "meaning": meanings[i] if i < len(meanings) else p.stem,
-            })
+        stickers = _episode_stickers(episode_dir)
     def _exists(sub):
         f = episode_dir / sub
         return str(f) if f.exists() else None
