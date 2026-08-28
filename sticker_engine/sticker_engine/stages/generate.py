@@ -84,6 +84,15 @@ class GenerateStage:
         mode = self.decide_mode(ctx)
         ctx.gen_mode = mode.value   # C1 修复：把决出的 mode 写进 ctx，供 S2 决定抠图策略
         self._emit(ctx, f"生成模式已选定：{self.MODE_LABELS[mode]}")
+        # 可观测性：开了参考图优先却没走成时，把原因说清楚
+        # （2026-08-27 用户疑问"数量够为什么没走参考图模式"——当时是验证期
+        # 临时关了开关；但此类情况不该让用户猜，直接报库存数）
+        if ctx.config.prefs.ref_lib_priority and mode != GenerationMode.REF_LIBRARY:
+            have = self._count_refs(ctx)
+            need = ctx.episode.grid_size * ctx.episode.grid_size
+            self._emit(ctx,
+                       f"参考图库优先已开启，但库存 {have} 张 < 需要 {need} 张，"
+                       f"自动改用{self.MODE_LABELS[mode]}（可往参考图库补图）")
         prompt, refs = self._build_prompt_and_refs(ctx, mode)
         bases = self._gather_bases(ctx)
         chars = "、".join(ctx.selected_characters) if ctx.selected_characters else "默认角色"
