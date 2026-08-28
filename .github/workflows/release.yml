@@ -171,7 +171,10 @@ jobs:
           git push origin HEAD:main
 
       # GITHUB_TOKEN 的 push 不触发其他 workflow，必须显式 dispatch Pages 部署
+      # （默认 token 不自动注入 shell env，必须 env 显式传入，否则 401）
       - name: Trigger Pages redeploy
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           curl -fsS -X POST \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
