@@ -746,6 +746,76 @@ def cmd_regen_assets(req_id, args):
                                 "icon": str(episode_dir / "图标" / "图标.png")})
 
 
+def cmd_replenish_refs(req_id, args):
+    """补弹：把某作品的成品贴纸去重后导入参考图库（弹药模型闭环）。
+
+    去重用 dhash 感知哈希（64bit，海明距离<=8 视为雷同）：
+    - 和库里在役图比对（防重复合入相同内容）
+    - 和 _used_* 归档比对（防"从参考图生成的贴纸"再回流成自复制）
+    """
+    engine = _ensure_engine()
+    ep_dir = Path(args.get("episode_dir") or "")
+    final = ep_dir / "最终版"
+    if not final.is_dir():
+        _result(req_id, "fail", errors=[{"message": f"作品没有成品贴纸：{ep_dir}"}])
+        return
+    from PIL import Image
+    lib = engine.config.paths.reference_lib
+    lib.mkdir(parents=True, exist_ok=True)
+
+    def _dhash(path, size=8):
+        try:
+            g = Image.open(path).convert("L").resize((size + 1, size), Image.LANCZOS)
+            px = list(g.getdata())
+            bits = 0
+            for row in range(size):
+                for col in range(size):
+                    bits = (bits << 1) | (1 if px[row * (size + 1) + col] > px[row * (size + 1) + col + 1] else 0)
+            return bits
+        except Exception:
+            return None
+
+    def _hamming(a, b):
+        return bin(a ^ b).count("1")
+
+    # 现有指纹：在役 + 已归档
+    import glob as _glob
+    existing = []
+    for p in list(lib.glob("*.png")) + list(lib.glob("*.jpg")) + list(lib.glob("*.jpeg")):
+        h = _dhash(p)
+        if h is not None:
+            existing.append((p, h))
+    for archived in lib.glob("_used_*"):
+        for p in archived.glob("*.png"):
+            h = _dhash(p)
+            if h is not None:
+                existing.append((p, h))
+
+    import shutil as _shutil
+    copied, skipped = [], []
+    for src in sorted(final.glob("*.png")):
+        h = _dhash(src)
+        if h is None:
+            skipped.append({"name": src.name, "reason": "无法读取"})
+            continue
+        dup = next((p for p, eh in existing if _hamming(h, eh) <= 8), None)
+        if dup:
+            skipped.append({"name": src.name, "reason": f"与库里 {dup.name} 雷同"})
+            continue
+        dst = lib / src.name
+        i = 2
+        while dst.exists():
+            dst = lib / f"{src.stem}-{i}{src.suffix}"
+            i += 1
+        _shutil.copy2(src, dst)
+        existing.append((dst, h))
+        copied.append(dst.name)
+    _result(req_id, "ok", data={
+        "imported": copied, "skipped": skipped,
+        "library_count": len([p for p in lib.iterdir()
+                              if p.suffix.lower() in (".png", ".jpg", ".jpeg")])})
+
+
 def cmd_featured(req_id, args):
     """E：随机抽 N 张精选表情（初心第85行：软件里多用精选）。"""
     from .promotion.featured import sample_featured, featured_count
@@ -1134,7 +1204,9 @@ def _dict_to_prefs(d):
         trio=mp.get("trio", 0.0), quad=mp.get("quad", 0.2)),
         single_char_probs=d.get("single_char_probs", {}), base_probs=d.get("base_probs", {}),
         grid_size=d.get("grid_size", 4), transparent_default=d.get("transparent_default", True),
-        ref_lib_priority=d.get("ref_lib_priority", True), story_mode=d.get("story_mode", True),
+        ref_lib_priority=d.get("ref_lib_priority", True),
+        ref_consume=d.get("ref_consume", True),
+        story_mode=d.get("story_mode", True),
         reference_lib_path=d.get("reference_lib_path"),
         default_series_id=d.get("default_series_id"))
 
@@ -1149,6 +1221,7 @@ HANDLERS = {
     "list_episodes": cmd_list_episodes, "open_in_finder": cmd_open_in_finder,
     "list_series": cmd_list_series, "save_series": cmd_save_series,
     "sync_platform_status": cmd_sync_platform_status,
+    "replenish_refs": cmd_replenish_refs,
     "delete_episode": cmd_delete_episode,
     "get_episode": cmd_get_episode, "update_episode_meta": cmd_update_episode_meta,
     "regen_intro": cmd_regen_intro, "regen_assets": cmd_regen_assets,

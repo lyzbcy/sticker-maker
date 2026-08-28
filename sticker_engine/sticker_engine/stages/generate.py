@@ -109,6 +109,37 @@ class GenerateStage:
         size_kb = dst.stat().st_size // 1024
         self._emit(ctx, f"输出就绪：{dst.name}（{size_kb} KB，耗时 {int(time.time() - t0)}s）")
         ctx.log(LogEntry(stage="S1", status="OK", message=f"生图完成 mode={mode.value} → {dst.name}"))
+        # 参考图=弹药：成功后把用过的库图归档（复用会产出雷同贴纸，2026-08-27 产品定型）
+        if mode == GenerationMode.REF_LIBRARY and getattr(ctx.config.prefs, "ref_consume", True):
+            self._archive_used_refs(ctx, refs, bases)
+
+    def _archive_used_refs(self, ctx, refs, bases) -> None:
+        """把本次用过的参考图（库部分，不含 base）移入 参考图库/_used_日期/。"""
+        base_set = {str(b) for b in (bases or [])}
+        used = [Path(r) for r in refs if str(r) not in base_set]
+        used = [u for u in used if u.exists()
+                and ctx.config.paths.reference_lib in u.parents]
+        if not used:
+            return
+        import datetime
+        archive = (ctx.config.paths.reference_lib /
+                   f"_used_{datetime.datetime.now():%Y%m%d}")
+        archive.mkdir(parents=True, exist_ok=True)
+        n = 0
+        for u in used:
+            dst = archive / u.name
+            i = 2
+            while dst.exists():
+                dst = archive / f"{u.stem}-{i}{u.suffix}"
+                i += 1
+            try:
+                u.rename(dst)
+                n += 1
+            except OSError:
+                pass   # 移不动（占用等）就留着，不影响主流程
+        left = self._count_refs(ctx)
+        self._emit(ctx, f"参考图库：{n} 张已用完归档（_used_{datetime.datetime.now():%Y%m%d}/），"
+                        f"剩余 {left} 张——复用同一批参考图会产出雷同贴纸，打完可在详情页「回流参考图库」补弹")
 
     def _generate_with_identity_gate(self, ctx, mode, prompt, refs, bases):
         """生图 + IP 身份门禁：最多 2 次尝试，生成后校验成图与 base 是否同一角色。

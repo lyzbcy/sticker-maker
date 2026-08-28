@@ -37,6 +37,7 @@ class Prefs:
     grid_size: int = 4
     transparent_default: bool = True
     ref_lib_priority: bool = True
+    ref_consume: bool = True     # 参考图=弹药：用过的自动归档（复用会产出雷同贴纸）
     story_mode: bool = True
     reference_lib_path: Optional[str] = None   # I2：用户可改参考图库位置（None=默认）
     default_series_id: Optional[str] = None    # 默认系列：run 成功后自动编号命名（None=不自动）

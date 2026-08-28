@@ -119,7 +119,14 @@
             {{ store.publishing ? '正在提交…' : (ep.meta.published ? '再次提交微信' : '一键提交微信') }}
           </button>
           <button class="btn-sm btn-reset" @click="openFinder">在文件夹中显示</button>
+          <!-- 弹药闭环：本组贴纸去重回流参考图库（已上架作品=市场验证过的良品） -->
+          <button class="btn-sm" :disabled="replenishing" @click="replenishRefs">
+            {{ replenishing ? '回流中…' : '回流参考图库' }}
+          </button>
         </div>
+        <p v-if="replenishResult" class="pub-ok" style="font-size: 12px;">
+          {{ replenishResult }}
+        </p>
         <div v-if="store.publishProgress" class="pub-progress">{{ store.publishProgress.message }}</div>
         <p v-if="publishOk" class="pub-ok">✓ 已提交到微信表情开放平台</p>
         <div v-else-if="publishFail" class="pub-fail">
@@ -265,6 +272,28 @@ async function publish() {
 async function openFinder() {
   if (ep.value?.path && window.api) {
     await window.api.send('open_in_finder', { path: ep.value.path })
+  }
+}
+
+// ---- 回流参考图库（弹药闭环） ----
+const replenishing = ref(false)
+const replenishResult = ref('')
+async function replenishRefs() {
+  if (!ep.value?.path || !window.api) return
+  replenishing.value = true
+  replenishResult.value = ''
+  try {
+    const res = await window.api.send('replenish_refs', { episode_dir: ep.value.path })
+    if (res && res.status === 'ok') {
+      const d = res.data
+      replenishResult.value =
+        `✓ 已回流 ${d.imported.length} 张进参考图库（现共 ${d.library_count} 张）` +
+        (d.skipped.length ? `；${d.skipped.length} 张与库内雷同已跳过` : '')
+    } else {
+      replenishResult.value = '回流失败：' + (res?.errors?.[0]?.message || '未知原因')
+    }
+  } finally {
+    replenishing.value = false
   }
 }
 </script>

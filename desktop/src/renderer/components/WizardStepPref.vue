@@ -30,6 +30,13 @@
     </div>
     <div class="field check">
       <label class="switch">
+        <input type="checkbox" id="refconsume" v-model="store.prefs.ref_consume" />
+        <span class="slider"></span>
+      </label>
+      <label for="refconsume" class="check-label">参考图用完自动归档（防重复产出雷同贴纸）</label>
+    </div>
+    <div class="field check">
+      <label class="switch">
         <input type="checkbox" id="story" v-model="store.prefs.story_mode" />
         <span class="slider"></span>
       </label>
