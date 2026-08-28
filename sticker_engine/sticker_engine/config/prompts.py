@@ -23,6 +23,28 @@ from ..resources.prompts.templates import (
     _STYLE_BLOCK, REF_LIBRARY_TEMPLATE, STORY_TEMPLATE, KEYWORD_COMBO_TEMPLATE)
 
 BUILTIN_ID = "builtin-2026-08-28-moe"
+BUILTIN_STANDARD_ID = "builtin-standard"
+
+# 标准版风格块（2026-08-27 萌系升级之前的规格：1:1 头身、不带眼位/腮红/无关节细节）
+_STANDARD_STYLE_BLOCK = (
+    "STYLE (strictly identical across all panels):\n"
+    "- Chibi aesthetic: exaggerated expressive big eyes, soft rounded facial "
+    "lines, large head-to-body ratio (about 1:1)\n"
+    "- 3D clay style, soft matte clay material, soft studio lighting\n"
+    "- Each sticker gets a uniform thin white outline (die-cut sticker look) "
+    "and a clean margin around it inside its cell\n"
+    "- Every character fully visible inside its own cell: no cropped "
+    "limbs/tails/hair, nothing floating or detached, no extra stray elements\n"
+    "- Characters must never touch or cross the grid divider lines: keep "
+    "completely empty background gutters between neighboring cells\n"
+    "- Background: solid magenta (#ff00ff), completely flat — no shadows, "
+    "no gradients, no scenery\n"
+    "- Absolutely no text, letters, numbers or watermarks in any panel"
+)
+
+
+def is_builtin(set_id: str) -> bool:
+    return set_id in (BUILTIN_ID, BUILTIN_STANDARD_ID)
 
 
 def _prompts_dir(user_data: Path) -> Path:
@@ -59,10 +81,17 @@ class PromptSet:
 
 
 def builtin_set() -> PromptSet:
-    """内置兜底：当前萌系大头规格（templates.py 的 STYLE_BLOCK）。"""
+    """内置默认：萌系大头规格（templates.py 的 STYLE_BLOCK）。"""
     return PromptSet(
         id=BUILTIN_ID, name="萌系大头（内置）",
         style_block=_STYLE_BLOCK, updated_at="builtin")
+
+
+def builtin_standard_set() -> PromptSet:
+    """内置第二套：标准版（萌系升级前的规格，供对比/偏好选择）。"""
+    return PromptSet(
+        id=BUILTIN_STANDARD_ID, name="标准版（内置）",
+        style_block=_STANDARD_STYLE_BLOCK, updated_at="builtin")
 
 
 def _safe_id(name: str) -> str:
@@ -71,7 +100,7 @@ def _safe_id(name: str) -> str:
 
 
 def list_sets(user_data: Path) -> List[PromptSet]:
-    """全部方案：用户文件 + 内置兜底（内置排最后，不可删）。"""
+    """全部方案：用户文件 + 内置两套（萌系大头默认 / 标准版，均不可删）。"""
     sets: List[PromptSet] = []
     d = _prompts_dir(user_data)
     if d.exists():
@@ -81,15 +110,16 @@ def list_sets(user_data: Path) -> List[PromptSet]:
             except (json.JSONDecodeError, OSError):
                 continue   # 坏文件跳过，不让一个坏方案拖垮列表
     sets.append(builtin_set())
+    sets.append(builtin_standard_set())
     return sets
 
 
 def save_set(user_data: Path, data: dict) -> PromptSet:
-    """新建/更新一套（按 id 匹配；无 id 时按名字生成）。"""
+    """新建/更新一套（按 id 匹配；无 id/内置 id 时按名字生成）。"""
     d = _prompts_dir(user_data)
     d.mkdir(parents=True, exist_ok=True)
     ps = PromptSet.from_dict(data)
-    if not ps.id or ps.id == BUILTIN_ID:
+    if not ps.id or is_builtin(ps.id):
         ps.id = _safe_id(ps.name)
     # 同 id 覆盖；名字撞车加后缀
     existing = {s.id: s.name for s in list_sets(user_data)}
@@ -102,7 +132,7 @@ def save_set(user_data: Path, data: dict) -> PromptSet:
 
 
 def delete_set(user_data: Path, set_id: str) -> bool:
-    if set_id == BUILTIN_ID:
+    if is_builtin(set_id):
         return False   # 内置不可删
     f = _prompts_dir(user_data) / f"{set_id}.json"
     if f.exists():

@@ -30,11 +30,11 @@
             <div class="ps-head">
               <span class="ps-name">{{ s.name }}</span>
               <span v-if="s.id === activePromptSet" class="ps-badge">使用中</span>
-              <span v-if="s.id === 'builtin-2026-08-28-moe'" class="ps-badge dim">内置</span>
+              <span v-if="s.id.startsWith('builtin')" class="ps-badge dim">内置</span>
             </div>
             <p class="ps-meta">{{ (s.style_block || '').slice(0, 80) }}…</p>
             <div class="ps-ops" @click.stop>
-              <button v-if="s.id !== 'builtin-2026-08-28-moe'" class="ps-btn danger" @click="deleteSet(s)">删除</button>
+              <button v-if="!s.id.startsWith('builtin')" class="ps-btn danger" @click="deleteSet(s)">删除</button>
               <button class="ps-btn" @click="dupSet(s)">复制</button>
               <button v-if="s.id !== activePromptSet" class="ps-btn primary" @click="setDefault(s)">设为默认</button>
             </div>
@@ -67,7 +67,7 @@
         </div>
         <div class="row-actions">
           <button class="save" @click="saveSet">保存方案</button>
-          <button class="save" v-if="!editing.id || editing.id === 'builtin-2026-08-28-moe'"
+          <button class="save" v-if="!editing.id || editing.id.startsWith('builtin')"
                   @click="saveSet(true)">另存为新方案并设为默认</button>
         </div>
         <p v-if="psSavedTip" class="hint">{{ psSavedTip }}</p>

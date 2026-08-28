@@ -103,6 +103,14 @@ app.whenReady().then(() => {
     return { ok: false }
   })
 
+  // 复制到系统剪贴板（可等待、回报长度，方便前端确认成败）
+  const { clipboard } = require('electron')
+  ipcMain.handle('copy-text', async (_e, text) => {
+    const s = String(text == null ? '' : text)
+    clipboard.writeText(s)
+    return { ok: true, length: s.length }
+  })
+
   ipcMain.handle('check-for-updates', async () => {
     const { checkForUpdates } = require('./updater')
     return checkForUpdates(mainWindow, { manual: true })

@@ -843,7 +843,7 @@ def cmd_save_prompt_set(req_id, args):
 
 def cmd_delete_prompt_set(req_id, args):
     engine = _ensure_engine()
-    from .config.prompts import delete_set, BUILTIN_ID
+    from .config.prompts import delete_set, is_builtin
     set_id = args.get("id") or ""
     ok = delete_set(engine.config.paths.user_data, set_id)
     if ok and engine.config.prefs.prompt_set_id == set_id:
@@ -851,6 +851,40 @@ def cmd_delete_prompt_set(req_id, args):
         save_prefs(engine.config.prefs, engine.config.paths.prefs_file)
     _result(req_id, "ok" if ok else "fail",
             errors=None if ok else [{"message": "内置方案不可删除"}])
+
+
+def cmd_build_feedback_prompt(req_id, args):
+    """一键生成"发给 AI 的反哺提示词"（含评分语义说明 + 打分数据 + 当次 prompt）。
+
+    评分语义（用户 2026-08-28 口径）：未打分 ≠ 差——可能是没来得及打，
+    也可能是平平常常（无亮点也无槽点）；有问题的用户一般都会打分。
+    """
+    import json as _json
+    engine = _ensure_engine()
+    ep_dir = Path(args.get("episode_dir") or "")
+    rating_file = ep_dir / "rating.json"
+    if not rating_file.exists():
+        _result(req_id, "fail",
+                errors=[{"message": "还没有打分记录：先在详情页给表情打分，再来复制。"}])
+        return
+    rating = _json.loads(rating_file.read_text(encoding="utf-8"))
+    prompts_dir = engine.config.paths.user_data / "prompts"
+    text = f"""你是「表情包一键制作」的生图 prompt 优化助手。下面是一次作品的打分数据与制作过程，请反哺优化生图 prompt。
+
+## 评分语义（重要）
+- 有分数 = 用户有明确感受：高分（4-5）= 亮点，低分（1-2）= 有问题（配合备注看具体哪里不行）。
+- 没打分的格子 ≠ 差：可能是用户还没来得及打，也可能是平平常常（没有特别大的亮点，也没什么槽点）。有问题的一般用户都会尽量打分，所以请把分析重心放在已打分的格子上。
+
+## 你的任务
+1. 对比低分格（尤其带备注的）与当次 prompt，定位是哪条指令导致的问题（如：比例/动作/情绪描述/风格块某行）。
+2. 总结高分格的共同特征，判断哪些指令在起正作用。
+3. 产出优化建议：给出修改后的风格块（STYLE）和/或各模式附加指令的完整文本。
+4. 如果你在用户本机运行（ZCode 等代理）："Prompt 方案"文件存在 {prompts_dir}/*.json，可直接修改或新建方案文件，并提示用户到 设置→Prompt 方案 里设为默认。
+
+## 打分数据
+{_json.dumps(rating, ensure_ascii=False, indent=2)}
+"""
+    _result(req_id, "ok", data={"text": text})
 
 
 def cmd_save_rating(req_id, args):
@@ -1325,6 +1359,7 @@ HANDLERS = {
     "save_prompt_set": cmd_save_prompt_set,
     "delete_prompt_set": cmd_delete_prompt_set,
     "save_rating": cmd_save_rating,
+    "build_feedback_prompt": cmd_build_feedback_prompt,
     "get_rating": cmd_get_rating,
     "delete_episode": cmd_delete_episode,
     "get_episode": cmd_get_episode, "update_episode_meta": cmd_update_episode_meta,

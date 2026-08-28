@@ -28,7 +28,7 @@ const api = {
   selectFile: async () => ipcRenderer.invoke('select-file'),
   selectDirectory: async () => ipcRenderer.invoke('select-directory'),
   toFileUrl,
-  copyText: (text) => clipboard.writeText(String(text || '')),
+  copyText: (text) => ipcRenderer.invoke('copy-text', text),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   // 更新下载进度（main 的 updater 流式回报：stage=download/verify, percent, MB）

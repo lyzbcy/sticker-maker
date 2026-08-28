@@ -115,6 +115,9 @@
                       :class="{ on: (ratings[st.meaning] || {}).score >= s }"
                       @click="rate(st.meaning, s)" :title="`${s} 分`">★</button>
             </div>
+            <input class="rate-note" title="备注：这张哪里有问题/哪里好"
+                   :value="(ratings[st.meaning] || {}).note || ''"
+                   placeholder="备注问题…" @change="noteRate(st.meaning, $event)" />
           </div>
         </div>
         <div class="overall-row">
@@ -125,6 +128,9 @@
           <input class="overall-note" v-model="note" placeholder="一句话总评（哪里好/哪里不行，AI 反哺时用得上）"
                  @change="saveRating" />
           <span v-if="ratingSavedAt" class="saved-tip">✓ {{ ratingSavedAt }}</span>
+          <button class="copy-feedback-btn" :disabled="copyingFeedback" @click="() => copyFeedback()">
+            {{ copyingFeedback ? '生成中…' : '📋 一键复制 AI 反哺提示词' }}
+          </button>
         </div>
       </section>
 
@@ -207,6 +213,31 @@ function rate(meaning, score) {
   ratings.value = { ...ratings.value, [meaning]: { score: cur === score ? 0 : score, note: '' } }
   saveRating()
 }
+function noteRate(meaning, ev) {
+  const cur = ratings.value[meaning] || {}
+  ratings.value = { ...ratings.value, [meaning]: { score: cur.score || 0, note: ev.target.value } }
+  saveRating()
+}
+
+const copyingFeedback = ref(false)
+async function copyFeedback() {
+  if (!ep.value?.path || !window.api) return
+  copyingFeedback.value = true
+  try {
+    const res = await window.api.send('build_feedback_prompt', { episode_dir: ep.value.path })
+    if (res?.status === 'ok' && res.data && res.data.text) {
+      const clip = await window.api.copyText(res.data.text)
+      ratingSavedAt.value = (clip && clip.ok)
+        ? '已复制反哺提示词（' + clip.length + ' 字），粘贴给 AI 即可'
+        : '复制失败：剪贴板不可用'
+    } else {
+      ratingSavedAt.value = '生成失败：' + (res?.errors?.[0]?.message || '返回内容为空')
+    }
+  } finally {
+    copyingFeedback.value = false
+  }
+}
+
 function saveRating() {
   if (!ep.value?.path || !window.api) return
   clearTimeout(ratingTimer)
@@ -214,10 +245,12 @@ function saveRating() {
     try {
       const res = await window.api.send('save_rating', {
         episode_dir: ep.value.path,
-        ratings: ratings.value, overall: overall.value, note: note.value,
+        ratings: JSON.parse(JSON.stringify(ratings.value)),
+        overall: overall.value, note: note.value,
       })
       if (res?.status === 'ok') ratingSavedAt.value = '已保存 ' + new Date().toLocaleTimeString()
-    } catch { /* 静默 */ }
+      else ratingSavedAt.value = '保存失败：' + (res?.errors?.[0]?.message || '未知')
+    } catch (e) { ratingSavedAt.value = '保存异常：' + (e?.message || e) }
   }, 400)
 }
 loadRating()
@@ -481,6 +514,18 @@ header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; fle
   border-radius: 8px; font-size: 12.5px; background: var(--card);
 }
 .saved-tip { font-size: 11px; color: var(--correct); }
+.rate-note {
+  width: 100%; margin-top: 3px; padding: 3px 6px; font-size: 10.5px;
+  border: 1px solid var(--paper); border-radius: 6px; background: var(--card);
+  box-sizing: border-box;
+}
+.rate-note:focus { outline: none; border-color: var(--sage); }
+.copy-feedback-btn {
+  margin-left: auto; padding: 7px 14px; border-radius: 999px; border: none;
+  background: var(--forest); color: #fff; font-size: 12px; font-weight: 700;
+  cursor: pointer; box-shadow: var(--shadow-btn);
+}
+.copy-feedback-btn:disabled { opacity: .6; cursor: wait; }
 .sticker-cell {
   position: relative; background: var(--bg-cream); border: 1.5px solid var(--paper);
   border-radius: var(--r-md); padding: 6px; text-align: center;

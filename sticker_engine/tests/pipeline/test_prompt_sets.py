@@ -4,8 +4,8 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from sticker_engine.config.prompts import (
-    BUILTIN_ID, PromptSet, apply_set, builtin_set, delete_set, find_set,
-    list_sets, save_set)
+    BUILTIN_ID, BUILTIN_STANDARD_ID, PromptSet, apply_set, builtin_set,
+    delete_set, find_set, list_sets, save_set)
 from sticker_engine.resources.prompts.templates import _STYLE_BLOCK
 
 
@@ -13,8 +13,13 @@ from sticker_engine.resources.prompts.templates import _STYLE_BLOCK
 
 def test_builtin_set_always_available(tmp_path):
     sets = list_sets(tmp_path)
-    assert sets[-1].id == BUILTIN_ID
-    assert "oversized head" in sets[-1].style_block
+    ids = [s.id for s in sets]
+    assert BUILTIN_ID in ids and BUILTIN_STANDARD_ID in ids
+    moe = next(s for s in sets if s.id == BUILTIN_ID)
+    std = next(s for s in sets if s.id == BUILTIN_STANDARD_ID)
+    assert "oversized head" in moe.style_block          # 萌系大头
+    assert "about 1:1" in std.style_block               # 标准版（升级前规格）
+    assert "oversized head" not in std.style_block
 
 
 def test_save_and_find_set(tmp_path):
