@@ -152,11 +152,12 @@ class GenerateStage:
         for attempt in range(2):
             cur_prompt = prompt if attempt == 0 else _IDENTITY_RETRY_PREFIX + prompt
             if attempt > 0:
-                self._emit(ctx, f"上次未通过（{why[:80]}），强化身份提示后重试…")
+                self._emit(ctx, f"第 1 次未通过（{why[:80]}），带强化身份提示开始第 2 次尝试（共 2 次）…")
             # 生图（长等待：每 5 秒心跳报告"在等什么"）
-            self._emit(ctx, "正在调用 codex 生图（首次调用可能需要 1~3 分钟，请稍候）…")
+            tag = "第 1 次" if attempt == 0 else "第 2 次(强化身份)"
+            self._emit(ctx, f"正在调用 codex 生图（{tag}尝试，单次约 2~7 分钟，请稍候）…")
             def _beat(elapsed, tail):
-                msg = f"等待 codex 响应… 已等 {elapsed}s"
+                msg = f"等待 codex 响应（{tag}尝试）… 已等 {elapsed}s"
                 if tail:
                     msg += f"｜codex 输出：{tail[-120:]}"
                 self._emit(ctx, msg)
@@ -179,7 +180,8 @@ class GenerateStage:
             why = note
         ctx.log(LogEntry(stage="S1", status="FAIL",
                          message=f"生成质量/IP 校验连续未通过（已重试）：{why}"))
-        self._emit(ctx, f"重试后仍未通过，本单已中止：{why}")
+        self._emit(ctx, f"IP 校验连续 2 次未通过，本单已主动中止（不是超时/卡死，"
+                        f"参考图也未消耗，可直接再跑一单）：{why}")
         return None
 
     def _grid_sanity_ok(self, grid_path) -> bool:
