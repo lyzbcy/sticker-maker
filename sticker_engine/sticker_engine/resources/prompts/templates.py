@@ -13,8 +13,10 @@ Case 21/27/28 等）的共性技巧——
 # ---- 统一风格块（三个模式共用，保证一套里风格严格一致） ----
 _STYLE_BLOCK = (
     "STYLE (strictly identical across all panels):\n"
-    "- Chibi aesthetic: exaggerated expressive big eyes, soft rounded facial "
-    "lines, large head-to-body ratio (about 1:1)\n"
+    "- Chibi proportions: oversized head with a tiny stubby body, about "
+    "two-heads-tall; round head wider than tall; no visible joints or bones\n"
+    "- Face: huge sparkly eyes placed LOW on the head with a large forehead, "
+    "rosy blush cheeks, exaggerated expressive big eyes, soft rounded lines\n"
     "- 3D clay style, soft matte clay material, soft studio lighting\n"
     "- Each sticker gets a uniform thin white outline (die-cut sticker look) "
     "and a clean margin around it inside its cell\n"

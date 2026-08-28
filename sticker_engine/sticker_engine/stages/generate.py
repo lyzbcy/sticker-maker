@@ -332,5 +332,10 @@ class GenerateStage:
                 parts.append(f"action: {action}")
             if props and self.rng.random() < 0.4:
                 parts.append(f"with {self.rng.choice(props)}")
+            # 大头变奏（2026-08-27 调研落地）：约 30% 的格子切"超大头"比例——
+            # 头身比是萌感基础盘，混排两档比例让一套里萌点密度更高
+            if self.rng.random() < 0.3:
+                parts.append("BIG-HEAD MODE: head fills two-thirds of the "
+                             "sticker height, almost all head with tiny body")
             lines.append(" — ".join(parts))
         return "\n".join(lines)

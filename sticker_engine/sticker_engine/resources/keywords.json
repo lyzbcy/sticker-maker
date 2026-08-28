@@ -1,72 +1,280 @@
 {
   "emotions": [
-    {"en": "overjoyed", "desc": "eyes squeezed into happy arcs, mouth wide open showing tiny teeth, cheeks lifted high"},
-    {"en": "giggling", "desc": "one hand covering mouth, eyes curved into crescents, shoulders bouncing"},
-    {"en": "laughing hysterically", "desc": "rolling on the floor laughing, eyes squeezed shut, tears flying out, limbs flailing"},
-    {"en": "crying rivers", "desc": "fountain tears squirting from big watery eyes, wobbly trembling lips"},
-    {"en": "tearful pout", "desc": "big glossy eyes brimming with tears, lips slightly trembling, hands clutching hem"},
-    {"en": "puffed-up angry", "desc": "cheeks puffed like balloons, brows furrowed, tiny anger puff above head"},
-    {"en": "boiling mad", "desc": "steam jetting from both ears, face flushed red, fists clenched and shaking"},
-    {"en": "speechless", "desc": "flat dead-fish eyes, mouth a straight line, small dark cloud overhead"},
-    {"en": "done with everything", "desc": "lying flat on belly, arms spread limp, soul slightly leaving body"},
-    {"en": "soul leaving body", "desc": "ghost version floating up out of the body, body slumped empty below"},
-    {"en": "petrified", "desc": "frozen solid in gray stone pose, only eyes still darting around"},
-    {"en": "jaw dropped", "desc": "mouth stretched into a huge O, eyes popping wide, hair standing on end"},
-    {"en": "starstruck", "desc": "eyes turned into big sparkling stars, hands pressed to cheeks"},
-    {"en": "love struck", "desc": "pink hearts floating around head, dreamy half-closed eyes, blushing hard"},
-    {"en": "blushing shy", "desc": "face tomato-red, eyes looking away, fingers poking index fingers together"},
-    {"en": "steaming embarrassed", "desc": "steam whistling out of ears, face bright red, covering face with both hands"},
-    {"en": "smug", "desc": "eyes closed triumphantly, nose up in the air, tiny smirk, arms crossed"},
-    {"en": "proud sparkles", "desc": "one hand on hip, other hand thumbs-up at viewer, confident wink, sparkle effects"},
-    {"en": "sassy eye-roll", "desc": "eyes rolled way up, one brow raised, hand waving dismissively"},
-    {"en": "mischievous grin", "desc": "wide toothy grin with one fang, eyes gleaming with a sneaky plan"},
-    {"en": "sleepy melt", "desc": "half-lidded drowsy eyes, body melting like warm mochi, tiny sleep bubbles"},
-    {"en": "deep asleep", "desc": "curled on a tiny pillow, sweet smile, sleep bubble with a tiny Z"},
-    {"en": "groggy morning", "desc": "hair sticking up wildly, eyes half open, holding a tiny coffee cup"},
-    {"en": "bored to dust", "desc": "cheek mashed on palm, eyes half dead, small bored swirl above head"},
-    {"en": "social battery empty", "desc": "hiding inside a cardboard box, only tired eyes peeking out"},
-    {"en": "foodie mode", "desc": "eyes sparkling at a giant drumstick, drooling, hands clasped in prayer"},
-    {"en": "stuffed and happy", "desc": "belly round like a balloon, satisfied squint, patting tummy"},
-    {"en": "shivering cold", "desc": "wrapped in a tiny blanket burrito, teeth chattering, snowflake doodles"},
-    {"en": "overheated", "desc": "melting into a puddle, tongue out panting, sun doodle overhead"},
-    {"en": "determined fire", "desc": "burning resolve in eyes, fists up in guard, tiny flame in eyes"},
-    {"en": "cheering", "desc": "both arms raised high, jumping, confetti burst around"},
-    {"en": "begging", "desc": "big pleading puppy eyes, hands pressed together, tiny sparkle tears"},
-    {"en": "blowing kiss", "desc": "one eye winking, hand sending a heart off, heart trailing in air"},
-    {"en": "finger heart", "desc": "sweet smile with finger heart at viewer, tiny hearts popping"},
-    {"en": "peace and wink", "desc": "playful double peace signs, one eye winking, tongue slightly out"},
-    {"en": "greeting bow", "desc": "polite little bow with hands together, friendly smile"},
-    {"en": "high five offer", "desc": "running toward viewer with palm out, excited grin"},
-    {"en": "hugging tightly", "desc": "arms wide open wrapping into a warm hug, eyes closed happily"},
-    {"en": "sneaky peeking", "desc": "only eyes and fingertips showing over a wall, curious big eyes"},
-    {"en": "spaced out", "desc": "eyes staring into distance, mouth slightly open, tiny stars orbiting head"},
-    {"en": "plotting", "desc": "steepled fingers, sinister little giggle, shadow over eyes"},
-    {"en": "panic sprint", "desc": "cartoon running with dust cloud, panic-stricken eyes, arms windmilling"},
-    {"en": "celebrating win", "desc": "fist pumped high, jumping with joy, starburst effects"},
-    {"en": "whatever face", "desc": "lazy shrug, flat mouth, one brow slightly up"},
-    {"en": "hopeful sparkle", "desc": "hands clasped under chin, big shimmering begging eyes"}
+    {
+      "en": "overjoyed",
+      "desc": "eyes squeezed into happy arcs, mouth wide open showing tiny teeth, cheeks lifted high"
+    },
+    {
+      "en": "giggling",
+      "desc": "one hand covering mouth, eyes curved into crescents, shoulders bouncing"
+    },
+    {
+      "en": "laughing hysterically",
+      "desc": "rolling on the floor laughing, eyes squeezed shut, tears flying out, limbs flailing"
+    },
+    {
+      "en": "crying rivers",
+      "desc": "fountain tears squirting from big watery eyes, wobbly trembling lips"
+    },
+    {
+      "en": "tearful pout",
+      "desc": "big glossy eyes brimming with tears, lips slightly trembling, hands clutching hem"
+    },
+    {
+      "en": "puffed-up angry",
+      "desc": "cheeks puffed like balloons, brows furrowed, tiny anger puff above head"
+    },
+    {
+      "en": "boiling mad",
+      "desc": "steam jetting from both ears, face flushed red, fists clenched and shaking"
+    },
+    {
+      "en": "speechless",
+      "desc": "flat dead-fish eyes, mouth a straight line, small dark cloud overhead"
+    },
+    {
+      "en": "done with everything",
+      "desc": "lying flat on belly, arms spread limp, soul slightly leaving body"
+    },
+    {
+      "en": "soul leaving body",
+      "desc": "ghost version floating up out of the body, body slumped empty below"
+    },
+    {
+      "en": "petrified",
+      "desc": "frozen solid in gray stone pose, only eyes still darting around"
+    },
+    {
+      "en": "jaw dropped",
+      "desc": "mouth stretched into a huge O, eyes popping wide, hair standing on end"
+    },
+    {
+      "en": "starstruck",
+      "desc": "eyes turned into big sparkling stars, hands pressed to cheeks"
+    },
+    {
+      "en": "love struck",
+      "desc": "pink hearts floating around head, dreamy half-closed eyes, blushing hard"
+    },
+    {
+      "en": "blushing shy",
+      "desc": "face tomato-red, eyes looking away, fingers poking index fingers together"
+    },
+    {
+      "en": "steaming embarrassed",
+      "desc": "steam whistling out of ears, face bright red, covering face with both hands"
+    },
+    {
+      "en": "smug",
+      "desc": "eyes closed triumphantly, nose up in the air, tiny smirk, arms crossed"
+    },
+    {
+      "en": "proud sparkles",
+      "desc": "one hand on hip, other hand thumbs-up at viewer, confident wink, sparkle effects"
+    },
+    {
+      "en": "sassy eye-roll",
+      "desc": "eyes rolled way up, one brow raised, hand waving dismissively"
+    },
+    {
+      "en": "mischievous grin",
+      "desc": "wide toothy grin with one fang, eyes gleaming with a sneaky plan"
+    },
+    {
+      "en": "sleepy melt",
+      "desc": "half-lidded drowsy eyes, body melting like warm mochi, tiny sleep bubbles"
+    },
+    {
+      "en": "deep asleep",
+      "desc": "curled on a tiny pillow, sweet smile, sleep bubble with a tiny Z"
+    },
+    {
+      "en": "groggy morning",
+      "desc": "hair sticking up wildly, eyes half open, holding a tiny coffee cup"
+    },
+    {
+      "en": "bored to dust",
+      "desc": "cheek mashed on palm, eyes half dead, small bored swirl above head"
+    },
+    {
+      "en": "social battery empty",
+      "desc": "hiding inside a cardboard box, only tired eyes peeking out"
+    },
+    {
+      "en": "foodie mode",
+      "desc": "eyes sparkling at a giant drumstick, drooling, hands clasped in prayer"
+    },
+    {
+      "en": "stuffed and happy",
+      "desc": "belly round like a balloon, satisfied squint, patting tummy"
+    },
+    {
+      "en": "shivering cold",
+      "desc": "wrapped in a tiny blanket burrito, teeth chattering, snowflake doodles"
+    },
+    {
+      "en": "overheated",
+      "desc": "melting into a puddle, tongue out panting, sun doodle overhead"
+    },
+    {
+      "en": "determined fire",
+      "desc": "burning resolve in eyes, fists up in guard, tiny flame in eyes"
+    },
+    {
+      "en": "cheering",
+      "desc": "both arms raised high, jumping, confetti burst around"
+    },
+    {
+      "en": "begging",
+      "desc": "big pleading puppy eyes, hands pressed together, tiny sparkle tears"
+    },
+    {
+      "en": "blowing kiss",
+      "desc": "one eye winking, hand sending a heart off, heart trailing in air"
+    },
+    {
+      "en": "finger heart",
+      "desc": "sweet smile with finger heart at viewer, tiny hearts popping"
+    },
+    {
+      "en": "peace and wink",
+      "desc": "playful double peace signs, one eye winking, tongue slightly out"
+    },
+    {
+      "en": "greeting bow",
+      "desc": "polite little bow with hands together, friendly smile"
+    },
+    {
+      "en": "high five offer",
+      "desc": "running toward viewer with palm out, excited grin"
+    },
+    {
+      "en": "hugging tightly",
+      "desc": "arms wide open wrapping into a warm hug, eyes closed happily"
+    },
+    {
+      "en": "sneaky peeking",
+      "desc": "only eyes and fingertips showing over a wall, curious big eyes"
+    },
+    {
+      "en": "spaced out",
+      "desc": "eyes staring into distance, mouth slightly open, tiny stars orbiting head"
+    },
+    {
+      "en": "plotting",
+      "desc": "steepled fingers, sinister little giggle, shadow over eyes"
+    },
+    {
+      "en": "panic sprint",
+      "desc": "cartoon running with dust cloud, panic-stricken eyes, arms windmilling"
+    },
+    {
+      "en": "celebrating win",
+      "desc": "fist pumped high, jumping with joy, starburst effects"
+    },
+    {
+      "en": "whatever face",
+      "desc": "lazy shrug, flat mouth, one brow slightly up"
+    },
+    {
+      "en": "hopeful sparkle",
+      "desc": "hands clasped under chin, big shimmering begging eyes"
+    }
   ],
   "props": [
-    "tiny sparkle effects", "floating hearts", "star bursts", "question mark doodle",
-    "exclamation doodle", "sweat drops", "anger puff", "sleep bubbles", "confetti",
-    "cherry blossom petals", "snowflake doodles", "music notes", "steam swirls",
-    "electric zigzags", "flower crown", "tiny banner ribbon"
+    "tiny sparkle effects",
+    "floating hearts",
+    "star bursts",
+    "question mark doodle",
+    "exclamation doodle",
+    "sweat drops",
+    "anger puff",
+    "sleep bubbles",
+    "confetti",
+    "cherry blossom petals",
+    "snowflake doodles",
+    "music notes",
+    "steam swirls",
+    "electric zigzags",
+    "flower crown",
+    "tiny banner ribbon",
+    "anger veins",
+    "sparkle burst background"
   ],
   "actions": [
-    "head tilt", "covering mouth", "scratching head", "stomping", "waving", "clapping",
-    "hugging", "finger heart", "thumbs up", "shrugging", "chin rest",
-    "lying down", "sprawled", "jumping", "spinning", "rolling",
-    "curling up", "hugging leg", "kneeling", "bowing",
-    "grooving", "partying", "nodding", "shaking head", "winking", "blowing kiss",
-    "pointing at self", "pointing at you", "reaching out", "hand on hip",
-    "high five", "fist bump", "peace sign", "ok gesture",
-    "face palm", "head desk", "arms crossed", "hands behind back",
-    "sticking tongue out", "pouting", "puffing cheeks",
-    "peeking", "hiding", "covering eyes",
-    "sleeping", "yawning", "stretching arms",
-    "eating", "drinking", "holding cup",
-    "holding phone", "typing", "looking at phone",
-    "thinking pose", "finger on chin", "hand on cheek",
-    "cheering", "celebrating"
+    "laughing hysterically on the floor",
+    "flailing arms frantically",
+    "squished flat like a pancake",
+    "bouncing like jelly",
+    "melting into a puddle",
+    "spinning in panic",
+    "comically slipping",
+    "fainting backwards dramatically",
+    "steam blowing out of ears",
+    "jaw dropped to the floor",
+    "crying waterfall tears",
+    "hiding in the corner",
+    "throwing money in the air",
+    "cheeks stuffed foodie mode",
+    "finger-guns with a wink",
+    "drumming little feet in the air",
+    "head tilt",
+    "covering mouth",
+    "scratching head",
+    "stomping",
+    "waving",
+    "clapping",
+    "hugging",
+    "finger heart",
+    "thumbs up",
+    "shrugging",
+    "chin rest",
+    "lying down",
+    "sprawled",
+    "jumping",
+    "spinning",
+    "rolling",
+    "curling up",
+    "hugging leg",
+    "kneeling",
+    "bowing",
+    "grooving",
+    "partying",
+    "nodding",
+    "shaking head",
+    "winking",
+    "blowing kiss",
+    "pointing at self",
+    "pointing at you",
+    "reaching out",
+    "hand on hip",
+    "high five",
+    "fist bump",
+    "peace sign",
+    "ok gesture",
+    "face palm",
+    "head desk",
+    "arms crossed",
+    "hands behind back",
+    "sticking tongue out",
+    "pouting",
+    "puffing cheeks",
+    "peeking",
+    "hiding",
+    "covering eyes",
+    "sleeping",
+    "yawning",
+    "stretching arms",
+    "eating",
+    "drinking",
+    "holding cup",
+    "holding phone",
+    "typing",
+    "looking at phone",
+    "thinking pose",
+    "finger on chin",
+    "hand on cheek",
+    "cheering",
+    "celebrating"
   ]
 }
