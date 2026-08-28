@@ -38,7 +38,10 @@ class Prefs:
     transparent_default: bool = True
     ref_lib_priority: bool = True
     ref_consume: bool = True     # 参考图=弹药：用过的自动归档（复用会产出雷同贴纸）
-    story_mode: bool = True
+    # 故事模式默认关（2026-08-27 定型）：聊天里表情是单发的，四格叙事的
+    # "起承转合"与单张贴纸的聊天效用错位；主力=参考图模式，备胎=排列组合。
+    # 故事模式保留给"叙事专辑"这种特殊需求，向导里可开。
+    story_mode: bool = False
     reference_lib_path: Optional[str] = None   # I2：用户可改参考图库位置（None=默认）
     default_series_id: Optional[str] = None    # 默认系列：run 成功后自动编号命名（None=不自动）
 

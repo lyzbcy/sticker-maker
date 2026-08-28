@@ -13,11 +13,11 @@ S3 AssetsStage   横幅/封面/图标生成（auto/pick/custom/role 四模式）
 
 关键文件：`stages/prep.py`、`stages/generate.py`、`stages/grid_cutter.py`、`stages/postprocess.py`、`providers/codex.py`、`resources/prompts/templates.py`、`resources/keywords.json`。
 
-## 三模式（decide_mode 优先级）
+## 三模式（decide_mode 优先级，2026-08-27 定型）
 
-1. `ref_lib_priority=true` 且参考图库够 n 张 → **ref_library**（base + n 张参考图，良品率最高）
-2. `story_mode=true` → **story**（每行一个 4 格小故事；selector 缺失/池空降级 combo）
-3. 兜底 → **keyword_combo**（45 个画面级情绪词随机组合，keywords.json 的 `{en, desc}` 结构）
+1. `ref_lib_priority=true` 且参考图库够 n 张 → **ref_library**（base + n 张参考图，良品率最高，**主力**；弹药模型：用完归档 + 详情页回流补弹）
+2. `story_mode=true` → **story**（每行一个 4 格小故事；**默认关**——聊天里表情是单发的，叙事连贯≠单张贴纸聊天效用；仅叙事专辑专用）
+3. 兜底 → **keyword_combo**（**备胎**：45 个画面级情绪词随机组合 + CHAT-USE FIRST 指令——每格必须零上下文一秒可读）
 
 ## codex 调用铁律（providers/codex.py）
 

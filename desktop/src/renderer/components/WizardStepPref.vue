@@ -40,7 +40,7 @@
         <input type="checkbox" id="story" v-model="store.prefs.story_mode" />
         <span class="slider"></span>
       </label>
-      <label for="story" class="check-label">故事模式（每 4 张一个小故事，推荐）</label>
+      <label for="story" class="check-label">故事模式（叙事专辑专用，日常不推荐：聊天里表情是单发的）</label>
     </div>
 
     <!-- 默认系列（run 完成自动命名） -->

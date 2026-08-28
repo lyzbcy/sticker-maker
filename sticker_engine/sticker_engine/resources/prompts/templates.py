@@ -60,5 +60,9 @@ KEYWORD_COMBO_TEMPLATE = (
     "Image 1 is the BASE character — the protagonist of every panel, "
     "identical identity/outfit/hairstyle throughout.\n"
     "Panels (one scene per panel, follow this order):\n{panels_description}\n"
+    "CHAT-USE FIRST: every panel must work as a STANDALONE chat sticker — "
+    "one instantly readable emotion plus one unmistakable body action, "
+    "understood in under a second with zero context; a panel that only makes "
+    "sense next to its neighbors is a failure.\n"
     + _STYLE_BLOCK
 )

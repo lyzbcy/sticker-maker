@@ -9,7 +9,7 @@ description: 表情包一键制作（Electron + Python 引擎）的专用开发 
 
 ## 项目一句话
 
-Electron 桌面应用：向导配置 → codex 生图（4×4 宫格）→ 内容感知切图/抠图 → 系列自动命名 → Playwright 自动提交到微信表情开放平台。仓库：`github.com/lyzbcy/sticker-maker`。
+Electron 桌面应用：向导配置 → codex 生图（主力=参考图弹药模式，备胎=排列组合；故事模式默认关）→ 内容感知切图/抠图 → 系列自动命名 → Playwright 自动提交到微信表情开放平台。仓库：`github.com/lyzbcy/sticker-maker`。
 
 ## 目录地图
 
