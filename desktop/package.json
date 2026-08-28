@@ -1,6 +1,6 @@
 {
   "name": "sticker-maker-desktop",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "表情包一键制作 - Mac/Windows 桌面应用",
   "author": "捞鱼工作室 <lyzbcy>",
   "main": "src/main/index.js",
