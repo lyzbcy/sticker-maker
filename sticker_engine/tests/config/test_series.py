@@ -1,6 +1,6 @@
 """系列命名体系 + 作品元数据 + 新 CLI 命令的测试。
 
-用户需求：系列如「周思涵做表情」起始 60 → 专辑名「周思涵做表情 60」，
+用户需求：系列如「周思涵做表情」起始 60 → 专辑名「周思涵做表情60」，
 同系列下一个 61；介绍用系列提示词；素材支持 拼贴/选图/自定义/角色映射。
 """
 import json
@@ -42,7 +42,7 @@ def _make_episode(root: Path, n: int = 4, name: str = "episode_20260825_120000")
 def test_series_number_progression():
     s = Series(id="a", name="周思涵做表情", start_number=60)
     assert s.peek_next_number() == 60
-    assert s.album_name(s.take_number()) == "周思涵做表情 60"
+    assert s.album_name(s.take_number()) == "周思涵做表情60"
     assert s.take_number() == 61        # 下一个 61
     assert s.take_number() == 62
 
@@ -73,12 +73,12 @@ def test_assign_to_series_names_album(tmp_path):
     s = Series(id="z", name="周思涵做表情", start_number=60)
     save_series([s])
     meta = assign_to_series(ep, s)
-    assert meta.album_name == "周思涵做表情 60"
+    assert meta.album_name == "周思涵做表情60"
     assert meta.number == 60
     save_series([s])   # 保存已推进编号的同一对象
     ep2 = _make_episode(tmp_path, name="episode_20260825_130000")
     meta2 = assign_to_series(ep2, find_series("z"))   # 从磁盘重新加载 → next=61
-    assert meta2.album_name == "周思涵做表情 61"
+    assert meta2.album_name == "周思涵做表情61"
 
 
 def test_rename_and_mark_published(tmp_path):
@@ -136,11 +136,11 @@ def test_cmd_series_and_episode_flow(tmp_path, monkeypatch):
     assert len(data["stickers"]) == 4
     assert data["characters"] == ["星星布丁"]
 
-    # 3) 编入系列 → 自动命名「周思涵做表情 60」
+    # 3) 编入系列 → 自动命名「周思涵做表情60」
     [(status, data)] = _call(cmd_update_episode_meta, {
         "episode_dir": str(ep), "assign_series_id": sid})
     assert status == "ok"
-    assert data["meta"]["album_name"] == "周思涵做表情 60"
+    assert data["meta"]["album_name"] == "周思涵做表情60"
 
     # 4) 系列编号已推进
     [(status, data)] = _call(cmd_list_series, {})

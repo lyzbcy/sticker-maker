@@ -96,3 +96,41 @@ def test_old_meta_without_platform_fields_loads(tmp_path):
     assert m.album_name == "旧作品"
     assert m.platform_status == ""
     assert m.platform_downloads == "-"
+
+
+# ---------------- 驳回理由（2026-08-29：详情页→未通过审核→表情驳回理由） ----------------
+
+# 真实理由页文本（2026-08-29 实测抓取：聊天页图标驳回）
+REAL_REASON_TEXT = """微信表情开放平台
+我的表情
+常见问题
+公告
+3
+表情驳回理由
+聊天页图标
+聊天页图标在手机上展示位置较小，请去除不必要的文字信息和装饰图案。"""
+
+
+def test_extract_reason_from_real_page():
+    from sticker_engine.publish.status import _extract_reason
+    r = _extract_reason(REAL_REASON_TEXT)
+    assert "聊天页图标在手机上展示位置较小" in r
+    assert "表情驳回理由" not in r          # 标题不混入
+    assert "微信表情开放平台" not in r       # 页头导航不混入
+
+
+def test_extract_reason_missing_key_returns_empty():
+    from sticker_engine.publish.status import _extract_reason
+    assert _extract_reason("页面里没有关键词") == ""
+
+
+def test_reject_reason_persisted_in_meta():
+    """reject_reason 写进 meta 且 to_dict 带出（前端字段链路）。"""
+    m = EpisodeMeta(album_name="周三涵做表情 65")
+    m.platform_status = "未通过审核"
+    m.platform_reject_reason = "聊天页图标在手机上展示位置较小，请去除不必要的文字信息和装饰图案。"
+    d = m.to_dict()
+    assert d["platform_reject_reason"].startswith("聊天页图标在手机上")
+    # 旧 meta（无该字段）反序列化兼容
+    m2 = EpisodeMeta.from_dict({"album_name": "x", "platform_status": "已上架"})
+    assert m2.platform_reject_reason == ""

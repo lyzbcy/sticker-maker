@@ -34,6 +34,97 @@ class PlatformRow:
     sends: str = "-"
     tips: str = "-"
     updated: str = ""
+    reject_reason: str = ""   # 未通过审核时：详情页→未通过审核→表情驳回理由
+    reject_stage: str = ""    # 诊断：抓取失败死在哪一步（locate/wait_btn/…）
+
+
+def _extract_reason(text: str) -> str:
+    """从理由页文本提取「表情驳回理由」之后的内容（页面结构：标题+组名+理由）。"""
+    key = "表情驳回理由"
+    i = text.find(key)
+    if i < 0:
+        return ""
+    seg = text[i + len(key):].strip()
+    # 截掉可能的页尾操作按钮文字
+    for stop in ("重新提交", "返回列表", "返回管理", "常见问题", "公告"):
+        j = seg.find(stop)
+        if j > 0:
+            seg = seg[:j]
+    return seg.strip()[:500]
+
+
+def _fetch_reject_reason_for_row(page, row: "PlatformRow") -> str:
+    """对一个「未通过审核」行抓驳回理由（SOP：详情→未通过审核→表情驳回理由）。
+
+    流程（2026-08-29 实测）：管理页行内「详情」→ 详情页（慢，等 6s+）→
+    点唯一的「未通过审核」→ 跳转理由页 → 提取文本 → go_back 回列表。
+    任何一步失败返回空串（不阻断整页同步）。
+
+    坑（2026-08-29 真机回归）：只有真点进详情才 go_back（否则回退过头，
+    后续行的定位全错位——首行成功中间全空的根因）；go_back 后要等列表
+    真正恢复（出现「详情」字样）再返回。
+    """
+    target = normalize_name(row.name)
+    entered = False
+    stage = "init"
+    try:
+        links = page.locator("a:has-text('详情'), td:has-text('详情')")
+        stage = "locate"
+        for i in range(links.count()):
+            el = links.nth(i)
+            try:
+                in_tr = el.evaluate("e=>e.closest('tr')!==null")
+                row_txt = (el.locator("xpath=ancestor::tr[1]").inner_text(timeout=2000)
+                           if in_tr else el.inner_text(timeout=2000))
+            except Exception:
+                continue
+            if target and target in normalize_name(row_txt):
+                el.click()
+                entered = True
+                break
+        if not entered:
+            return ""
+        # 详情页打开慢（实测需等一会儿）
+        stage = "detail_load"
+        page.wait_for_timeout(6000)
+        try:
+            page.wait_for_load_state("domcontentloaded", timeout=30000)
+        except Exception:
+            pass
+        # 等「未通过审核」按钮真正渲染出来（个别作品详情页慢，赌固定 sleep
+        # 会输——2026-08-29 真机：62 就是慢了几秒导致抓空）
+        stage = "wait_btn"
+        try:
+            page.wait_for_selector("text=未通过审核", timeout=20000, state="attached")
+        except Exception:
+            return ""   # 详情页没有该入口（如状态已变/模板不同），留空
+        page.locator("text=未通过审核").first.click()
+        stage = "wait_reason"
+        try:
+            page.wait_for_selector("text=表情驳回理由", timeout=20000, state="attached")
+        except Exception:
+            pass
+        page.wait_for_timeout(1500)
+        return _extract_reason(page.inner_text("body")) or ""
+    except Exception as e:   # noqa: BLE001
+        row.reject_stage = stage + ":" + type(e).__name__   # 诊断：死在哪一步
+        return ""
+    finally:
+        if entered:
+            try:
+                page.go_back(wait_until="domcontentloaded", timeout=30000)
+                # 等列表页真正恢复：目标专辑名 + 「详情」同时出现（只等「详情」
+                # 字样会被页脚等处提前满足，表格还没渲染稳，下一行定位落空）
+                for _ in range(24):
+                    page.wait_for_timeout(500)
+                    try:
+                        t = page.inner_text("body")
+                        if row.name in t and "详情" in t:
+                            break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
 
 
 def normalize_name(name: str) -> str:
@@ -144,6 +235,15 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
                     all_rows.extend(rows)
                     pages = page_no
                     say(f"已读取第 {page_no} 页（累计 {len(all_rows)} 条作品）…")
+                    # 未通过审核的行：就地进详情抓驳回理由（用户需要知道为什么被拒）
+                    rejects = [r for r in rows if "未通过" in r.status and "审核" in r.status]
+                    for r in rejects:
+                        say(f"正在读取「{r.name}」的驳回理由…")
+                        r.reject_reason = _fetch_reject_reason_for_row(page, r)
+                        if r.reject_reason:
+                            say(f"  驳回理由：{r.reject_reason[:60]}…")
+                        else:
+                            say(f"  （{r.name} 未取到驳回理由：{r.reject_stage or '详情页无未通过入口'}）")
                 next_btn = page.locator("a:has-text('下一页')")
                 if next_btn.count() == 0 or not next_btn.first.is_enabled():
                     break
@@ -177,6 +277,8 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
         meta.platform_sends = r.sends
         meta.platform_tips = r.tips
         meta.platform_updated_at = now
+        if r.reject_reason:
+            meta.platform_reject_reason = r.reject_reason
         if r.status in ("已上架", "待审核", "已保存"):
             meta.published = True
         save_meta(hit["dir"], meta)

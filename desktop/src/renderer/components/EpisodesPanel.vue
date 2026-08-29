@@ -13,8 +13,8 @@
     <!-- 同步结果摘要 -->
     <div v-if="syncSummary" class="sync-summary">
       ✅ 已同步 {{ syncSummary.matched }} 个作品（{{ syncSummary.pages }} 页）
-      <template v-if="syncSummary.unmatched_platform.length">
-        ；平台有 {{ syncSummary.unmatched_platform.length }} 条未匹配记录
+      <template v-if="(syncSummary.unmatched_platform || []).length">
+        ；平台有 {{ (syncSummary.unmatched_platform || []).length }} 条未匹配记录
         （可能是脏数据，如时间戳名）：<span class="unmatched-names">{{
           syncSummary.unmatched_platform.map(u => u.name).join('、')
         }}</span>
@@ -64,6 +64,10 @@
           <td class="num">{{ ep.platform_tips ?? '-' }}</td>
           <td>
             <span class="status-badge" :class="statusClass(ep)">{{ statusText(ep) }}</span>
+            <div v-if="statusClass(ep) === 'st-reject' && ep.platform_reject_reason"
+                 class="reject-reason" :title="ep.platform_reject_reason">
+              {{ ep.platform_reject_reason.slice(0, 26) }}{{ ep.platform_reject_reason.length > 26 ? '…' : '' }}
+            </div>
           </td>
           <td class="date">{{ displayDate(ep) }}</td>
           <td class="col-ops" @click.stop>
@@ -253,6 +257,8 @@ tr.incomplete { opacity: .6; }
 .st-live { background: rgba(47, 125, 70, .14); color: var(--correct); }
 .st-review { background: rgba(230, 162, 60, .16); color: #b8860b; }
 .st-reject { background: rgba(181, 72, 42, .12); color: var(--brick); }
+.reject-reason { font-size: 10px; color: var(--brick); opacity: .85; margin-top: 3px;
+  max-width: 150px; cursor: help; line-height: 1.35; }
 .st-saved { background: rgba(110, 112, 99, .14); color: var(--muted); }
 .st-local { background: var(--marker); color: var(--ink); }
 .st-incomplete { background: var(--paper); color: var(--muted-soft); }

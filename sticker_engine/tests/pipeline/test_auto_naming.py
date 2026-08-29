@@ -40,7 +40,7 @@ def test_run_auto_names_album_with_default_series(tmp_path):
 
     assert episode.success is True
     meta = load_meta(Path(episode.episode_dir))
-    assert meta.album_name == "周思涵做表情 60"
+    assert meta.album_name == "周思涵做表情60"
     assert meta.series_id == "zh"
     # 系列编号已推进（下一个 61）
     assert load_series()[0].next_number == 61
@@ -51,7 +51,7 @@ def test_run_auto_names_album_with_default_series(tmp_path):
     ep2 = engine2.run()
     assert ep2.success is True
     meta2 = load_meta(Path(ep2.episode_dir))
-    assert meta2.album_name == "周思涵做表情 61"
+    assert meta2.album_name == "周思涵做表情61"
 
 
 def test_run_without_default_series_keeps_timestamp_name(tmp_path):

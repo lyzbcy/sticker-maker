@@ -66,7 +66,9 @@ class Series:
         return n
 
     def album_name(self, number: int) -> str:
-        return f"{self.name} {number}"
+        # 平台规则：表情名称不能含空格（2026-08-29 抓到的驳回理由：
+        # 「表情名称应避免出现空格，需要修改」——61/62/63 因此被拒）
+        return f"{self.name}{number}"
 
 
 def load_series() -> list:
@@ -143,6 +145,8 @@ class EpisodeMeta:
     platform_sends: str = "-"
     platform_tips: str = "-"         # 赞赏金额
     platform_updated_at: str = ""    # 最近一次同步时间
+    # 未通过审核时的平台驳回理由（详情页→未通过审核→表情驳回理由，2026-08-29）
+    platform_reject_reason: str = ""
 
     def to_dict(self) -> dict:
         return dict(
@@ -159,6 +163,7 @@ class EpisodeMeta:
             platform_sends=self.platform_sends,
             platform_tips=self.platform_tips,
             platform_updated_at=self.platform_updated_at,
+            platform_reject_reason=self.platform_reject_reason,
         )
 
     @classmethod

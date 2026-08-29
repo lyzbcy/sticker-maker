@@ -7,6 +7,19 @@
     </header>
 
     <div class="body">
+      <!-- 审核驳回警示卡（有驳回理由时显示） -->
+      <section v-if="ep.meta.platform_reject_reason" class="card reject-card">
+        <h3 class="card-title">⛔ 审核未通过——平台驳回理由</h3>
+        <p class="reject-text">{{ ep.meta.platform_reject_reason }}</p>
+        <div class="reject-actions">
+          <button class="copy-feedback-btn" :disabled="copyingReject" @click="() => copyRejectReview()">
+            {{ copyingReject ? '生成中…' : '📋 一键复制驳回评审提示词（交给 AI 分析怎么改）' }}
+          </button>
+          <span v-if="rejectCopyTip" class="saved-tip">✓ {{ rejectCopyTip }}</span>
+          <span class="muted">理由由「作品库→一键更新」自动抓取</span>
+        </div>
+      </section>
+
       <!-- 名称与系列 -->
       <section class="card">
         <h3 class="card-title">名称</h3>
@@ -31,7 +44,7 @@
             <select v-model="pickedSeries" class="name-input series-select">
               <option value="">— 选择要编入的系列 —</option>
               <option v-for="s in store.seriesList" :key="s.id" :value="s.id">
-                {{ s.name }}（将命名为「{{ s.name }} {{ s.next_number }}」）
+                {{ s.name }}（将命名为「{{ s.name }}{{ s.next_number }}」）
               </option>
             </select>
             <button class="btn-sm" :disabled="!pickedSeries" @click="assignSeries">编入</button>
@@ -235,6 +248,27 @@ async function copyFeedback() {
     }
   } finally {
     copyingFeedback.value = false
+  }
+}
+
+const copyingReject = ref(false)
+const rejectCopyTip = ref('')
+async function copyRejectReview() {
+  if (!ep.value?.path || !window.api) return
+  copyingReject.value = true
+  rejectCopyTip.value = ''
+  try {
+    const res = await window.api.send('build_reject_review_prompt', { episode_dir: ep.value.path })
+    if (res?.status === 'ok' && res.data && res.data.text) {
+      const clip = await window.api.copyText(res.data.text)
+      rejectCopyTip.value = (clip && clip.ok)
+        ? '已复制评审提示词（' + clip.length + ' 字），粘贴给 AI 即可'
+        : '复制失败：剪贴板不可用'
+    } else {
+      rejectCopyTip.value = '生成失败：' + (res?.errors?.[0]?.message || '返回内容为空')
+    }
+  } finally {
+    copyingReject.value = false
   }
 }
 
@@ -526,6 +560,10 @@ header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; fle
   cursor: pointer; box-shadow: var(--shadow-btn);
 }
 .copy-feedback-btn:disabled { opacity: .6; cursor: wait; }
+.reject-card { border: 1px solid rgba(181, 72, 42, .35); background: rgba(181, 72, 42, .05); }
+.reject-card .card-title { color: var(--brick); }
+.reject-text { margin: 4px 0 10px; line-height: 1.65; color: #5a2a1a; white-space: pre-wrap; }
+.reject-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .sticker-cell {
   position: relative; background: var(--bg-cream); border: 1.5px solid var(--paper);
   border-radius: var(--r-md); padding: 6px; text-align: center;

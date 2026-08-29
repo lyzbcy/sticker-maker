@@ -436,6 +436,7 @@ def cmd_list_episodes(req_id, args):
                     "platform_sends": meta.platform_sends,
                     "platform_tips": meta.platform_tips,
                     "platform_updated_at": meta.platform_updated_at,
+                    "platform_reject_reason": meta.platform_reject_reason,
                     "complete": len(stickers) > 0,
                 })
     _result(req_id, "ok", data={"episodes": episodes})
@@ -907,6 +908,48 @@ def cmd_build_feedback_prompt(req_id, args):
 
 ## 打分数据
 {_json.dumps(rating, ensure_ascii=False, indent=2)}
+"""
+    _result(req_id, "ok", data={"text": text})
+
+
+def cmd_build_reject_review_prompt(req_id, args):
+    """一键生成"审核驳回评审 prompt"：平台驳回理由 + 当次制作过程 → 交给 AI 分析怎么改。
+
+    驳回理由来自「一键更新」抓取（详情页→未通过审核→表情驳回理由）。
+    """
+    engine = _ensure_engine()
+    ep_dir = Path(args.get("episode_dir") or "")
+    if not ep_dir.is_dir():
+        _result(req_id, "fail", errors=[{"message": f"作品目录不存在：{ep_dir}"}])
+        return
+    from .config.series import load_meta
+    meta = load_meta(ep_dir)
+    reason = (meta.platform_reject_reason or "").strip()
+    if not reason:
+        _result(req_id, "fail", errors=[{"message": "该作品没有抓到驳回理由：先在作品库点「一键更新」。"}])
+        return
+    prompt_txt = ""
+    pfile = ep_dir / "原图" / "prompt.txt"
+    if pfile.exists():
+        prompt_txt = pfile.read_text(encoding="utf-8")[:3000]
+    prompts_dir = engine.config.paths.user_data / "prompts"
+    text = f"""你是「表情包一键制作」的审核驳回评审助手。作品《{meta.album_name or ep_dir.name}》被微信表情平台驳回，请分析原因并给出修改方案。
+
+## 平台驳回理由（原文）
+{reason}
+
+## 背景知识（本软件的素材管线）
+- 表情主图 240x240、聊天页图标 50x50，均由同一张 4x4 网格成图自动切图缩放生成；聊天页图标来自本组表情之一缩放，**不会额外加文字**——但若成图格子本身含小字/复杂装饰，缩到 50px 就会糊成一团。
+- 驳回常见根因：格子内小文字/装饰过多（缩放后不可辨认）、格子间内容粘连、图标选了最复杂的一张。
+
+## 你的任务
+1. 逐句解读驳回理由，指出它对应管线中的哪个环节（生图 prompt 的哪类指令 / 切图 / 图标选张）。
+2. 结合下面的当次生图 prompt，定位最可能导致驳回的具体指令（如 STYLE 块或某格描述里的文字/装饰元素）。
+3. 产出可执行修改：给出修改后的风格块（STYLE）或指令文本；若是图标选张问题，说明应选哪类格子（最简单/最大图形的那张）。
+4. 如果你在用户本机运行（ZCode 等代理）："Prompt 方案"文件在 {prompts_dir}/*.json，可直接修改方案文件并提示用户到 设置→Prompt 方案 设为默认；修改完成后提示用户重新生成一单并重新提交。
+
+## 当次生图 prompt（截取）
+{prompt_txt or '（当次 prompt 未落盘，可能是历史作品）'}
 """
     _result(req_id, "ok", data={"text": text})
 
@@ -1384,6 +1427,7 @@ HANDLERS = {
     "delete_prompt_set": cmd_delete_prompt_set,
     "save_rating": cmd_save_rating,
     "build_feedback_prompt": cmd_build_feedback_prompt,
+    "build_reject_review_prompt": cmd_build_reject_review_prompt,
     "get_rating": cmd_get_rating,
     "delete_episode": cmd_delete_episode,
     "get_episode": cmd_get_episode, "update_episode_meta": cmd_update_episode_meta,
