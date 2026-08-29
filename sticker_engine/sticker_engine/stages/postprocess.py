@@ -50,7 +50,8 @@ class Sticker:
 
 
 
-def remove_edge_background(img, dist_thresh: int = 60, max_frac: float = 0.80):
+def remove_edge_background(img, dist_thresh: int = 60, max_frac: float = 0.80,
+                          on_note=None):
     """把"与边缘连通的背景色"抠成透明（P2 第二层：62 黑底+格线场景）。
 
     原理：背景（洋红底/黑底/格线）总是从画布边缘连入；角色本体被白描边
@@ -67,14 +68,28 @@ def remove_edge_background(img, dist_thresh: int = 60, max_frac: float = 0.80):
     opaque_edge = edge[edge[:, 3] > 200]
     if len(opaque_edge) < 2 * (h + w) * 0.5:
         return src   # 边缘大半透明：chromakey 已处理过，无背景可抠
+    # F3（评审）：白/近白底豁免——所有 prompt 强制"白描边"，白底时描边即
+    # 背景色，连通性安全论证反转（白描边+浅肤色脸会被整片吃掉）。白底也
+    # 不属于"多余边框线"驳回形态（62 是黑底+格线），不抠。
+    if opaque_edge[:, :3].mean(axis=0).sum() > 3 * 240:
+        if on_note:
+            on_note("检测到白/近白底，跳过边缘背景抠除（防误伤白描边角色）")
+        return src
+    # R1（评审）：背景色候选必须占边缘不透明像素 >=15%——角色少量贴边
+    # （评审复现 ~3.5%）时其颜色会混成桶 #2 啃食角色；15% 挡住它，同时
+    # 不误伤真实格线（四边细线占比 ~10-25%）
     q = (opaque_edge[:, :3] // 32).astype(np.int32)
     keys, counts = np.unique(q, axis=0, return_counts=True)
     bg_colors = []
     for idx in np.argsort(-counts)[:2]:
+        if counts[idx] < len(opaque_edge) * 0.15:
+            break
         mask = (q == keys[idx]).all(axis=1)
         if mask.sum():
             bg_colors.append(opaque_edge[mask][:, :3].mean(axis=0))
     if not bg_colors:
+        if on_note:
+            on_note("边缘无稳定背景色（角色贴边？），跳过抠除")
         return src
     a_mask = arr[:, :, 3] > 200
     dist = np.full((h, w), 1e9, dtype=np.float32)
@@ -85,7 +100,12 @@ def remove_edge_background(img, dist_thresh: int = 60, max_frac: float = 0.80):
     seed = np.zeros((h, w), dtype=bool)
     seed[0, :] = seed[-1, :] = seed[:, 0] = seed[:, -1] = True
     reach = ndimage.binary_propagation(seed, mask=near)
-    if reach.sum() == 0 or reach.sum() > a_mask.sum() * max_frac:
+    if reach.sum() == 0:
+        return src
+    frac = reach.sum() / max(1, a_mask.sum())
+    if frac > max_frac:
+        if on_note:
+            on_note(f"边缘连通背景占比 {frac:.0%} 超上限，保守放弃抠除")
         return src
     px = np.asarray(src).copy()
     px[reach] = (0, 0, 0, 0)
@@ -207,11 +227,15 @@ class PostprocessStage:
             img = Image.open(panel).convert("RGBA")
             if need_key:
                 img = self.chromakey.remove_key_auto(img)
-            # P2（62 边框线事故）双层防御：①抠掉与边缘连通的背景色（黑底/
-            # 格线，chromakey 漏网时兜底；角色被白描边包裹不连通，安全）
-            img = remove_edge_background(img)
-            # ②裁掉四边同色不透明残留带（薄层格线/补方色泄漏）
-            img = self._trim_border_band(img)
+                # P2（62 边框线事故）双层防御：①抠掉与边缘连通的背景色
+                # （黑底/格线，chromakey 漏网时兜底；角色被白描边包裹不
+                # 连通，安全）。仅抠图单执行——ref_library 保背景模式
+                # （need_key=False）明文不抠，两层防御不得越界（评审F2）
+                img = remove_edge_background(
+                    img, on_note=lambda m: ctx.log(
+                        LogEntry(stage="S2", status="WARN", message="抠背景：" + m)))
+                # ②裁掉四边同色不透明残留带（薄层格线/补方色泄漏）
+                img = self._trim_border_band(img)
             meaning = meanings.get(idx, f"表情{idx}")
             # 含义词去重（同名加后缀 2/3/...）
             name = meaning

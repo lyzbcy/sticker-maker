@@ -58,9 +58,7 @@ def test_no_trim_for_curved_character():
 
 def test_conservative_giveup_on_huge_band():
     """大面积单色底（>50%）→ 保守放弃不裁（防把角色一起裁没）。"""
-    im = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
-    im.paste(_solid((20, 20), (255, 0, 255, 255)), (40, 40))   # 单色块在中间
-    # 构造：整块不透明品红 90x90（角色 20x20 融在其内无法区分）→ 裁完 <50% 放弃
+    # 整块不透明品红（无角色可辨）→ 裁完 <50%，保守放弃
     im2 = Image.new("RGBA", (100, 100), (255, 0, 255, 255))
     out = trim_border_band(im2)
     assert out.size == (100, 100)        # 全裁会 <50%，保守不动
@@ -105,10 +103,14 @@ def test_ai_icon_success(tmp_path):
     assert out is not None and Path(out).exists()
     img = Image.open(out)
     assert img.size == (240, 240)
-    # 洋红被抠（四角透明或非品红）
     fake_codex.generate.assert_called_once()
     kw = fake_codex.generate.call_args.kwargs
     assert kw["prompt"] == _ICON_AI_PROMPT
+    # refs 只传第 1 张 base（R4：多 base 防拼贴/混角色）
+    assert kw["refs"] == [base]
+    # 洋红底被抠成透明（四角，评审指出的缺失断言）
+    for corner in [(2, 2), (237, 2), (2, 237), (237, 237)]:
+        assert img.getpixel(corner)[3] == 0
 
 
 def test_ai_icon_fallback_on_failure(tmp_path):
@@ -165,3 +167,68 @@ def test_remove_edge_background_skips_transparent_edges():
     im.paste(Image.new("RGBA", (30, 30), (200, 100, 100, 255)), (15, 15))
     out = remove_edge_background(im)
     assert out.size == (60, 60) and out.getpixel((30, 30))[3] == 255
+
+
+# ---------------- 评审 F1-F3 回归（对抗性评审 2026-08-29） ----------------
+
+def test_f3_white_background_exempt():
+    """F3：白底+白描边+浅肤色脸 → 豁免不抠（防吃脸产出无脸残废贴）。"""
+    from sticker_engine.stages.postprocess import remove_edge_background
+    im = Image.new("RGBA", (100, 100), (250, 250, 250, 255))          # 白底
+    from PIL import ImageDraw
+    d = ImageDraw.Draw(im)
+    d.ellipse([25, 25, 74, 84], fill=(120, 80, 90, 255),
+              outline=(255, 255, 255, 255), width=5)                  # 白描边+深色身
+    d.ellipse([35, 20, 64, 49], fill=(255, 228, 225, 255))            # 浅肤色脸
+    out = remove_edge_background(im)
+    assert out.getpixel((5, 5))[3] == 255         # 白底保留（豁免）
+    assert out.getpixel((50, 35))[3] == 255       # 脸完好
+
+
+def test_f2_ref_library_mode_keeps_background(tmp_path):
+    """F2：ref_library 保背景模式（need_key=False）→ S2 不抠不裁，背景原样。"""
+    from sticker_engine.stages.postprocess import PostprocessStage
+    ctx = _ctx(tmp_path)
+    grid = tmp_path / "grid.png"
+    im = Image.new("RGBA", (80, 80), (200, 180, 90, 255))             # 参考图背景
+    im.paste(Image.new("RGBA", (40, 40), (250, 220, 200, 255)), (20, 20))
+    im.save(grid)
+    ctx.grid_image = grid
+    vision = MagicMock()
+    vision.interpret.return_value = {1: "表情"}
+    chromakey = MagicMock()
+    stage = PostprocessStage(vision, chromakey)
+    stage.run(ctx, gen_mode="ref_library", transparent=False)
+    out = Image.open(tmp_path / "e1" / "最终版" / "表情.png").convert("RGBA")
+    assert out.getpixel((3, 3))[3] == 255          # 背景不被抠/不裁（评审F2）
+    chromakey.remove_key_auto.assert_not_called()
+
+
+def test_r1_edge_color_below_threshold_not_background():
+    """R1：角色贴边（颜色桶占比<30%）→ 不当背景色，不侵蚀角色。"""
+    from sticker_engine.stages.postprocess import remove_edge_background
+    im = Image.new("RGBA", (100, 100), (255, 0, 255, 255))            # 洋红底
+    im.paste(Image.new("RGBA", (100, 12), (90, 60, 200, 255)), (0, 88))  # 角色贴底边
+    im.paste(Image.new("RGBA", (40, 60), (255, 220, 200, 255)), (30, 20))  # 身体
+    out = remove_edge_background(im)
+    assert out.getpixel((5, 50))[3] == 0           # 洋红底仍被抠
+    assert out.getpixel((50, 50))[3] == 255        # 身体不被啃
+
+
+def test_f1_regen_keeps_ai_icon(tmp_path):
+    """F1：详情页「重生成素材」不得把 AI 图标静默回滚成封面缩放。"""
+    import sticker_engine.cli as cli
+    from sticker_engine.config.series import load_meta, save_meta
+    from sticker_engine.stages.assets import resize_save
+    ep = ctx_dir = tmp_path / "episode_x"
+    (ep / "最终版").mkdir(parents=True)
+    (ep / "图标").mkdir()
+    for name in ["a", "b"]:
+        Image.new("RGBA", (240, 240), (250, 200, 200, 255)).save(ep / "最终版" / f"{name}.png")
+    # AI 大头照原图（管线 S3 产物）
+    Image.new("RGBA", (240, 240), (120, 200, 120, 255)).save(ep / "图标" / "_icon_raw.png")
+    meta = load_meta(ep); save_meta(ep, meta)
+    warnings = cli._regen_episode_assets(ep, meta)
+    icon = Image.open(ep / "图标" / "图标.png").convert("RGB")
+    assert icon.getpixel((25, 25)) == (120, 200, 120)   # 沿用 AI 大头照，非封面色
+    assert any("AI" in w for w in warnings)

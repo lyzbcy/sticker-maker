@@ -63,8 +63,9 @@ class AssetsStage:
                              message="图标：AI 生成纯头部正面照（50×50）"))
         else:
             icon_src = cover_src
+            why = getattr(self, "_icon_last_error", "") or "未知原因"
             ctx.log(LogEntry(stage="S3", status="WARN",
-                             message="图标：AI 生成失败，退回复用封面（平台可能驳回，可重生成）"))
+                             message=f"图标：AI 生成失败（{why[:120]}），本次退回复用封面"))
         self._resize_save(icon_src, icon_dir / "图标.png", _ICON_SIZE, _ICON_SIZE)
 
         # 介绍：1-80 字，硬截断防超限（str() 兜底：write_intro 契约返回 str，
@@ -91,16 +92,29 @@ class AssetsStage:
         codex = getattr(self.vision, "codex", None)
         if codex is None:
             return None
-        refs = list(getattr(ctx, "selected_bases", []) or [])
+        # R4（评审）：只传第 1 张 base——多 base 时 codex 可能画拼贴/混角色
+        refs = list(getattr(ctx, "selected_bases", []) or [])[:1]
         if not refs and fallback_paths:
             refs = [fallback_paths[0]]
         if not refs:
             return None
+        import time as _time
+        t0 = _time.time()
         try:
             raw = codex.generate(prompt=_ICON_AI_PROMPT, refs=refs)
-        except Exception:
+        except Exception as e:   # noqa: BLE001
+            self._icon_last_error = f"{type(e).__name__}: {e}"
             return None
+        self._icon_last_error = str(getattr(codex, "last_error", "") or "")
         if not raw or not Path(raw).exists():
+            return None
+        # R2（评审）：新鲜度校验——codex 正常退出但没画新图时，provider 会
+        # 返回 output_dir 里任意"最新"图（可能是 S1 的 4x4 网格）→ 50px
+        # 图标变微型宫格，恰是驳回形态。只认本次调用之后落盘的图。
+        try:
+            if Path(raw).stat().st_mtime < t0 - 2:
+                return None
+        except OSError:
             return None
         try:
             from PIL import Image as _Im
@@ -118,7 +132,9 @@ class AssetsStage:
                 img = ck.remove_key_auto(img)
             except Exception:
                 pass
-            from .postprocess import trim_border_band, ensure_size
+            from .postprocess import (remove_edge_background, trim_border_band,
+                                      ensure_size)
+            img = remove_edge_background(img)
             img = trim_border_band(img)
             img = ensure_size(img)
             out = ctx.episode_dir / "图标" / "_icon_raw.png"

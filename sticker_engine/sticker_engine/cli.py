@@ -582,19 +582,31 @@ def _regen_episode_assets(episode_dir: Path, meta, series=None) -> list:
         elif not paths:
             warnings.append("无成品图，封面未生成")
 
-    # ---- 图标（50×50；custom 直接复制，否则与封面同源） ----
+    # ---- 图标（50×50；custom/role 直接复制，否则优先 AI 大头照，再退封面） ----
     icon_out = episode_dir / "图标" / "图标.png"
     if meta.icon_mode == "custom" and meta.icon_custom:
         _copy_or_warn(meta.icon_custom, icon_out, "图标")
     elif meta.icon_mode == "role" and role_key and role_map[role_key].get("icon"):
         _copy_or_warn(role_map[role_key]["icon"], icon_out, f"角色[{role_key}]图标")
-    elif cover_src is not None:
-        icon_out.parent.mkdir(parents=True, exist_ok=True)
-        resize_save(cover_src, icon_out, 50, 50)
-    elif cover_out.exists():
-        resize_save(cover_out, icon_out, 50, 50)
-    elif not paths:
-        warnings.append("无成品图，图标未生成")
+    else:
+        # F1（评审）：管线 S3 生成的 AI 图标原图优先——之前这里无条件用封面源
+        # 覆盖，用户一点「重生成素材」就把合规的头部照静默回滚成不合规形态
+        icon_raw = episode_dir / "图标" / "_icon_raw.png"
+        src = None
+        if icon_raw.exists():
+            src = icon_raw
+            warnings.append("图标沿用 AI 生成的大头照（平台要求纯头部正面像）")
+        elif cover_src is not None:
+            src = cover_src
+            warnings.append("图标退回复用封面（无 AI 大头照；平台可能驳回，建议重生成本组）")
+        elif cover_out.exists():
+            src = cover_out
+            warnings.append("图标退回封面成品（无 AI 大头照；平台可能驳回，建议重生成本组）")
+        if src is not None:
+            icon_out.parent.mkdir(parents=True, exist_ok=True)
+            resize_save(src, icon_out, 50, 50)
+        elif not paths:
+            warnings.append("无成品图，图标未生成")
     return warnings
 
 
