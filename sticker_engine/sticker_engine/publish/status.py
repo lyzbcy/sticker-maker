@@ -67,9 +67,10 @@ def _fetch_reject_reason_for_row(page, row: "PlatformRow") -> str:
     target = normalize_name(row.name)
     entered = False
     stage = "init"
-    try:
+
+    def _locate_and_click() -> bool:
+        """在当前列表页找目标行的「详情」并点入。"""
         links = page.locator("a:has-text('详情'), td:has-text('详情')")
-        stage = "locate"
         for i in range(links.count()):
             el = links.nth(i)
             try:
@@ -80,8 +81,20 @@ def _fetch_reject_reason_for_row(page, row: "PlatformRow") -> str:
                 continue
             if target and target in normalize_name(row_txt):
                 el.click()
-                entered = True
-                break
+                return True
+        return False
+
+    try:
+        stage = "locate"
+        entered = _locate_and_click()
+        if not entered:
+            # go_back 后的列表 DOM 可能没恢复稳（行定位全空）——goto 重置列表再试
+            # 一次（2026-08-29 真机：65 成功后 61-64 全在 go_back 后定位失败，
+            # 但详情页的「未通过审核」入口其实一直都在）
+            stage = "locate_retry"
+            page.goto(HOME_URL, wait_until="domcontentloaded", timeout=45000)
+            page.wait_for_timeout(4000)
+            entered = _locate_and_click()
         if not entered:
             return ""
         # 详情页打开慢（实测需等一会儿）
@@ -243,7 +256,8 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
                         if r.reject_reason:
                             say(f"  驳回理由：{r.reject_reason[:60]}…")
                         else:
-                            say(f"  （{r.name} 未取到驳回理由：{r.reject_stage or '详情页无未通过入口'}）")
+                            why = (r.reject_stage or "列表定位失败(已重试)" if not r.reject_stage else r.reject_stage)
+                            say(f"  （{r.name} 未取到驳回理由：{why}）")
                 next_btn = page.locator("a:has-text('下一页')")
                 if next_btn.count() == 0 or not next_btn.first.is_enabled():
                     break

@@ -90,7 +90,14 @@
             class="reject-detail-row" @click.stop>
           <td :colspan="7">
             <div class="reject-detail-box">
-              <p class="reject-detail-title">⛔ 驳回理由（全部）</p>
+              <div class="reject-detail-head">
+                <p class="reject-detail-title">⛔ 驳回理由（全部）</p>
+                <button class="reject-copy-btn" :disabled="copyingRejectPath === ep.path"
+                        @click="copyRejectPrompt(ep)">
+                  {{ copyingRejectPath === ep.path ? '生成中…' : '📋 复制评审提示词' }}
+                </button>
+                <span v-if="rejectCopyTip" class="reject-copy-tip">✓ {{ rejectCopyTip }}</span>
+              </div>
               <div v-for="(item, idx) in parseReasonItems(ep.platform_reject_reason, ep.album_name || ep.name)"
                    :key="idx" class="reject-item">
                 <span v-if="item.group" class="reject-group">{{ item.group }}</span>
@@ -122,6 +129,28 @@ function toggleReject(path) {
   const s = new Set(expandedRejects.value)
   s.has(path) ? s.delete(path) : s.add(path)
   expandedRejects.value = s
+}
+
+// 一键复制驳回评审提示词（展开区内直接复制，不用进详情页）
+const copyingRejectPath = ref('')
+const rejectCopyTip = ref('')
+async function copyRejectPrompt(ep) {
+  if (!window.api) return
+  copyingRejectPath.value = ep.path
+  rejectCopyTip.value = ''
+  try {
+    const res = await window.api.send('build_reject_review_prompt', { episode_dir: ep.path })
+    if (res?.status === 'ok' && res.data && res.data.text) {
+      const clip = await window.api.copyText(res.data.text)
+      rejectCopyTip.value = (clip && clip.ok)
+        ? '已复制（' + clip.length + ' 字），粘贴给 AI 即可'
+        : '复制失败：剪贴板不可用'
+    } else {
+      rejectCopyTip.value = '生成失败：' + (res?.errors?.[0]?.message || '返回为空')
+    }
+  } finally {
+    copyingRejectPath.value = ''
+  }
 }
 
 onMounted(() => {
@@ -286,7 +315,14 @@ tr.incomplete { opacity: .6; }
 .reject-toggle:hover { text-decoration: underline; }
 .reject-detail-row td { background: rgba(181, 72, 42, .04); padding: 6px 16px 12px; }
 .reject-detail-box { max-width: 720px; }
-.reject-detail-title { margin: 4px 0 8px; font-size: 12px; color: var(--brick); font-weight: 700; }
+.reject-detail-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.reject-detail-title { margin: 0; font-size: 12px; color: var(--brick); font-weight: 700; }
+.reject-copy-btn { border: 1px solid rgba(181, 72, 42, .4); background: rgba(181, 72, 42, .08);
+  color: var(--brick); border-radius: 999px; padding: 4px 12px; font-size: 11px;
+  font-weight: 700; cursor: pointer; }
+.reject-copy-btn:hover { background: rgba(181, 72, 42, .16); }
+.reject-copy-btn:disabled { opacity: .6; cursor: wait; }
+.reject-copy-tip { font-size: 11px; color: var(--muted); }
 .reject-item { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 6px; }
 .reject-group { flex: none; font-size: 11px; padding: 2px 8px; border-radius: 999px;
   background: rgba(181, 72, 42, .14); color: var(--brick); font-weight: 700; margin-top: 1px; }
