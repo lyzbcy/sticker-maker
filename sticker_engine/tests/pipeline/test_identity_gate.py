@@ -154,3 +154,37 @@ def test_runner_stops_on_aborted_flag(tmp_path):
     runner.run(ctx, progress_callback=events.append)
     assert checked["gate"] is False            # Gate1 没跑
     assert any(ev.phase == "aborted" for ev in events)   # 发了中止事件
+
+
+def test_identity_prompt_grants_expression_exaggeration_license():
+    """判定 prompt 必须豁免表情夸张（石化灰/融化/脸红是正确画法，不是换角色）。"""
+    from sticker_engine.stages.generate import IDENTITY_CHECK_PROMPT
+    p = IDENTITY_CHECK_PROMPT.lower()
+    assert "petrified" in p and "melting" in p
+    assert "not identity changes" in p
+    assert "most panels" in p          # NO 收紧为多数格子换角色
+
+
+def test_no_with_single_panel_reason_downgrades_to_pass(tmp_path):
+    """今天事故精确复刻：NO + 'One panel depicts a gray stone-like version'
+    ——15/16 正确只是石化格变灰 → 按定义不构成 NO，降级放行。"""
+    ctx = _ctx(tmp_path)
+    stage, fake = _stage(
+        tmp_path,
+        ["NO One panel depicts a gray stone-like version with altered outfit and color palette."])
+    stage.run(ctx)
+    assert ctx.grid_image is not None       # 放行
+    fake.generate.assert_called_once()      # 没耗重试
+    assert not ctx.aborted
+
+
+def test_no_with_sheet_level_reason_still_blocks(tmp_path):
+    """真·整单换角色（多数格子）仍要拦截——门禁本职不能丢。"""
+    ctx = _ctx(tmp_path)
+    stage, fake = _stage(
+        tmp_path,
+        ["NO Most panels show a completely different human character.",
+         "NO Still a wrong character in every panel."])
+    stage.run(ctx)
+    assert ctx.grid_image is None
+    assert ctx.aborted

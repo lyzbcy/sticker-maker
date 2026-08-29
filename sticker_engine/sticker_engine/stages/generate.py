@@ -15,20 +15,29 @@ from ..config.prompts import apply_set as _apply_prompt_set
 # 当日一单排列组合模式：codex 会话 input_image=0（-i 参考图被静默丢弃），
 # 模型凭空造出非 IP 角色且全程无报错，差点流到发布环节。对策：
 # 每次生成后立刻识图对比「成图 vs base」，不同角色 → 强化提示重试 1 次 → 仍不同则明确失败。
-# 判定分三档：YES 同一角色 / MINOR 同一角色但缺小细节（字母标志·小配饰，放行，
-# 2026-08-29 星星布丁"漏画帽子上的白 R"被误杀事故）/ NO 换了角色（拦截）。
+# 判定分三档：YES 同一角色 / MINOR 同一角色但缺小细节（字母标志·小配饰，放行）/ NO 换了角色（拦截）。
+# 第一性原理：门禁只防「整单偷换角色」（2026-08-27 自创角色事故），不管「格子级表情夸张」
+# ——表情包的本质就是同一角色做夸张变形：石化变灰、融化成液态、害羞脸红都是正确画法
+# （2026-08-29 星星布丁"石化格被当成换角色"误杀事故）。故 YES 按整张多数格子判定，
+# NO 收紧为"多数格子呈现另一个角色设计"。
 IDENTITY_CHECK_PROMPT = (
-    "Image 1 is a generated sticker sheet; image 2 is the official base reference of the "
-    "character that MUST appear in every panel.\n"
-    "Judge CHARACTER IDENTITY: species/body, hairstyle and hair color, main outfit, "
-    "overall color palette.\n"
+    "Image 1 is a generated sticker sheet; image 2 is the official base reference "
+    "of the character that MUST appear in every panel.\n"
+    "This is an EMOTION sticker sheet: the SAME character performs exaggerated "
+    "emotions. Panel-level exaggeration is expected and CORRECT — a 'petrified' "
+    "panel may turn the character gray/stone-like, a 'melting' panel may liquefy "
+    "it, 'blushing' may redden it, 'burnt' may char it. These are EXPRESSION "
+    "changes, NOT identity changes. Judge identity by the sheet as a whole: "
+    "species/body shape, hairstyle and hair color, main outfit, resting palette.\n"
     "Answer with exactly YES, MINOR or NO as the first line:\n"
-    "- YES: every panel shows the same character design as image 2.\n"
-    "- MINOR: the same character, but small surface details are missing or slightly off "
-    "(a letter or logo printed on clothing/headwear, tiny accessories, minor pattern "
-    "differences) while species, hairstyle, palette and outfit type still clearly match.\n"
-    "- NO: a genuinely different character design (wrong species, wrong hairstyle or hair "
-    "color, wrong outfit type, wrong palette).\n"
+    "- YES: the character is clearly the one from image 2 (a few panels "
+    "exaggerating colors/forms for emotion is fine, that is the point).\n"
+    "- MINOR: same character, but small signature details are missing in most "
+    "panels (a printed letter or logo, glasses, ribbons, tiny accessories) — "
+    "identity itself still clearly matches.\n"
+    "- NO: MOST panels show a genuinely different character design (wrong "
+    "species, wrong hairstyle or hair color, wrong outfit type) that cannot be "
+    "explained as emotion exaggeration.\n"
     "Then one short sentence naming what differs (if anything)."
 )
 
@@ -39,6 +48,13 @@ _IDENTITY_RETRY_PREFIX = (
     "Include every signature detail — any letter or logo printed on the clothing or "
     "headwear, glasses, ribbons, badges — these are part of the identity. "
     "Inventing a different character means total failure.\n"
+)
+
+# NO 的定义是「多数格子换了角色」；codex 偶尔回 NO 但理由自己写着"一个格子如何"
+# ——按定义不成立，按单格问题降级放行（2026-08-29 石化格误杀：15/16 正确仍被杀）
+_SINGLE_PANEL_HINTS = (
+    "one panel", "a single panel", "single panel", "one sticker",
+    "a few panels", "one cell", "a cell", "one frame", "个别", "其中一格",
 )
 
 
@@ -241,7 +257,12 @@ class GenerateStage:
             return True, ("同一角色，个别小细节缺失（" + (reason or "未说明") + "）——放行，"
                           "如在意可打分备注")
         if head.startswith("NO"):
-            return False, "成图角色与 base 不是同一角色（" + (reason or " ".join(ans.strip().split())[:100]) + "）"
+            full = " ".join(ans.strip().split())
+            # 兜底：理由自己暴露"只是个别格子"→ 不满足 NO 的"多数格子"定义，降级放行
+            if any(h in full.lower() for h in _SINGLE_PANEL_HINTS):
+                return True, ("多数格子角色正确，仅个别格子异常（"
+                              + (reason or full[:80]) + "）——放行，异常格子可打分备注")
+            return False, "成图角色与 base 不是同一角色（" + (reason or full[:100]) + "）"
         ctx.log(LogEntry(stage="S1", status="WARN",
                          message="IP 校验识图无明确回复，放行并留痕"))
         return True, "识图无明确回复，本次放行（留痕）"
