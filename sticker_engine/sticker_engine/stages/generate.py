@@ -15,18 +15,29 @@ from ..config.prompts import apply_set as _apply_prompt_set
 # 当日一单排列组合模式：codex 会话 input_image=0（-i 参考图被静默丢弃），
 # 模型凭空造出非 IP 角色且全程无报错，差点流到发布环节。对策：
 # 每次生成后立刻识图对比「成图 vs base」，不同角色 → 强化提示重试 1 次 → 仍不同则明确失败。
+# 判定分三档：YES 同一角色 / MINOR 同一角色但缺小细节（字母标志·小配饰，放行，
+# 2026-08-29 星星布丁"漏画帽子上的白 R"被误杀事故）/ NO 换了角色（拦截）。
 IDENTITY_CHECK_PROMPT = (
     "Image 1 is a generated sticker sheet; image 2 is the official base reference of the "
     "character that MUST appear in every panel.\n"
-    "Question: do all panels of image 1 depict the SAME character design as image 2 "
-    "(same species, same hairstyle and hair color, same outfit, same color palette)?\n"
-    "Answer with exactly YES or NO as the first line, then one short sentence of reason."
+    "Judge CHARACTER IDENTITY: species/body, hairstyle and hair color, main outfit, "
+    "overall color palette.\n"
+    "Answer with exactly YES, MINOR or NO as the first line:\n"
+    "- YES: every panel shows the same character design as image 2.\n"
+    "- MINOR: the same character, but small surface details are missing or slightly off "
+    "(a letter or logo printed on clothing/headwear, tiny accessories, minor pattern "
+    "differences) while species, hairstyle, palette and outfit type still clearly match.\n"
+    "- NO: a genuinely different character design (wrong species, wrong hairstyle or hair "
+    "color, wrong outfit type, wrong palette).\n"
+    "Then one short sentence naming what differs (if anything)."
 )
 
 _IDENTITY_RETRY_PREFIX = (
     "URGENT IDENTITY CORRECTION: a previous attempt drew a WRONG invented character. "
     "Copy the character design EXACTLY from the attached reference image(s): same species, "
     "same hairstyle and hair color, same outfit, same color palette. "
+    "Include every signature detail — any letter or logo printed on the clothing or "
+    "headwear, glasses, ribbons, badges — these are part of the identity. "
     "Inventing a different character means total failure.\n"
 )
 
@@ -176,6 +187,7 @@ class GenerateStage:
                 self._emit(ctx, f"codex 生图失败：{detail}")
                 ctx.log(LogEntry(stage="S1", status="FAIL",
                                  message=f"codex 生图失败（mode={mode.value}）：{detail}"))
+                ctx.abort("S1", f"codex 生图失败：{detail}", "检查 codex 登录状态后重跑一单")
                 return None
             # 废图质检：参考图被 codex 丢弃时，偶发产出全黑/纯色图（2026-08-27 实测）
             if not self._grid_sanity_ok(grid):
@@ -191,6 +203,8 @@ class GenerateStage:
                          message=f"生成质量/IP 校验连续未通过（已重试）：{why}"))
         self._emit(ctx, f"IP 校验连续 2 次未通过，本单已主动中止（不是超时/卡死，"
                         f"参考图也未消耗，可直接再跑一单）：{why}")
+        ctx.abort("S1", f"IP 校验连续 2 次未通过：{why}",
+                  "参考图未消耗，可直接再跑一单；若总在同一点失败可换 base 图")
         return None
 
     def _grid_sanity_ok(self, grid_path) -> bool:
@@ -218,10 +232,16 @@ class GenerateStage:
         if not isinstance(ans, str):   # 测试桩/MagicMock 兜底
             ans = ""
         head = ans.strip().splitlines()[0].upper() if ans.strip() else ""
+        reason = " ".join(ans.strip().split())[len(head.split()[0]):][:100].strip() if ans.strip() else ""
         if head.startswith("YES"):
             return True, "成图与 base 为同一角色 ✓"
+        if head.startswith("MINOR"):
+            # 同一角色、缺小细节（字母标志/小配饰）：放行——生图模型漏画服装上的
+            # 字母是常见退化，不该整单作废（用户可在打分备注中指出，反哺 prompt）
+            return True, ("同一角色，个别小细节缺失（" + (reason or "未说明") + "）——放行，"
+                          "如在意可打分备注")
         if head.startswith("NO"):
-            return False, "成图角色与 base 不是同一角色（" + " ".join(ans.strip().split())[:100] + "）"
+            return False, "成图角色与 base 不是同一角色（" + (reason or " ".join(ans.strip().split())[:100]) + "）"
         ctx.log(LogEntry(stage="S1", status="WARN",
                          message="IP 校验识图无明确回复，放行并留痕"))
         return True, "识图无明确回复，本次放行（留痕）"

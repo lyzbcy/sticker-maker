@@ -107,3 +107,50 @@ def test_prompt_has_critical_identity_prefix(tmp_path):
     assert prompt.startswith("CRITICAL: draw ONLY the exact character")
     assert "捞鱼" in prompt
     assert "never invent" in prompt
+
+
+def test_identity_minor_detail_passes_without_retry(tmp_path):
+    """MINOR=同一角色缺小细节（星星布丁漏画帽子白R事故）→ 放行且不耗重试。"""
+    ctx = _ctx(tmp_path)
+    stage, fake = _stage(
+        tmp_path, ["MINOR — same character but the white R logo on the hat is missing"])
+    stage.run(ctx)
+    assert ctx.grid_image is not None
+    fake.generate.assert_called_once()   # 没有触发第 2 次生成
+    assert not ctx.aborted
+
+
+def test_abort_marks_ctx_and_stops_pipeline(tmp_path):
+    """两次 NO 中止：ctx.aborted=True + errors 记录原因（runner 据此不再跑 Gate1）。"""
+    ctx = _ctx(tmp_path)
+    stage, fake = _stage(tmp_path, ["NO — invented human", "NO — still wrong"])
+    stage.run(ctx)
+    assert ctx.grid_image is None
+    assert ctx.aborted is True
+    assert any(e.gate == "S1" and "IP" in e.message for e in ctx.errors)
+
+
+def test_runner_stops_on_aborted_flag(tmp_path):
+    """runner 见 ctx.aborted 即停：后续 Gate 不再执行（不再报'生图产物缺失'）。"""
+    from sticker_engine.pipeline.runner import PipelineRunner
+    from sticker_engine.pipeline.gates import Gate1PostGenerateRaw
+
+    checked = {"gate": False}
+
+    class _FakeGate:
+        name = "Gate1_post_generate_raw"
+        def check(self, ctx):
+            checked["gate"] = True
+            from sticker_engine.pipeline.gates import GateResult
+            return GateResult(True)
+
+    class _AbortStage:
+        def run(self, ctx):
+            ctx.abort("S1", "IP 校验连续 2 次未通过：test")
+
+    runner = PipelineRunner([("S1", _AbortStage()), (_FakeGate(), "Gate1")])
+    events = []
+    ctx = _ctx(tmp_path)
+    runner.run(ctx, progress_callback=events.append)
+    assert checked["gate"] is False            # Gate1 没跑
+    assert any(ev.phase == "aborted" for ev in events)   # 发了中止事件

@@ -85,6 +85,9 @@ class PipelineContext:
     stage_progress: Optional[Callable] = None
     _production_log: deque = field(default_factory=lambda: deque(maxlen=LOG_CAPACITY))
     errors: list = field(default_factory=list)
+    # stage 主动中止（如 IP 校验连续不过）：runner 见到即停，不再跑后续 Gate
+    # （否则会出现"S1 已明确中止 → Gate1 又报'生图产物缺失'"的迷惑链）
+    aborted: bool = False
 
     @property
     def production_log(self) -> list:
@@ -92,6 +95,11 @@ class PipelineContext:
 
     def log(self, entry: LogEntry) -> None:
         self._production_log.append(entry)
+
+    def abort(self, gate: str, message: str, guidance: str = "") -> None:
+        """stage 主动中止本单：置 aborted 并记录原因（供结果面板展示）。"""
+        self.aborted = True
+        self.add_error(GateError(gate=gate, message=message, guidance=guidance))
 
     def add_error(self, err: GateError) -> None:
         self.errors.append(err)

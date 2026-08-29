@@ -93,6 +93,13 @@ class PipelineRunner:
             # 阶段之间检查 stop_event（上一阶段执行中可能置位）
             if stop_event is not None and stop_event.is_set():
                 raise StopRequested()
+            # stage 主动中止（如 S1 IP 校验连续不过）：整单到此为止，
+            # 不再跑后续 Gate——中止原因已由 stage 发过明细事件
+            if getattr(ctx, "aborted", False):
+                self._emit(progress_callback, ProgressEvent(
+                    stage=label, phase="aborted",
+                    message="本单已由上游阶段主动中止，流水线到此结束", percent=1.0))
+                return
 
             pct = i / n if n > 0 else 1.0
             # C5：开始阶段时估算剩余时间（基于历史）
