@@ -46,8 +46,8 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="ep in filtered" :key="ep.path" :class="{ incomplete: !ep.complete }"
-            @click="openRow(ep)">
+        <template v-for="ep in filtered" :key="ep.path">
+        <tr :class="{ incomplete: !ep.complete }" @click="openRow(ep)">
           <td class="col-work">
             <img v-if="ep.cover" class="thumb" :src="fileUrl(ep.cover)" alt="" @error="onThumbError" />
             <div v-else class="thumb thumb-empty">🧸</div>
@@ -64,10 +64,12 @@
           <td class="num">{{ ep.platform_tips ?? '-' }}</td>
           <td>
             <span class="status-badge" :class="statusClass(ep)">{{ statusText(ep) }}</span>
-            <div v-if="statusClass(ep) === 'st-reject' && ep.platform_reject_reason"
-                 class="reject-reason" :title="ep.platform_reject_reason">
-              {{ ep.platform_reject_reason.slice(0, 26) }}{{ ep.platform_reject_reason.length > 26 ? '…' : '' }}
-            </div>
+            <button v-if="statusClass(ep) === 'st-reject' && ep.platform_reject_reason"
+                    class="reject-toggle" @click.stop="toggleReject(ep.path)"
+                    :title="expandedRejects.has(ep.path) ? '收起驳回理由' : '展开全部驳回理由'">
+              ⛔ {{ reasonCount(ep.platform_reject_reason, ep.album_name || ep.name) }} 条理由
+              {{ expandedRejects.has(ep.path) ? '▲' : '▼' }}
+            </button>
           </td>
           <td class="date">{{ displayDate(ep) }}</td>
           <td class="col-ops" @click.stop>
@@ -84,6 +86,20 @@
                     @click="confirming = ep.path">删除</button>
           </td>
         </tr>
+        <tr v-if="expandedRejects.has(ep.path) && ep.platform_reject_reason"
+            class="reject-detail-row" @click.stop>
+          <td :colspan="7">
+            <div class="reject-detail-box">
+              <p class="reject-detail-title">⛔ 驳回理由（全部）</p>
+              <div v-for="(item, idx) in parseReasonItems(ep.platform_reject_reason, ep.album_name || ep.name)"
+                   :key="idx" class="reject-item">
+                <span v-if="item.group" class="reject-group">{{ item.group }}</span>
+                <p class="reject-text" style="margin:0">{{ item.text }}</p>
+              </div>
+            </div>
+          </td>
+        </tr>
+        </template>
       </tbody>
     </table>
     <div v-else class="empty">还没有作品，去生成一组吧 ✨</div>
@@ -93,12 +109,20 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useEngineStore } from '../store/engine'
+import { parseReasonItems, reasonCount } from '../utils/reason'
 
 const store = useEngineStore()
 const filter = ref('all')
 const syncing = ref(false)
 const syncSummary = ref(null)
 const confirming = ref('')
+// 驳回理由展开状态（作品库行内「N条理由」点击切换）
+const expandedRejects = ref(new Set())
+function toggleReject(path) {
+  const s = new Set(expandedRejects.value)
+  s.has(path) ? s.delete(path) : s.add(path)
+  expandedRejects.value = s
+}
 
 onMounted(() => {
   store.loadEpisodes()
@@ -257,8 +281,17 @@ tr.incomplete { opacity: .6; }
 .st-live { background: rgba(47, 125, 70, .14); color: var(--correct); }
 .st-review { background: rgba(230, 162, 60, .16); color: #b8860b; }
 .st-reject { background: rgba(181, 72, 42, .12); color: var(--brick); }
-.reject-reason { font-size: 10px; color: var(--brick); opacity: .85; margin-top: 3px;
-  max-width: 150px; cursor: help; line-height: 1.35; }
+.reject-toggle { display: block; margin-top: 4px; border: 0; background: none; padding: 0;
+  font-size: 11px; color: var(--brick); cursor: pointer; font-weight: 600; }
+.reject-toggle:hover { text-decoration: underline; }
+.reject-detail-row td { background: rgba(181, 72, 42, .04); padding: 6px 16px 12px; }
+.reject-detail-box { max-width: 720px; }
+.reject-detail-title { margin: 4px 0 8px; font-size: 12px; color: var(--brick); font-weight: 700; }
+.reject-item { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 6px; }
+.reject-group { flex: none; font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: rgba(181, 72, 42, .14); color: var(--brick); font-weight: 700; margin-top: 1px; }
+.reject-detail-box .reject-text { font-size: 12px; line-height: 1.6; color: #5a2a1a;
+  white-space: pre-line; }
 .st-saved { background: rgba(110, 112, 99, .14); color: var(--muted); }
 .st-local { background: var(--marker); color: var(--ink); }
 .st-incomplete { background: var(--paper); color: var(--muted-soft); }

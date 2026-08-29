@@ -7,10 +7,14 @@
     </header>
 
     <div class="body">
-      <!-- 审核驳回警示卡（有驳回理由时显示） -->
+      <!-- 审核驳回警示卡（有驳回理由时显示，多条理由全部列出） -->
       <section v-if="ep.meta.platform_reject_reason" class="card reject-card">
-        <h3 class="card-title">⛔ 审核未通过——平台驳回理由</h3>
-        <p class="reject-text">{{ ep.meta.platform_reject_reason }}</p>
+        <h3 class="card-title">⛔ 审核未通过——平台驳回理由（共 {{ reasonCount(ep.meta.platform_reject_reason, ep.meta.album_name || ep.name) }} 条）</h3>
+        <div v-for="(item, idx) in parseReasonItems(ep.meta.platform_reject_reason, ep.meta.album_name || ep.name)"
+             :key="idx" class="reject-item">
+          <span v-if="item.group" class="reject-group">{{ item.group }}</span>
+          <p class="reject-text-full">{{ item.text }}</p>
+        </div>
         <div class="reject-actions">
           <button class="copy-feedback-btn" :disabled="copyingReject" @click="() => copyRejectReview()">
             {{ copyingReject ? '生成中…' : '📋 一键复制驳回评审提示词（交给 AI 分析怎么改）' }}
@@ -184,6 +188,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useEngineStore } from '../store/engine'
+import { parseReasonItems, reasonCount } from '../utils/reason'
 
 const store = useEngineStore()
 const ep = computed(() => store.selectedEpisode)
@@ -562,7 +567,10 @@ header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; fle
 .copy-feedback-btn:disabled { opacity: .6; cursor: wait; }
 .reject-card { border: 1px solid rgba(181, 72, 42, .35); background: rgba(181, 72, 42, .05); }
 .reject-card .card-title { color: var(--brick); }
-.reject-text { margin: 4px 0 10px; line-height: 1.65; color: #5a2a1a; white-space: pre-wrap; }
+.reject-item { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 8px; }
+.reject-group { flex: none; font-size: 12px; padding: 3px 10px; border-radius: 999px;
+  background: rgba(181, 72, 42, .14); color: var(--brick); font-weight: 700; margin-top: 1px; }
+.reject-text-full { margin: 0; line-height: 1.65; color: #5a2a1a; white-space: pre-line; font-size: 13px; }
 .reject-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .sticker-cell {
   position: relative; background: var(--bg-cream); border: 1.5px solid var(--paper);
