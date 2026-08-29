@@ -19,6 +19,18 @@ _COVER_SIZE = 240
 _ICON_SIZE = 50
 _INTRO_MAX = 80   # 微信介绍 80 字硬限制
 
+# P1（平台驳回整改，doc/reference/platform-review.md）：平台硬规则"图标 =
+# 只含形象头部的正面图像"，格子缩放永远不合规 → 单独生成一张大头照。
+# codex 铁律：单行 prompt（多行经 codex.cmd 丢参考图）；refs 传 base 保 IP。
+_ICON_AI_PROMPT = (
+    "Generate ONE single square sticker image: ONLY the character's HEAD, "
+    "front-facing, perfectly centered, filling about 80% of the frame, "
+    "gentle happy expression, eyes open, thick white outline around the head, "
+    "flat solid magenta background (#ff00ff), no text, no letters, no props, "
+    "no accessories beyond what is on the head, no border, no frame. "
+    "Copy the character design EXACTLY from the attached reference image."
+)
+
 
 class AssetsStage:
     """S3：横幅 750×400 / 封面 240×240 / 图标 50×50 / 介绍.txt。"""
@@ -42,9 +54,18 @@ class AssetsStage:
         cover_src = self._pick_best_face(paths)
         self._resize_save(cover_src, cover_dir / "封面.png", _COVER_SIZE, _COVER_SIZE)
 
-        # 图标：同封面源，50×50（聊天页小图）
+        # 图标：AI 生成纯头部正面照（P1：平台要求"只含形象头部的正面图像"），
+        # codex 失败 fallback 选张（素材永不缺失）
         icon_dir = ctx.episode_dir / "图标"; icon_dir.mkdir(exist_ok=True)
-        self._resize_save(cover_src, icon_dir / "图标.png", _ICON_SIZE, _ICON_SIZE)
+        icon_src = self._make_ai_icon(ctx, paths)
+        if icon_src is not None:
+            ctx.log(LogEntry(stage="S3", status="OK",
+                             message="图标：AI 生成纯头部正面照（50×50）"))
+        else:
+            icon_src = cover_src
+            ctx.log(LogEntry(stage="S3", status="WARN",
+                             message="图标：AI 生成失败，退回复用封面（平台可能驳回，可重生成）"))
+        self._resize_save(icon_src, icon_dir / "图标.png", _ICON_SIZE, _ICON_SIZE)
 
         # 介绍：1-80 字，硬截断防超限（str() 兜底：write_intro 契约返回 str，
         # 防御 provider 异常返回非 str；真实 VisionProvider 返回 str 时为恒等）
@@ -58,6 +79,54 @@ class AssetsStage:
 
     def _make_banner(self, src_paths: list, out: Path) -> None:
         make_banner(src_paths, out)
+
+    def _make_ai_icon(self, ctx: PipelineContext, fallback_paths: list):
+        """AI 生成图标专属"纯头部正面照"，返回成品路径；失败返回 None。
+
+        - refs 用 S0 选中的 base（IP 与整单一致）；无 base 传第 1 张成品
+        - codex 铁律遵守：_ICON_AI_PROMPT 单行、refs 在 ASCII 暂存由 provider 处理
+        - 生成后抠洋红底 + trim 残留 + 补方 240，存 图标/_icon_raw.png
+        - 生成失败/图异常（纯色废图）→ None（调用方 fallback）
+        """
+        codex = getattr(self.vision, "codex", None)
+        if codex is None:
+            return None
+        refs = list(getattr(ctx, "selected_bases", []) or [])
+        if not refs and fallback_paths:
+            refs = [fallback_paths[0]]
+        if not refs:
+            return None
+        try:
+            raw = codex.generate(prompt=_ICON_AI_PROMPT, refs=refs)
+        except Exception:
+            return None
+        if not raw or not Path(raw).exists():
+            return None
+        try:
+            from PIL import Image as _Im
+            img = _Im.open(raw).convert("RGBA")
+            # 废图质检：>98% 同灰度 = 纯色废图（generate 阶段同款判据）
+            hist = img.convert("L").histogram()
+            if max(hist) / (img.width * img.height) > 0.98:
+                return None
+            # 抠洋红 + trim 残留带 + 补方（与 S2 同套路，模块级函数复用）
+            try:
+                from ..providers.chromakey import ChromaKeyProvider
+                ck = getattr(self, "_icon_chromakey", None)
+                if ck is None:
+                    ck = self._icon_chromakey = ChromaKeyProvider()
+                img = ck.remove_key_auto(img)
+            except Exception:
+                pass
+            from .postprocess import trim_border_band, ensure_size
+            img = trim_border_band(img)
+            img = ensure_size(img)
+            out = ctx.episode_dir / "图标" / "_icon_raw.png"
+            out.parent.mkdir(exist_ok=True)
+            img.save(out)
+            return out
+        except Exception:
+            return None
 
     def _pick_best_face(self, paths: list) -> Path:
         """选最具辨识度的正面像做封面源。

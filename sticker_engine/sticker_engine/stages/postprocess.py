@@ -48,6 +48,116 @@ class Sticker:
     panel_index: int
 
 
+
+
+def remove_edge_background(img, dist_thresh: int = 60, max_frac: float = 0.80):
+    """把"与边缘连通的背景色"抠成透明（P2 第二层：62 黑底+格线场景）。
+
+    原理：背景（洋红底/黑底/格线）总是从画布边缘连入；角色本体被白描边
+    包裹、不接触边缘。取边缘前 2 种不透明主色为背景色，从四边 flood，
+    色距 < dist_thresh 的连通像素透明化——即使角色黑发与黑底同色，也因
+    不连通边缘而安全。抠掉面积 > max_frac 判异常（整图废图），原样返回。
+    """
+    import numpy as np
+    from scipy import ndimage
+    src = img.convert("RGBA")
+    arr = np.asarray(src).astype(np.int16)
+    h, w = arr.shape[:2]
+    edge = np.concatenate([arr[0], arr[-1], arr[:, 0], arr[:, -1]])
+    opaque_edge = edge[edge[:, 3] > 200]
+    if len(opaque_edge) < 2 * (h + w) * 0.5:
+        return src   # 边缘大半透明：chromakey 已处理过，无背景可抠
+    q = (opaque_edge[:, :3] // 32).astype(np.int32)
+    keys, counts = np.unique(q, axis=0, return_counts=True)
+    bg_colors = []
+    for idx in np.argsort(-counts)[:2]:
+        mask = (q == keys[idx]).all(axis=1)
+        if mask.sum():
+            bg_colors.append(opaque_edge[mask][:, :3].mean(axis=0))
+    if not bg_colors:
+        return src
+    a_mask = arr[:, :, 3] > 200
+    dist = np.full((h, w), 1e9, dtype=np.float32)
+    for c in bg_colors:
+        d = np.abs(arr[:, :, :3] - c).sum(axis=2)
+        dist = np.minimum(dist, d)
+    near = a_mask & (dist < dist_thresh)
+    seed = np.zeros((h, w), dtype=bool)
+    seed[0, :] = seed[-1, :] = seed[:, 0] = seed[:, -1] = True
+    reach = ndimage.binary_propagation(seed, mask=near)
+    if reach.sum() == 0 or reach.sum() > a_mask.sum() * max_frac:
+        return src
+    px = np.asarray(src).copy()
+    px[reach] = (0, 0, 0, 0)
+    return Image.fromarray(px, "RGBA")
+
+
+def trim_border_band(img, max_frac: float = 0.25):
+    """裁掉四边的"同色不透明残留带"（P2：62 边框线事故，模块级供图标流程复用）。
+
+    判定：某一行/列 >=95% 像素为同一不透明颜色（色距和 < 40）且连续向内
+    -> 残留带（品红格线/黑底/补方色）。逐边向内收缩，单边最多裁 max_frac
+    防误杀。角色白描边不受影响：描边贴角色轮廓呈弧形，不会构成"整行同色"。
+    大量透明的边（正常留白）不参与判定。裁完过小（<50%）保守放弃。
+    """
+    import numpy as np
+    arr = np.asarray(img.convert("RGBA"), dtype=np.int16)
+    h, w = arr.shape[:2]
+    if h == 0 or w == 0:
+        return img
+
+    def _band_ok(pixels) -> bool:
+        n = len(pixels)
+        if n == 0:
+            return False
+        opaque = pixels[pixels[:, 3] > 200]
+        if len(opaque) < n * 0.95:
+            return False   # 大量透明 -> 正常留白
+        ref = opaque[0]
+        dist = np.abs(opaque[:, :3] - ref[:3]).sum(axis=1)
+        return bool((dist < 40).mean() >= 0.95)
+
+    def _trim_edges(slices, max_trim: int):
+        lo_n = 0
+        for px in slices[0][:max_trim]:
+            if not _band_ok(px):
+                break
+            lo_n += 1
+        hi_n = 0
+        for px in slices[1][:max_trim]:
+            if not _band_ok(px):
+                break
+            hi_n += 1
+        return lo_n, hi_n
+
+    rows = [arr[i] for i in range(h)]
+    cols = [arr[:, j] for j in range(w)]
+    top, bot = _trim_edges((rows, list(reversed(rows))), int(h * max_frac))
+    left, right = _trim_edges((cols, list(reversed(cols))), int(w * max_frac))
+    if top + bot >= h * 0.5 or left + right >= w * 0.5:
+        return img   # 判定失真（大面积单色底），保守放弃
+    if (top, bot, left, right) == (0, 0, 0, 0):
+        return img
+    return img.crop((left, top, w - right, h - bot))
+
+
+def ensure_size(img, target: int = _TARGET_SIZE):
+    """补方（不拉伸）+ 等比缩放到 target（S2 成品与图标共用）。"""
+    if img.width != img.height:
+        corners = [img.getpixel(p) for p in
+                   [(0, 0), (img.width - 1, 0), (0, img.height - 1),
+                    (img.width - 1, img.height - 1)]]
+        same = all(c[:3] == corners[0][:3] and c[3] == corners[0][3] for c in corners)
+        fill = corners[0] if (same and corners[0][3] > 0) else (0, 0, 0, 0)
+        side = max(img.width, img.height)
+        canvas = Image.new("RGBA", (side, side), fill)
+        canvas.paste(img, ((side - img.width) // 2, (side - img.height) // 2))
+        img = canvas
+    if img.width != target or img.height != target:
+        img = img.resize((target, target), Image.LANCZOS)
+    return img
+
+
 class PostprocessStage:
     """S2：裁切 → 含义预检 → 条件抠图 → 重命名 → 写最终版。"""
 
@@ -97,6 +207,11 @@ class PostprocessStage:
             img = Image.open(panel).convert("RGBA")
             if need_key:
                 img = self.chromakey.remove_key_auto(img)
+            # P2（62 边框线事故）双层防御：①抠掉与边缘连通的背景色（黑底/
+            # 格线，chromakey 漏网时兜底；角色被白描边包裹不连通，安全）
+            img = remove_edge_background(img)
+            # ②裁掉四边同色不透明残留带（薄层格线/补方色泄漏）
+            img = self._trim_border_band(img)
             meaning = meanings.get(idx, f"表情{idx}")
             # 含义词去重（同名加后缀 2/3/...）
             name = meaning
@@ -114,23 +229,10 @@ class PostprocessStage:
             stage="S2", status="OK",
             message=f"后处理完成：{len(ctx.stickers)} 张，抠图={need_key}"))
 
-    def _ensure_size(self, img: Image.Image, target: int = _TARGET_SIZE) -> Image.Image:
-        """尺寸校验：先补成方形（不拉伸变形），再缩放到 target×target（LANCZOS）。
+    def _trim_border_band(self, img, max_frac: float = 0.25):
+        return trim_border_band(img, max_frac)
 
-        2026-08-27：切图改为按贴纸连通域 bbox 裁剪后，panel 可能不是正方形；
-        直接 resize 会把贴纸压扁/拉长。先居中补方（透明或背景色），再等比缩放。
-        """
-        if img.width != img.height:
-            # 补方颜色：四角一致且不透明 → 用该色；否则透明
-            corners = [img.getpixel(p) for p in
-                       [(0, 0), (img.width - 1, 0), (0, img.height - 1),
-                        (img.width - 1, img.height - 1)]]
-            same = all(c[:3] == corners[0][:3] and c[3] == corners[0][3] for c in corners)
-            fill = corners[0] if (same and corners[0][3] > 0) else (0, 0, 0, 0)
-            side = max(img.width, img.height)
-            canvas = Image.new("RGBA", (side, side), fill)
-            canvas.paste(img, ((side - img.width) // 2, (side - img.height) // 2))
-            img = canvas
-        if img.width != target or img.height != target:
-            img = img.resize((target, target), Image.LANCZOS)
-        return img
+
+    def _ensure_size(self, img: Image.Image, target: int = _TARGET_SIZE) -> Image.Image:
+        return ensure_size(img, target)
+

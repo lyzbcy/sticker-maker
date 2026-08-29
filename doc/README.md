@@ -15,6 +15,7 @@
 | 桌面应用（Win+Mac） | ✅ 真实走查通过，32 个前端测试 | [`status-B.md`](./status-B.md) |
 | 微信发布 | ✅ 密码自动登录 + 全字段自动填写 + 真实提交成功 | [`status-C.md`](./status-C.md) + [`reference/publish.md`](./reference/publish.md) |
 | 系列/作品库 | ✅ 系列编号 + 全部作品 + 详情页 | [`reference/series.md`](./reference/series.md) |
+| 平台审核驳回 | 🔧 驳回理由抓取/展示/一键评审 + 整改记录 | [`reference/platform-review.md`](./reference/platform-review.md) |
 | AI Agent | ✅ 本地令牌接口、提示词、计划任务、启停已接入 | [`status-D.md`](./status-D.md) |
 | 推广与介绍页 | ✅ 精选表情、三码、版本刷新与更新清单 | [`status-E.md`](./status-E.md) |
 
