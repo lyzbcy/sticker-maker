@@ -8,6 +8,12 @@
         <span v-if="syncing" class="spin">◌</span>
         {{ syncing ? '同步中…' : '一键更新' }}
       </button>
+      <button v-if="rejectCount > 0" class="copy-all-rejects-btn"
+              :disabled="copyingAllRejects" @click="copyAllRejects"
+              :title="`把 ${rejectCount} 个未通过作品的驳回理由汇总成一份分析提示词`">
+        {{ copyingAllRejects ? '生成中…' : `📋 复制全部驳回理由（${rejectCount} 单）` }}
+      </button>
+      <span v-if="allRejectsTip" class="reject-copy-tip">{{ allRejectsTip }}</span>
     </header>
 
     <!-- 同步结果摘要 -->
@@ -134,6 +140,31 @@ function toggleReject(path) {
 // 一键复制驳回评审提示词（展开区内直接复制，不用进详情页）
 const copyingRejectPath = ref('')
 const rejectCopyTip = ref('')
+
+// 一键汇总复制全部未通过作品的驳回理由
+const rejectCount = computed(() =>
+  store.episodes.filter(ep =>
+    (ep.platform_status || '').includes('未通过') && ep.platform_reject_reason).length)
+const copyingAllRejects = ref(false)
+const allRejectsTip = ref('')
+async function copyAllRejects() {
+  if (!window.api) return
+  copyingAllRejects.value = true
+  allRejectsTip.value = ''
+  try {
+    const res = await window.api.send('build_all_rejects_prompt', {})
+    if (res?.status === 'ok' && res.data && res.data.text) {
+      const clip = await window.api.copyText(res.data.text)
+      allRejectsTip.value = (clip && clip.ok)
+        ? `✓ 已复制 ${res.data.count} 单的汇总（${clip.length} 字），粘贴给 AI 即可`
+        : '复制失败：剪贴板不可用'
+    } else {
+      allRejectsTip.value = '生成失败：' + (res?.errors?.[0]?.message || '返回为空')
+    }
+  } finally {
+    copyingAllRejects.value = false
+  }
+}
 async function copyRejectPrompt(ep) {
   if (!window.api) return
   copyingRejectPath.value = ep.path
@@ -244,6 +275,11 @@ h2 { margin: 0; font-family: var(--font-head); font-size: 22px; font-weight: 700
   box-shadow: var(--shadow-btn); transition: all .15s ease;
 }
 .sync-btn:hover:not(:disabled) { background: var(--forest-hover); }
+.copy-all-rejects-btn { border: 1px solid rgba(181, 72, 42, .4); background: rgba(181, 72, 42, .08);
+  color: var(--brick); border-radius: 999px; padding: 8px 16px; font-size: 12px;
+  font-weight: 700; cursor: pointer; }
+.copy-all-rejects-btn:hover:not(:disabled) { background: rgba(181, 72, 42, .16); }
+.copy-all-rejects-btn:disabled { opacity: .6; cursor: wait; }
 .sync-btn:disabled { opacity: .65; cursor: wait; }
 .spin { display: inline-block; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

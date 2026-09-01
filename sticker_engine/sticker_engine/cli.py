@@ -924,6 +924,53 @@ def cmd_build_feedback_prompt(req_id, args):
     _result(req_id, "ok", data={"text": text})
 
 
+def cmd_build_all_rejects_prompt(req_id, args):
+    """一键汇总复制**所有**未通过审核作品的驳回理由（喂 AI 分析共性+逐单修改）。"""
+    engine = _ensure_engine()
+    root = Path(engine.config.paths.output_root)
+    from .config.series import load_meta
+    blocks = []
+    for ep_dir in sorted(root.iterdir()) if root.exists() else []:
+        if not (ep_dir.is_dir() and ep_dir.name.startswith("episode")):
+            continue
+        meta = load_meta(ep_dir)
+        reason = (meta.platform_reject_reason or "").strip()
+        if "未通过" not in (meta.platform_status or "") or not reason:
+            continue
+        pfile = ep_dir / "原图" / "prompt.txt"
+        prompt_head = ""
+        if pfile.exists():
+            try:
+                prompt_head = pfile.read_text(encoding="utf-8")[:800]
+            except OSError:
+                prompt_head = ""
+        blocks.append(
+            f"### 《{meta.album_name or ep_dir.name}》\n"
+            f"平台状态：{meta.platform_status}\n"
+            f"驳回理由（原文）：\n{reason}\n"
+            + (f"当次生图 prompt（截取）：\n{prompt_head}\n" if prompt_head else ""))
+    if not blocks:
+        _result(req_id, "fail",
+                errors=[{"message": "没有抓到任何未通过审核的驳回理由：先在作品库点「一键更新」。"}])
+        return
+    text = f"""以下是微信表情开放平台**多个作品**的审核驳回记录（{len(blocks)} 个未通过）。请做两件事：
+
+## 任务一：提炼共性问题
+逐条比对驳回理由，指出哪些问题在多个作品中重复出现（如命名规则、图标规格、画面元素），并判断各属于管线哪个环节（生图 prompt / 切图 / 抠图 / 素材生成 / 命名）。
+
+## 任务二：逐单修改清单
+对每个作品给出具体可执行的修改步骤（能重生成的标注"重新生成一单"，能改名的给出新名字，能只改素材的标注"详情页→重生成素材"）。
+
+## 背景知识
+- 表情主图 240×240、聊天页图标 50×50，由 4×4 网格成图自动切图缩放生成；图标已支持单独 AI 生成纯头部正面照。
+- 平台规则示例：表情名称不能含空格；图标要求"只含形象头部的正面图像"；表情图不能有多余边框线。
+
+---
+
+""" + "\n".join(blocks)
+    _result(req_id, "ok", data={"text": text, "count": len(blocks)})
+
+
 def cmd_build_reject_review_prompt(req_id, args):
     """一键生成"审核驳回评审 prompt"：平台驳回理由 + 当次制作过程 → 交给 AI 分析怎么改。
 
@@ -1440,6 +1487,7 @@ HANDLERS = {
     "save_rating": cmd_save_rating,
     "build_feedback_prompt": cmd_build_feedback_prompt,
     "build_reject_review_prompt": cmd_build_reject_review_prompt,
+    "build_all_rejects_prompt": cmd_build_all_rejects_prompt,
     "get_rating": cmd_get_rating,
     "delete_episode": cmd_delete_episode,
     "get_episode": cmd_get_episode, "update_episode_meta": cmd_update_episode_meta,
