@@ -275,12 +275,17 @@ class Publisher:
                 lambda f: f in fields)
 
             if need("stickers"):
-                # 步骤6：上传表情图（按故事线顺序）
-                self._report("upload", f"正在上传 {len(assets.stickers)} 张表情图…", 0.45)
-                self._step_upload_stickers(page, assets)
-                # 步骤7：填含义词
-                self._report("meanings", "正在填写每张表情的含义…", 0.55)
-                self._step_fill_meanings(page, assets)
+                if edit:
+                    # 编辑模式：清空旧 16 张 → 重传修好的 → 填含义词
+                    self._report("upload", "正在清空旧表情并重新上传…", 0.45)
+                    self._step_replace_stickers(page, assets)
+                else:
+                    # 步骤6：上传表情图（按故事线顺序）
+                    self._report("upload", f"正在上传 {len(assets.stickers)} 张表情图…", 0.45)
+                    self._step_upload_stickers(page, assets)
+                    # 步骤7：填含义词
+                    self._report("meanings", "正在填写每张表情的含义…", 0.55)
+                    self._step_fill_meanings(page, assets)
             else:
                 self._report("upload", "表情图无需修改，跳过上传", 0.45)
             if need("album"):
@@ -420,6 +425,48 @@ class Publisher:
         newpage.wait_for_load_state("domcontentloaded", timeout=30000)
         newpage.wait_for_timeout(3000)
         return newpage
+
+    def _step_replace_stickers(self, page, assets: EpisodeAssets) -> None:
+        """编辑模式：清空已有贴纸 → 重传修好的 16 张 → 填含义词。
+
+        2026-09-01 实测（62 单）：编辑器已上传的表情图无单张替换/删除入口
+        之外，整体重传=追加；但**每个编号格 hover 后头部第一个图标是删除**
+        （无确认弹窗，直接删）——先删光再传，实现"替换"语义。
+        """
+        # 1) 删光旧贴纸：真实 hover 第一格触发删除图标 → 点头部第一个图标
+        # （无确认弹窗；上限 32 防失控；删一张停一下等布局稳定）
+        for _ in range(32):
+            inputs = page.get_by_placeholder("输入含义词")
+            n = inputs.count()
+            if n == 0:
+                break
+            inputs.nth(0).hover(timeout=5000)   # hover 触发删除图标出现
+            page.wait_for_timeout(250)
+            page.evaluate(
+                """() => {
+                  const inp = document.querySelector(
+                    'input[placeholder="输入含义词"]');
+                  if (!inp) return;
+                  let cell = inp;
+                  for (let k = 0; k < 10 && cell; k++) {
+                    cell = cell.parentElement;
+                    if (cell && /^[0-9]+/.test((cell.innerText || '').trim())) break;
+                  }
+                  const head = cell && cell.querySelector('div[class*="h-7"]');
+                  if (head) {
+                    const icons = head.querySelectorAll('img.h-4');
+                    if (icons.length) icons[0].click();
+                  }
+                }""")
+            page.wait_for_timeout(800)
+            if page.get_by_placeholder("输入含义词").count() >= n:
+                break   # 这一格删不动（无删除入口），防死循环
+        left = page.get_by_placeholder("输入含义词").count()
+        if left:
+            raise RuntimeError(f"旧贴纸未清空（剩 {left} 张），中止重传防追加")
+        # 2) 重传修好的 16 张 + 填含义词
+        self._step_upload_stickers(page, assets)
+        self._step_fill_meanings(page, assets)
 
     # ---- 步骤6：上传表情图 ----
 
