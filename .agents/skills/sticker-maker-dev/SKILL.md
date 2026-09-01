@@ -54,6 +54,10 @@ cd desktop && PYTHONPATH=../sticker_engine npx electron . --remote-debugging-por
 - 微信发布页面的 radio/checkbox 是隐藏 input，必须点可见 `<label>` 文本，且要点前判态（点两次=取消选择）。
 - `涉及肖像权授权/涉及版权授权` 两个复选框**永远不要勾**（自制角色无需授权，勾了反而要求上传证明文件）。
 - codex 生图会自我迭代多轮，600s 超时 + 已生成图收割策略在 provider 里，别缩短。
+- playwright 浏览器下载直连自家 CDN 会卡死（本机代理在 7890 但子进程不吃）：
+  `PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright python -m playwright install chromium`（2026-08-29 实测镜像 1 分钟装完）。
+- venv 装依赖后注意 playwright 版本是否被顺带升级（版本变→浏览器目录号变→
+  `Executable doesn't exist` 秒失败），重装浏览器即可。
 
 ## 深入阅读
 
