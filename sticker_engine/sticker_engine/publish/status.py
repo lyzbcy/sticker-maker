@@ -21,7 +21,7 @@ from typing import Callable, List, Optional
 
 HOME_URL = ("https://sticker.weixin.qq.com/cgi-bin/mmemoticon-bin/"
             "readtemplate?t=home/index")
-MAX_PAGES = 30          # 防失控上限（180+ 条作品约 16 页，30 富余）
+MAX_PAGES = 40          # 防失控上限（全量翻页，80+ 作品约 8 页，40 富余）
 _STALL_ROWS = 20        # 连续 N 行已上架/下架 → 停止翻页（用户策略：翻到最深的活跃单为止）
 # 状态词按精确匹配顺序排：否定词在前（"审核通过"是"审核未通过"的子串场景
 # 由关键词表+先判长词避免）。2026-09-01 事故：缺"审核通过"导致过审单在
@@ -296,14 +296,9 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
                         "matched": 0, "unmatched_platform": [], "pages": 0}
             page.goto(HOME_URL, wait_until="domcontentloaded", timeout=45000)
             page.wait_for_timeout(4000)
-            # 分页扫描（2026-09-01 用户策略）：翻到"最深的活跃单"为止——
-            # 活跃单（待审核/审核通过/未通过/已保存）必须检查，中间夹着的
-            # 已上架跳过但继续翻（老单可能被驳回，排在很深的页）；连续
-            # _STALL_ROWS 行已上架（越过了所有活跃单）即停，不为历史稳定
-            # 单浪费翻页。第一页永远全扫。
-            _ACTIVE_WORDS = ("待审核", "审核通过", "未通过审核", "审核未通过",
-                             "已保存")
-            stall = 0   # 连续"稳定行"计数（已上架/已下架）
+            # 分页扫描（2026-09-01 二次调整）：**全量翻页**——下载/发送/
+            # 赞赏数据只有已上架单才有，一键更新必须全量带回；本地脚本不花
+            # token，页数成本可接受。卡页签名检测保留（防假数据累计）。
             last_sig = ""   # 上一页内容签名（防"点击翻页没前进"的死循环）
             for page_no in range(1, MAX_PAGES + 1):
                 page.wait_for_timeout(1200)
@@ -362,16 +357,7 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
                                 say(f"  （{r.name} 未取到驳回理由：{why}）")
                         _restore_page_pos()   # 供后续翻页/卡页检测
                         page.wait_for_timeout(800)
-                    # 活跃/稳定计数（停页判据）
-                    for r in rows:
-                        if any(w in r.status for w in _ACTIVE_WORDS):
-                            stall = 0
-                        else:
-                            stall += 1
-                    if page_no > 1 and stall >= _STALL_ROWS:
-                        say(f"连续 {stall} 行已上架/下架（更早的都是稳定单），"
-                            f"扫描到第 {page_no} 页为止")
-                        break
+                    # 全量策略：不再 stall 停页（数据全量带回）
                 # 翻页（2026-09-01 事故：抓完驳回理由 go_back 回列表后，
                 # "下一页"按钮 DOM 处于重绘窗口，count=0 误判"没有下一页"
                 # →只扫第 1 页，历史弹全部漏同步。重试点击，3 次全失败才停）
