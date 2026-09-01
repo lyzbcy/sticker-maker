@@ -458,6 +458,37 @@ class Publisher:
         newpage.wait_for_timeout(3000)
         return newpage
 
+    def _step_delete_cell(self, page, idx: int) -> None:
+        """删除编辑器第 idx 格贴纸（1 起，用户按平台格号指令）。"""
+        inputs = page.get_by_placeholder("输入含义词")
+        inputs.nth(idx - 1).hover(timeout=5000)   # hover 触发头部删除图标
+        page.wait_for_timeout(250)
+        page.evaluate(
+            """(i) => {
+              const ins = [...document.querySelectorAll(
+                'input[placeholder="输入含义词"]')];
+              const inp = ins[i - 1];
+              if (!inp) return;
+              let cell = inp;
+              for (let k = 0; k < 10 && cell; k++) {
+                cell = cell.parentElement;
+                if (cell && /^[0-9]+/.test((cell.innerText || '').trim())) break;
+              }
+              const head = cell && cell.querySelector('div[class*="h-7"]');
+              if (head) {
+                const icons = head.querySelectorAll('img.h-4');
+                if (icons.length) icons[0].click();
+              }
+            }""", idx)
+        page.wait_for_timeout(800)
+
+    def _step_set_meaning(self, page, idx: int, word: str) -> None:
+        """改编辑器第 idx 格的含义词。"""
+        box = page.get_by_placeholder("输入含义词").nth(idx - 1)
+        box.fill(word)
+        box.dispatch_event("input")
+        page.wait_for_timeout(150)
+
     def _step_fix_meanings_by_vision(self, page, words: list) -> None:
         """编辑器内重填含义词：逐格截图 → codex 从原词集一对一选词 → 填格。
 
