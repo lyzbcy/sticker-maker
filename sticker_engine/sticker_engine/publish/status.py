@@ -21,7 +21,8 @@ from typing import Callable, List, Optional
 
 HOME_URL = ("https://sticker.weixin.qq.com/cgi-bin/mmemoticon-bin/"
             "readtemplate?t=home/index")
-MAX_PAGES = 15          # 防失控：7 页左右，15 绰绰有余
+MAX_PAGES = 30          # 防失控上限（180+ 条作品约 16 页，30 富余）
+_STALL_ROWS = 20        # 连续 N 行已上架/下架 → 停止翻页（用户策略：翻到最深的活跃单为止）
 # 状态词按精确匹配顺序排：否定词在前（"审核通过"是"审核未通过"的子串场景
 # 由关键词表+先判长词避免）。2026-09-01 事故：缺"审核通过"导致过审单在
 # 列表解析时被当非数据行跳过，本地状态永远停在旧"待审核"
@@ -130,16 +131,24 @@ def _fetch_reject_reason_for_row(page, row: "PlatformRow") -> str:
         if entered:
             try:
                 page.go_back(wait_until="domcontentloaded", timeout=30000)
-                # 等列表页真正恢复：目标专辑名 + 「详情」同时出现（只等「详情」
-                # 字样会被页脚等处提前满足，表格还没渲染稳，下一行定位落空）
+                # 等列表页真正恢复（2026-09-01 二次事故：旧判据"作品名+详情"
+                # 在详情页也满足 → go_back 没回列表就继续跑，翻页/下一行定位
+                # 全落空）。列表页独有标志 =「提交作品」按钮 + 目标专辑名。
+                back_ok = False
                 for _ in range(24):
                     page.wait_for_timeout(500)
                     try:
                         t = page.inner_text("body")
-                        if row.name in t and "详情" in t:
+                        if row.name in t and "提交作品" in t:
+                            back_ok = True
                             break
                     except Exception:
                         continue
+                if not back_ok:
+                    # 兜底：强制回列表（比停在错误页面强）
+                    page.goto(HOME_URL, wait_until="domcontentloaded",
+                              timeout=45000)
+                    page.wait_for_timeout(4000)
             except Exception:
                 pass
 
@@ -287,31 +296,98 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
                         "matched": 0, "unmatched_platform": [], "pages": 0}
             page.goto(HOME_URL, wait_until="domcontentloaded", timeout=45000)
             page.wait_for_timeout(4000)
-            # 分页扫描：点「下一页」直到不可点或达上限
+            # 分页扫描（2026-09-01 用户策略）：翻到"最深的活跃单"为止——
+            # 活跃单（待审核/审核通过/未通过/已保存）必须检查，中间夹着的
+            # 已上架跳过但继续翻（老单可能被驳回，排在很深的页）；连续
+            # _STALL_ROWS 行已上架（越过了所有活跃单）即停，不为历史稳定
+            # 单浪费翻页。第一页永远全扫。
+            _ACTIVE_WORDS = ("待审核", "审核通过", "未通过审核", "审核未通过",
+                             "已保存")
+            stall = 0   # 连续"稳定行"计数（已上架/已下架）
+            last_sig = ""   # 上一页内容签名（防"点击翻页没前进"的死循环）
             for page_no in range(1, MAX_PAGES + 1):
                 page.wait_for_timeout(1200)
                 rows = parse_rows_from_text(page.inner_text("body"))
                 if rows:
+                    # 卡页检测（2026-09-01：后段点"下一页"偶发不前进，同内容
+                    # 反复累计 180+ 条假数据）。签名取第 3-5 行（前两行是每页
+                    # 固定的置顶作品，不能当签名）
+                    sig = "|".join(r.name for r in rows[2:5])
+                    if sig and sig == last_sig:
+                        say("翻页未前进（内容与上一页相同），停止扫描")
+                        break
+                    last_sig = sig
                     all_rows.extend(rows)
                     pages = page_no
                     say(f"已读取第 {page_no} 页（累计 {len(all_rows)} 条作品）…")
                     # 未通过审核的行：就地进详情抓驳回理由（用户需要知道为什么被拒）
                     rejects = [r for r in rows if "未通过" in r.status and "审核" in r.status]
-                    for r in rejects:
-                        say(f"正在读取「{r.name}」的驳回理由…")
-                        r.reject_reason = _fetch_reject_reason_for_row(page, r)
-                        if r.reject_reason:
-                            say(f"  驳回理由：{r.reject_reason[:60]}…")
+                    if rejects:
+                        # 恢复分页位置（2026-09-01 根因：进详情抓理由后 go_back，
+                        # 平台列表是 SPA 路由——回到的是第 1 页且分页状态丢失。
+                        # 不恢复的话：本页后面的行定位全失败、翻页从第 1 页
+                        # 重来还被卡页检测误杀）。每次抓取前都确认在本页——
+                        # 上一次 go_back 一样会丢位置）
+                        page_sig_before = "|".join(r.name for r in rows[2:5])
+
+                        def _restore_page_pos():
+                            for _ in range(12):
+                                try:
+                                    cur = "|".join(
+                                        r.name for r in
+                                        parse_rows_from_text(
+                                            page.inner_text("body"))[2:5])
+                                except Exception:   # noqa: BLE001
+                                    cur = None
+                                if cur == page_sig_before:
+                                    return True
+                                nb = page.locator("a:has-text('下一页')")
+                                if not nb.count():
+                                    return False
+                                try:
+                                    nb.first.click(timeout=3000)
+                                except Exception:   # noqa: BLE001
+                                    return False
+                                page.wait_for_timeout(1800)
+                            return False
+
+                        for r in rejects:
+                            _restore_page_pos()
+                            say(f"正在读取「{r.name}」的驳回理由…")
+                            r.reject_reason = _fetch_reject_reason_for_row(page, r)
+                            if r.reject_reason:
+                                say(f"  驳回理由：{r.reject_reason[:60]}…")
+                            else:
+                                why = (r.reject_stage or "列表定位失败(已重试)" if not r.reject_stage else r.reject_stage)
+                                say(f"  （{r.name} 未取到驳回理由：{why}）")
+                        _restore_page_pos()   # 供后续翻页/卡页检测
+                        page.wait_for_timeout(800)
+                    # 活跃/稳定计数（停页判据）
+                    for r in rows:
+                        if any(w in r.status for w in _ACTIVE_WORDS):
+                            stall = 0
                         else:
-                            why = (r.reject_stage or "列表定位失败(已重试)" if not r.reject_stage else r.reject_stage)
-                            say(f"  （{r.name} 未取到驳回理由：{why}）")
-                next_btn = page.locator("a:has-text('下一页')")
-                if next_btn.count() == 0 or not next_btn.first.is_enabled():
-                    break
-                try:
-                    next_btn.first.click()
-                except Exception:
-                    break
+                            stall += 1
+                    if page_no > 1 and stall >= _STALL_ROWS:
+                        say(f"连续 {stall} 行已上架/下架（更早的都是稳定单），"
+                            f"扫描到第 {page_no} 页为止")
+                        break
+                # 翻页（2026-09-01 事故：抓完驳回理由 go_back 回列表后，
+                # "下一页"按钮 DOM 处于重绘窗口，count=0 误判"没有下一页"
+                # →只扫第 1 页，历史弹全部漏同步。重试点击，3 次全失败才停）
+                clicked = False
+                for _ in range(3):
+                    nb = page.locator("a:has-text('下一页')")
+                    if nb.count():
+                        try:
+                            nb.first.click(timeout=3000)
+                            clicked = True
+                            break
+                        except Exception:   # noqa: BLE001
+                            pass
+                    page.wait_for_timeout(1200)
+                if not clicked:
+                    break   # 真没有下一页（最后一页）或点不动
         finally:
             b.close()
 
