@@ -665,6 +665,8 @@ def _reject_fix_fields(reason: str) -> set:
         f.update({"stickers", "cover"})
     if "角色" in reason or "合辑" in reason:
         f.add("role")
+    if "含义" in reason:
+        f.add("meanings")
     if "赞赏" in reason:
         f.add("tips")
     if "封面" in reason:
@@ -818,6 +820,7 @@ def cmd_fix_and_republish(req_id, args):
         _result(req_id, "fail", errors=[{"message": f"作品目录不存在：{ep_dir}"}])
         return
     from .config.series import load_meta, save_meta
+    engine = _ensure_engine()
     meta = load_meta(ep_dir)
     actions = []
     final = ep_dir / "最终版"
@@ -953,7 +956,16 @@ def cmd_fix_and_republish(req_id, args):
         from playwright.sync_api import sync_playwright
         with sync_playwright() as pw:
             session = BrowserSession(PublishConfig(), playwright=pw)
-            publisher = Publisher(PublishConfig(), session)
+            vision = None
+            if "meanings" in fields:
+                from .providers.codex import CodexProvider as _CP
+                from .providers.vision import VisionProvider as _VP
+                _c = _CP(codex_exec=engine.config.paths.codex_exec,
+                         output_dir=engine.config.paths.codex_output_dir)
+                if not _c.check().image_ready:
+                    raise RuntimeError('codex 不可用，无法识图重填含义词')
+                vision = _VP(_c)
+            publisher = Publisher(PublishConfig(), session, vision=vision)
             _r = publisher.publish(ep_dir, headless=False, edit=True,
                                    fix_fields=fields)
             result["publish"] = _r

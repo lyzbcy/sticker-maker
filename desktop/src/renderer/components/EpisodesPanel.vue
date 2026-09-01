@@ -48,11 +48,12 @@
     <table class="ep-table" v-if="filtered.length">
       <thead>
         <tr>
-          <th class="col-work">作品</th>
-          <th>下载次数</th>
-          <th>发送次数</th>
-          <th>赞赏金额</th>
-          <th>状态</th>
+          <th class="col-work sortable" @click="toggleSort('name')">
+            作品<span class="sort-arrow" v-if="sortKey==='name'">{{ sortDir==='asc' ? '▲' : '▼' }}</span></th>
+          <th class="sortable" @click="toggleSort('downloads')">下载次数<span class="sort-arrow" v-if="sortKey==='downloads'">{{ sortDir==='asc' ? '▲' : '▼' }}</span></th>
+          <th class="sortable" @click="toggleSort('sends')">发送次数<span class="sort-arrow" v-if="sortKey==='sends'">{{ sortDir==='asc' ? '▲' : '▼' }}</span></th>
+          <th class="sortable" @click="toggleSort('tips')">赞赏金额<span class="sort-arrow" v-if="sortKey==='tips'">{{ sortDir==='asc' ? '▲' : '▼' }}</span></th>
+          <th class="sortable" @click="toggleSort('status')">状态<span class="sort-arrow" v-if="sortKey==='status'">{{ sortDir==='asc' ? '▲' : '▼' }}</span></th>
           <th>最后更新</th>
           <th class="col-ops">操作</th>
         </tr>
@@ -223,10 +224,30 @@ onMounted(() => {
 
 const filtered = computed(() => {
   const list = store.episodes
-  if (filter.value === 'all') return list
-  if (filter.value === 'none') return list.filter(e => !e.series_id)
-  return list.filter(e => e.series_id === filter.value)
+  let out = list
+  if (filter.value === 'none') out = list.filter(e => !e.series_id)
+  else if (filter.value !== 'all') out = list.filter(e => e.series_id === filter.value)
+  // 表头排序（名称/下载/发送/赞赏/状态，升/降序；再点一次切换，第三次还原默认序）
+  if (!sortKey.value) return out
+  const dir = sortDir.value === 'asc' ? 1 : -1
+  const k = sortKey.value
+  const num = v => parseFloat(String(v ?? '').replace(/[^\d.]/g, '')) || 0
+  return [...out].sort((a, b) => {
+    if (k === 'name') return dir * String(a.album_name || a.name)
+      .localeCompare(String(b.album_name || b.name), 'zh-Hans-CN', { numeric: true })
+    if (k === 'status') return dir * statusText(a).localeCompare(statusText(b), 'zh-Hans-CN')
+    return dir * (num(a['platform_' + k]) - num(b['platform_' + k]))
+  })
 })
+
+// 表头排序状态（同一列循环 升→降→取消）
+const sortKey = ref('')
+const sortDir = ref('asc')
+function toggleSort(k) {
+  if (sortKey.value !== k) { sortKey.value = k; sortDir.value = 'asc' }
+  else if (sortDir.value === 'asc') sortDir.value = 'desc'
+  else sortKey.value = ''
+}
 
 function openRow(ep) {
   if (ep.complete) store.openEpisode(ep.path)
@@ -301,6 +322,9 @@ header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
 h2 { margin: 0; font-family: var(--font-head); font-size: 22px; font-weight: 700; color: var(--ink); }
 .count { color: var(--muted-soft); font-size: 13px; margin-right: auto; }
 
+.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+.sortable:hover { color: var(--forest); }
+.sort-arrow { margin-left: 3px; font-size: 9px; }
 .sync-btn {
   padding: 9px 20px; border-radius: var(--r-pill); border: none; cursor: pointer;
   background: var(--forest); color: var(--white); font-weight: 700; font-size: 13px;

@@ -193,9 +193,11 @@ class Publisher:
         "_upload_tip_by_label": "上传赞赏图", "_upload_uploader_last": "上传赞赏图",
     }
 
-    def __init__(self, config: PublishConfig, session: BrowserSession, progress=None):
+    def __init__(self, config: PublishConfig, session: BrowserSession, progress=None,
+                 vision=None):
         self.config = config
         self.session = session
+        self.vision = vision   # 可选：含义词识图重填用（无则走 config 的 codex）
         # 可选进度回调 (step_name, message, percent)，桌面层用来直播发布过程
         self.progress = progress
         # 发布过程告警：哪个步骤的哪个字段没填上（不再静默吞掉）
@@ -288,6 +290,11 @@ class Publisher:
                     self._step_fill_meanings(page, assets)
             else:
                 self._report("upload", "表情图无需修改，跳过上传", 0.45)
+            if edit and need("meanings"):
+                # 步骤7'：含义词与图不符类驳回——只重填词，不动图
+                self._report("meanings", "正在按图重填含义词…", 0.60)
+                self._step_fix_meanings_by_vision(
+                    page, sorted({p.stem for p in assets.stickers}))
             if need("album"):
                 # 步骤8-9：专辑名 + 介绍
                 self._report("album", "正在填写专辑信息…", 0.65)
@@ -405,11 +412,36 @@ class Publisher:
             return False
 
         _goto_list()
-        # go_back 恢复坑同驳回理由抓取：定位失败 goto 重置重试一次
-        if not _click_detail_row():
-            _goto_list()
-            if not _click_detail_row():
-                raise RuntimeError(f"管理页未找到作品行：{assets.album_name}")
+        # 定位目标行：当前页找不到则翻页继续找（2026-09-01：历史弹导入后
+        # 作品 69 个占 8 页）。点击翻页后用页签名验证真的前进了——"下一页"
+        # 点击偶发不生效（sync 同款问题），不验证会整轮空转。
+        prev_sig = ""
+        found = False
+        for _ in range(12):
+            if _click_detail_row():
+                found = True
+                break
+            nb = page.locator("a:has-text('下一页')")
+            if not nb.count():
+                break   # 最后一页仍没有 → 真不存在
+            nb.first.click(timeout=3000)
+            page.wait_for_timeout(2500)
+            try:
+                cur = "|".join(
+                    r.name for r in
+                    __import__("sticker_engine.publish.status", fromlist=[
+                        "parse_rows_from_text"])
+                    .parse_rows_from_text(page.inner_text("body"))[2:5])
+            except Exception:   # noqa: BLE001
+                cur = ""
+            if cur and cur == prev_sig:
+                # 没前进：等更久再点一次（SPA 渲染窗口）
+                page.wait_for_timeout(2000)
+                nb.first.click(timeout=3000)
+                page.wait_for_timeout(2500)
+            prev_sig = cur
+        if not found:
+            raise RuntimeError(f"管理页未找到作品行：{assets.album_name}")
         page.wait_for_timeout(6000)
         try:
             page.wait_for_load_state("domcontentloaded", timeout=30000)
@@ -425,6 +457,69 @@ class Publisher:
         newpage.wait_for_load_state("domcontentloaded", timeout=30000)
         newpage.wait_for_timeout(3000)
         return newpage
+
+    def _step_fix_meanings_by_vision(self, page, words: list) -> None:
+        """编辑器内重填含义词：逐格截图 → codex 从原词集一对一选词 → 填格。
+
+        用于"含义词与图不符"类驳回（58 弹）：图是对的、当年含义词标错位。
+        不重传图，只改 16 个含义词文本。
+        """
+        import tempfile
+        from PIL import Image as _Im
+        cells = page.locator('div:has(input[placeholder="输入含义词"])')
+        n = page.get_by_placeholder("输入含义词").count()
+        shots = []
+        tmpdir = Path(tempfile.mkdtemp(prefix="meanings_"))
+        for i in range(n):
+            img = cells.nth(i).locator("img").first
+            f = tmpdir / f"cell_{i + 1:02d}.png"
+            try:
+                img.screenshot(path=str(f), timeout=5000)
+                shots.append(f)
+            except Exception:   # noqa: BLE001
+                shots.append(None)
+        # 拼 contact sheet（格序=平台贴纸序）
+        valid = [s for s in shots if s]
+        if len(valid) < n // 2:
+            raise RuntimeError(f"格子截图失败过多（{len(valid)}/{n}）")
+        imgs = [_Im.open(str(f)).convert("RGBA") for f in valid if f]
+        w = max(im.width for im in imgs)
+        h = max(im.height for im in imgs)
+        cols = 4
+        rows = (len(imgs) + cols - 1) // cols
+        sheet = _Im.new("RGB", (w * cols, h * rows), (255, 255, 255, 255))
+        for i, im in enumerate(imgs):
+            r, c = divmod(i, cols)
+            sheet.paste(im, (c * w, r * h), im)
+        sheet_path = tmpdir / "_sheet.png"
+        sheet.save(sheet_path)
+        # codex 一次识图：从词集一对一选词（单行 prompt 铁律）
+        prompt = (
+            "Image is a contact sheet of sticker cells, numbered 1-" +
+            str(len(imgs)) + " from left to right, top to bottom. For EACH "
+            "cell pick the ONE best-matching meaning word from this fixed "
+            "candidate list: " + "、".join(words) + ". Each word must be used "
+            "EXACTLY once. Answer ONLY with JSON like {\"1\":\"词\"} using "
+            "all " + str(len(imgs)) + " words.")
+        text = self.vision.codex.exec_text(prompt=prompt,
+                                           refs=[sheet_path], timeout=300)             if hasattr(self, "vision") else ""
+        if not text:
+            from ..providers.codex import CodexProvider
+            text = CodexProvider(codex_exec=self.config.codex_exec,
+                                 output_dir=self.config.codex_output_dir)                 .exec_text(prompt=prompt, refs=[sheet_path], timeout=300)                 if hasattr(self.config, "codex_exec") else ""
+        if not text or "{" not in text:
+            raise RuntimeError("含义词识图失败（codex 无有效输出）")
+        import json as _json
+        m = _json.loads(text[text.index("{"): text.rindex("}") + 1])
+        # 填格（格序=截图序）
+        for i in range(n):
+            word = m.get(str(i + 1), "")
+            if not word:
+                continue
+            box = page.get_by_placeholder("输入含义词").nth(i)
+            box.fill(word)
+            box.dispatch_event("input")
+            page.wait_for_timeout(150)
 
     def _step_replace_stickers(self, page, assets: EpisodeAssets) -> None:
         """编辑模式：清空已有贴纸 → 重传修好的 16 张 → 填含义词。
