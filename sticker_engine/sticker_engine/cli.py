@@ -672,6 +672,136 @@ def _reject_fix_fields(reason: str) -> set:
     return f
 
 
+
+def cmd_shelf_passed(req_id, args):
+    """「一键发布」：把所有"审核通过"的作品逐个上架（预约今日）。
+
+    流程（2026-09-01 用户 SOP+实测）：sync 刷新状态 → 对每个审核通过单：
+    管理页 → 详情页 → 点「上架」→ 弹窗默认已选今日 → 点「预约」。
+    成功后本地 meta.platform_status="已上架"。
+    """
+    from pathlib import Path as _P
+    from .config.series import load_meta, save_meta
+    from .publish.status import sync_status
+    engine = _ensure_engine()
+    root = _P(engine.config.paths.output_root)
+
+    def _say(msg):
+        try:
+            _log("info", msg, command="shelf_passed", command_id=req_id)
+            _emit({"id": req_id, "type": "progress", "stage": "shelf",
+                   "phase": "shelf", "message": msg, "percent": None,
+                   "eta_seconds": None})
+        except Exception:
+            pass
+
+    # 1) 先刷新状态（拿最新"审核通过"名单）
+    _say("正在刷新平台状态（获取最新审核结果）…")
+    sync_status(engine, on_status=_say)
+
+    passed = []
+    for ep_dir in sorted(root.iterdir()) if root.exists() else []:
+        if not (ep_dir.is_dir() and ep_dir.name.startswith("episode")):
+            continue
+        meta = load_meta(ep_dir)
+        if (meta.platform_status or "") == "审核通过":
+            passed.append((ep_dir, meta))
+    if not passed:
+        _result(req_id, "ok", data={"published": 0,
+                                    "message": "没有「审核通过待发布」的作品"})
+        return
+    _say(f"共 {len(passed)} 个作品审核通过，开始逐个上架…")
+
+    from .publish.config import PublishConfig
+    from .publish.browser import BrowserSession
+    from .publish.status import HOME_URL, normalize_name
+    from playwright.sync_api import sync_playwright
+
+    published, failed = [], []
+    with sync_playwright() as pw:
+        session = BrowserSession(PublishConfig(), playwright=pw)
+        page = session.start(headless=False)
+        try:
+            if not session.ensure_login(page, on_status=_say):
+                _result(req_id, "fail",
+                        errors=[{"message": "登录失败，无法上架"}])
+                return
+            for ep_dir, meta in passed:
+                album = meta.album_name or ep_dir.name
+                _say(f"正在上架「{album}」…")
+                tn = normalize_name(album)
+                try:
+                    page.goto(HOME_URL, wait_until="domcontentloaded",
+                              timeout=45000)
+                    page.wait_for_timeout(4000)
+                    links = page.locator("a:has-text('详情'), td:has-text('详情')")
+                    hit = False
+                    for i in range(links.count()):
+                        el = links.nth(i)
+                        try:
+                            in_tr = el.evaluate("e=>e.closest('tr')!==null")
+                            row_txt = (
+                                el.locator("xpath=ancestor::tr[1]")
+                                .inner_text(timeout=2000) if in_tr
+                                else el.inner_text(timeout=2000))
+                        except Exception:
+                            continue
+                        if tn in normalize_name(row_txt):
+                            el.click()
+                            hit = True
+                            break
+                    if not hit:
+                        failed.append((album, "管理页未找到作品行"))
+                        continue
+                    page.wait_for_timeout(7000)
+                    try:
+                        page.wait_for_load_state("domcontentloaded",
+                                                 timeout=30000)
+                    except Exception:
+                        pass
+                    page.wait_for_timeout(2500)
+                    # 详情页「上架」
+                    shelf = page.locator(
+                        "button:has-text('上架'), a:has-text('上架'), "
+                        "span:has-text('上架')")
+                    if not shelf.count():
+                        failed.append((album, "详情页无「上架」按钮"))
+                        continue
+                    shelf.first.click()
+                    page.wait_for_timeout(2500)
+                    # 弹窗默认已选今日 → 点「预约」
+                    confirm = page.locator(
+                        '.weui-desktop-dialog:visible '
+                        'button:has-text("预约")')
+                    if not confirm.count():
+                        failed.append((album, "未找到预约按钮（弹窗未出现？）"))
+                        continue
+                    confirm.first.click()
+                    page.wait_for_timeout(4000)
+                    body = page.inner_text("body")
+                    if "预约成功" in body or "已上架" in body:
+                        meta.platform_status = "已上架"
+                        meta.published = True
+                        save_meta(ep_dir, meta)
+                        published.append(album)
+                        _say(f"✓「{album}」已预约今日上架")
+                    else:
+                        failed.append((album, "预约后未见成功标志"))
+                        try:
+                            page.screenshot(
+                                path=str(ep_dir / "_shelf_error.png"))
+                        except Exception:
+                            pass
+                except Exception as e:   # noqa: BLE001
+                    failed.append((album, f"{type(e).__name__}: {e}"))
+        finally:
+            session.close()
+    _say(f"一键发布完成：成功 {len(published)}，失败 {len(failed)}")
+    _result(req_id, "ok", data={
+        "published": len(published), "published_names": published,
+        "failed": [{"name": n, "reason": r} for n, r in failed]})
+
+
 def cmd_fix_and_republish(req_id, args):
     """「修改完毕，去平台重新提交」：按驳回理由精准修复 + 编辑器精准重提。
 
@@ -1708,6 +1838,7 @@ HANDLERS = {
     "sync_platform_status": cmd_sync_platform_status,
     "repolish_finals": cmd_repolish_finals,
     "fix_and_republish": cmd_fix_and_republish,
+    "shelf_passed": cmd_shelf_passed,
     "replenish_refs": cmd_replenish_refs,
     "list_prompt_sets": cmd_list_prompt_sets,
     "save_prompt_set": cmd_save_prompt_set,

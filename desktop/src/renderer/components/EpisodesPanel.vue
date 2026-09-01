@@ -8,6 +8,12 @@
         <span v-if="syncing" class="spin">◌</span>
         {{ syncing ? '同步中…' : '一键更新' }}
       </button>
+      <button v-if="shelfCount > 0" class="shelf-btn" :disabled="shelving"
+              @click="shelfPassed"
+              :title="`把 ${shelfCount} 个审核通过的作品预约今日上架`">
+        {{ shelving ? '发布中…' : `🚀 一键发布（${shelfCount} 单）` }}
+      </button>
+      <span v-if="shelfTip" class="reject-copy-tip">{{ shelfTip }}</span>
       <button v-if="rejectCount > 0" class="copy-all-rejects-btn"
               :disabled="copyingAllRejects" @click="copyAllRejects"
               :title="`把 ${rejectCount} 个未通过作品的驳回理由汇总成一份分析提示词`">
@@ -140,6 +146,32 @@ function toggleReject(path) {
 // 一键复制驳回评审提示词（展开区内直接复制，不用进详情页）
 const copyingRejectPath = ref('')
 const rejectCopyTip = ref('')
+
+// 一键发布：审核通过的单逐个预约今日上架
+const shelfCount = computed(() =>
+  store.episodes.filter(ep => (ep.platform_status || '') === '审核通过').length)
+const shelving = ref(false)
+const shelfTip = ref('')
+async function shelfPassed() {
+  if (!window.api || shelving.value) return
+  shelving.value = true
+  shelfTip.value = ''
+  try {
+    store.pushActivity({ stage: '发布', message: '一键发布：正在预约上架…' })
+    const res = await window.api.send('shelf_passed', {})
+    if (res?.status === 'ok') {
+      const f = res.data.failed || []
+      shelfTip.value = `✓ 已预约上架 ${res.data.published} 单` +
+        (f.length ? `，失败 ${f.length}（${f.map(x => x.name).join('、')}）` : '')
+      store.pushActivity({ stage: '发布', message: shelfTip.value })
+      await store.loadEpisodes()
+    } else {
+      shelfTip.value = '失败：' + (res?.errors?.[0]?.message || '未知原因')
+    }
+  } finally {
+    shelving.value = false
+  }
+}
 
 // 一键汇总复制全部未通过作品的驳回理由
 const rejectCount = computed(() =>
@@ -275,6 +307,10 @@ h2 { margin: 0; font-family: var(--font-head); font-size: 22px; font-weight: 700
   box-shadow: var(--shadow-btn); transition: all .15s ease;
 }
 .sync-btn:hover:not(:disabled) { background: var(--forest-hover); }
+.shelf-btn { border: 0; background: var(--forest); color: white; border-radius: 999px;
+  padding: 8px 16px; font-size: 12px; font-weight: 800; cursor: pointer; }
+.shelf-btn:hover:not(:disabled) { background: var(--forest-hover); }
+.shelf-btn:disabled { opacity: .6; cursor: wait; }
 .copy-all-rejects-btn { border: 1px solid rgba(181, 72, 42, .4); background: rgba(181, 72, 42, .08);
   color: var(--brick); border-radius: 999px; padding: 8px 16px; font-size: 12px;
   font-weight: 700; cursor: pointer; }

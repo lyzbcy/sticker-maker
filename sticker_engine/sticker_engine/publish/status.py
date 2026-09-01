@@ -22,7 +22,11 @@ from typing import Callable, List, Optional
 HOME_URL = ("https://sticker.weixin.qq.com/cgi-bin/mmemoticon-bin/"
             "readtemplate?t=home/index")
 MAX_PAGES = 15          # 防失控：7 页左右，15 绰绰有余
-_STATUS_WORDS = ("已上架", "待审核", "未通过审核", "审核未通过", "已保存", "已下架")
+# 状态词按精确匹配顺序排：否定词在前（"审核通过"是"审核未通过"的子串场景
+# 由关键词表+先判长词避免）。2026-09-01 事故：缺"审核通过"导致过审单在
+# 列表解析时被当非数据行跳过，本地状态永远停在旧"待审核"
+_STATUS_WORDS = ("未通过审核", "审核未通过", "审核通过", "已上架",
+                 "待审核", "已保存", "已下架")
 
 
 @dataclass
