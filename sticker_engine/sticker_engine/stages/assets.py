@@ -95,6 +95,7 @@ class AssetsStage:
         布局：柔和奶油底 + 角色贴纸（透明底成品放大居中）+ 一行手写感引导语。
         与专辑形象强相关（平台驳回整改：默认情侣图相关度不够）。
         """
+        out_dir.mkdir(parents=True, exist_ok=True)
         from PIL import ImageDraw, ImageFont
         src = Image.open(cover_src).convert("RGBA")
         # 拿一张透明底贴纸做主视觉（封面源可能是 JPEG 白底，优先找透明成品）

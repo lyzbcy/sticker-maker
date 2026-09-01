@@ -749,9 +749,13 @@ def cmd_fix_and_republish(req_id, args):
             engine = _ensure_engine()
             # F2（评审）：StickerEngine 无 vision/codex 属性——按 cmd_check_codex
             # 同款方式从 paths 构造
-            provider = VisionProvider(CodexProvider(
+            _codex = CodexProvider(
                 codex_exec=engine.config.paths.codex_exec,
-                output_dir=engine.config.paths.codex_output_dir))
+                output_dir=engine.config.paths.codex_output_dir)
+            _status = _codex.check()   # 解析 codex 绝对路径（三层探测）
+            if not _status.image_ready:
+                raise RuntimeError(_status.guidance_msg or "codex 不可用")
+            provider = VisionProvider(_codex)
             stage = AssetsStage(provider)
             bases = []
             # R6（评审）：base*.png 约定在真实单 0 命中——base 在参考图库，
