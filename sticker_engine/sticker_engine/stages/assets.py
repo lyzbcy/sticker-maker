@@ -68,6 +68,17 @@ class AssetsStage:
                              message=f"图标：AI 生成失败（{why[:120]}），本次退回复用封面"))
         self._resize_save(icon_src, icon_dir / "图标.png", _ICON_SIZE, _ICON_SIZE)
 
+        # 赞赏引导图/致谢图（69 驳回：默认情侣图与专辑形象无关被拒）——
+        # 用本组贴纸派生：柔和底色 + 角色贴纸 + 一行引导语，与形象强相关
+        tip_dir = ctx.episode_dir / "赞赏图"; tip_dir.mkdir(exist_ok=True)
+        try:
+            self._make_tip_images(paths, cover_src, tip_dir)
+            ctx.log(LogEntry(stage="S3", status="OK",
+                             message="赞赏图：已用本组角色生成引导图/致谢图"))
+        except Exception as e:   # noqa: BLE001
+            ctx.log(LogEntry(stage="S3", status="WARN",
+                             message=f"赞赏图生成失败（{type(e).__name__}: {e}），发布时用默认图"))
+
         # 介绍：1-80 字，硬截断防超限（str() 兜底：write_intro 契约返回 str，
         # 防御 provider 异常返回非 str；真实 VisionProvider 返回 str 时为恒等）
         meanings = [Path(s.path).stem for s in stickers]
@@ -77,6 +88,54 @@ class AssetsStage:
 
         ctx.log(LogEntry(stage="S3", status="OK",
                          message="横幅/封面/图标/介绍 生成完成"))
+
+    def _make_tip_images(self, sticker_paths: list, cover_src: Path, out_dir: Path) -> None:
+        """生成本组角色专属的赞赏引导图(939×701)/致谢图(939×939)。
+
+        布局：柔和奶油底 + 角色贴纸（透明底成品放大居中）+ 一行手写感引导语。
+        与专辑形象强相关（平台驳回整改：默认情侣图相关度不够）。
+        """
+        from PIL import ImageDraw, ImageFont
+        src = Image.open(cover_src).convert("RGBA")
+        # 拿一张透明底贴纸做主视觉（封面源可能是 JPEG 白底，优先找透明成品）
+        main = None
+        for p in sticker_paths:
+            im = Image.open(p).convert("RGBA")
+            if im.getpixel((3, 3))[3] == 0:
+                main = im
+                break
+        if main is None:
+            main = src
+        guide_out = out_dir / "赞赏引导图.png"
+        thanks_out = out_dir / "赞赏致谢图.png"
+        font = None
+        for fp in [r"C:\Windows\Fonts\msyhbd.ttc", r"C:\Windows\Fonts\msyh.ttc",
+                   r"C:\Windows\Fonts\simhei.ttf"]:
+            if Path(fp).exists():
+                font = ImageFont.truetype(fp, 44)
+                break
+
+        def _compose(size, text):
+            canvas = Image.new("RGBA", size, (255, 244, 242, 255))   # 奶油粉底
+            d = ImageDraw.Draw(canvas)
+            # 顶部/底部淡色饰带
+            d.rectangle([0, 0, size[0], 26], fill=(255, 214, 214, 255))
+            d.rectangle([0, size[1] - 26, size[0], size[1]], fill=(255, 214, 214, 255))
+            # 角色贴纸放大居中（等比，占高 ~70%）
+            target_h = int(size[1] * 0.70)
+            scale = target_h / main.height
+            sticker = main.resize((int(main.width * scale), target_h), Image.LANCZOS)
+            canvas.paste(sticker, ((size[0] - sticker.width) // 2,
+                                   (size[1] - sticker.height) // 2 - 14), sticker)
+            if font is not None:
+                bbox = d.textbbox((0, 0), text, font=font)
+                tw = bbox[2] - bbox[0]
+                d.text(((size[0] - tw) // 2, size[1] - 96), text,
+                       font=font, fill=(214, 106, 106, 255))
+            return canvas.convert("RGB")
+
+        _compose((939, 701), "喜欢的话，请赏一杯奶茶吧～").save(guide_out)
+        _compose((939, 939), "谢谢你的赞赏，比心 ❤").save(thanks_out)
 
     def _make_banner(self, src_paths: list, out: Path) -> None:
         make_banner(src_paths, out)

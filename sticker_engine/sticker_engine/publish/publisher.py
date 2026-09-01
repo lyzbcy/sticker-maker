@@ -48,6 +48,10 @@ class EpisodeAssets:
     cover: Optional[Path] = None
     icon: Optional[Path] = None
     contains_laoyu: bool = False
+    characters: list = field(default_factory=list)   # 本次制作角色（单/多角色选分类用）
+    # episode 级赞赏图（S3 用本组角色生成，69 驳回整改：默认图与形象无关）
+    tip_guide: Optional[Path] = None
+    tip_thanks: Optional[Path] = None
 
     @classmethod
     def from_dir(cls, episode_dir: Path) -> "EpisodeAssets":
@@ -102,11 +106,18 @@ class EpisodeAssets:
         if intro_path.exists():
             intro = intro_path.read_text(encoding="utf-8").strip()[:80]
 
-        # ---- 角色卡：是否含捞鱼 ----
+        # ---- 角色卡：是否含捞鱼 + 角色列表 ----
         contains_laoyu = False
+        characters = []
         char_path = episode_dir / "本次制作角色.md"
         if char_path.exists():
-            contains_laoyu = "含捞鱼：是" in char_path.read_text(encoding="utf-8")
+            char_text = char_path.read_text(encoding="utf-8")
+            contains_laoyu = "含捞鱼：是" in char_text
+            for line in char_text.splitlines():
+                line = line.strip()
+                if line.startswith("角色："):
+                    characters = [c for c in line[len("角色："):].split("、") if c]
+                    break
 
         # ---- 专辑名：优先 meta.json 的正式名（系列编号名），目录名只是兜底 ----
         # 2026-08-27 回归事故：这里原样用 episode_dir.name（时间戳），导致
@@ -134,6 +145,9 @@ class EpisodeAssets:
             cover=_find(episode_dir / "封面" / "封面.png"),
             icon=_find(episode_dir / "图标" / "图标.png"),
             contains_laoyu=contains_laoyu,
+            characters=characters,
+            tip_guide=_find(episode_dir / "赞赏图" / "赞赏引导图.png"),
+            tip_thanks=_find(episode_dir / "赞赏图" / "赞赏致谢图.png"),
         )
 
     def validate(self) -> List[str]:
@@ -214,8 +228,10 @@ class Publisher:
 
     # ---- 主流程 ----
 
-    def publish(self, episode_dir, headless: bool = False) -> dict:
-        """发布一弹。返回 ``{success, step, error?, album_name?}``。"""
+    def publish(self, episode_dir, headless: bool = False, edit: bool = False) -> dict:
+        """发布一弹。edit=True 走「编辑已驳回作品」入口（修改后重新提交审核）。
+
+        返回 ``{success, step, error?, album_name?}``。"""
         assets = EpisodeAssets.from_dir(Path(episode_dir))
 
         # ---- 步骤前：本地校验，早退 ----
@@ -241,9 +257,14 @@ class Publisher:
                 return {"success": False, "step": "login",
                         "error": self.session.last_login_error or "登录失败（未知原因）"}
 
-            # 步骤3-5：提交作品 → 表情专辑 → 选静态
-            self._report("form", "正在打开提交作品表单…", 0.35)
-            self._step_open_submit_form(page)
+            # 步骤3-5：提交作品 → 表情专辑 → 选静态（新建）；
+            # 编辑模式：管理页 → 详情 → 「编辑」→ 新标签编辑器（重走全部填表，
+            # 预填值被修正值覆盖，最后同样点「提交」）
+            if edit:
+                self._report("form", "正在打开作品编辑器…", 0.35)
+                page = self._step_open_editor(page, assets)
+            else:
+                self._step_open_submit_form(page)
             # 步骤6：上传表情图（按故事线顺序）
             self._report("upload", f"正在上传 {len(assets.stickers)} 张表情图…", 0.45)
             self._step_upload_stickers(page, assets)
@@ -267,7 +288,7 @@ class Publisher:
             self._step_select_price(page)
             # 步骤20-22：接受赞赏 + 引导语 + 两张赞赏图
             self._report("tips", "正在配置赞赏图…", 0.94)
-            self._step_tips(page)
+            self._step_tips(page, assets)
             # 步骤24：提交前自检（实时监测：必填项是否全部就位）
             missing = self._verify_form(page)
             if missing:
@@ -326,6 +347,58 @@ class Publisher:
         page.wait_for_load_state("networkidle")
         # 步骤5：选静态（平台隐藏了 radio input，点可见 label；已选则跳过）
         self._click_label(page, "静态表情", check=True)
+
+    def _step_open_editor(self, page, assets: "EpisodeAssets"):
+        """编辑模式入口（2026-08-29 勘察）：管理页 → 目标行「详情」→
+        详情页绿色「编辑」→ 新标签打开完整编辑器，返回**新标签 page**
+        （调用方用返回值替换工作页；同 context，close 时一并关闭）。
+
+        编辑器与新建表单同构（含义词/专辑名/素材/分类预填），后续步骤照常
+        重填修正值，最后 _step_submit 点「提交」重新送审。
+        """
+        from .status import HOME_URL, normalize_name
+
+        def _goto_list():
+            page.goto(HOME_URL, wait_until="domcontentloaded", timeout=45000)
+            page.wait_for_timeout(4000)
+
+        def _click_detail_row() -> bool:
+            tn = normalize_name(assets.album_name or assets.episode_dir.name)
+            links = page.locator("a:has-text('详情'), td:has-text('详情')")
+            for i in range(links.count()):
+                el = links.nth(i)
+                try:
+                    in_tr = el.evaluate("e=>e.closest('tr')!==null")
+                    row_txt = (el.locator("xpath=ancestor::tr[1]").inner_text(timeout=2000)
+                               if in_tr else el.inner_text(timeout=2000))
+                except Exception:
+                    continue
+                if tn and tn in normalize_name(row_txt):
+                    el.click()
+                    return True
+            return False
+
+        _goto_list()
+        # go_back 恢复坑同驳回理由抓取：定位失败 goto 重置重试一次
+        if not _click_detail_row():
+            _goto_list()
+            if not _click_detail_row():
+                raise RuntimeError(f"管理页未找到作品行：{assets.album_name}")
+        page.wait_for_timeout(6000)
+        try:
+            page.wait_for_load_state("domcontentloaded", timeout=30000)
+        except Exception:
+            pass
+        page.wait_for_timeout(2500)
+        before = set(id(pg) for pg in page.context.pages)
+        page.locator("button:has-text('编辑')").first.click()
+        page.wait_for_timeout(6000)
+        newpage = next((pg for pg in page.context.pages if id(pg) not in before), None)
+        if newpage is None:
+            raise RuntimeError("点击「编辑」未打开编辑器（无新标签）")
+        newpage.wait_for_load_state("domcontentloaded", timeout=30000)
+        newpage.wait_for_timeout(3000)
+        return newpage
 
     # ---- 步骤6：上传表情图 ----
 
@@ -597,7 +670,12 @@ class Publisher:
             )
             page.wait_for_timeout(1500)
             # 二级菜单选目标（title 包含目标前缀）
-            target = S.ROLE_WITH_LAOYU_TITLE if assets.contains_laoyu else S.ROLE_WITHOUT_LAOYU_TITLE
+            # 2026-08-29（69 驳回）：平台裁定单角色「捞鱼」应选【人物角色/男人】，
+            # 「人物合辑」相关度不高被拒——只有多角色（2 个及以上）才用人物合辑
+            if len(getattr(assets, "characters", []) or []) >= 2:
+                target = S.ROLE_WITH_LAOYU_TITLE
+            else:
+                target = S.ROLE_WITHOUT_LAOYU_TITLE
             page.click(f'[title*="{target.split("(")[0]}"]', timeout=2000)
         except Exception as e:  # noqa: BLE001
             self._warn(e)
@@ -610,7 +688,7 @@ class Publisher:
 
     # ---- 步骤20-22：赞赏 ----
 
-    def _step_tips(self, page) -> None:
+    def _step_tips(self, page, assets: EpisodeAssets) -> None:
         """步骤20：接受赞赏；步骤21：赞赏引导语；步骤22-23：上传两张赞赏图。"""
         # 步骤21：接受赞赏（平台隐藏 checkbox，点 label；已选跳过防取消）
         self._click_label(page, "接受赞赏", check=True)
@@ -620,9 +698,9 @@ class Publisher:
         except Exception as e:  # noqa: BLE001
             self._warn(e)
         # 步骤22-23：上传赞赏引导图 + 致谢图
-        self._upload_tip_images(page)
+        self._upload_tip_images(page, assets)
 
-    def _upload_tip_images(self, page) -> None:
+    def _upload_tip_images(self, page, assets: EpisodeAssets) -> None:
         """上传赞赏引导图 + 致谢图。
 
         定位策略（迁移原 skill 方案 A）：逐个 file input 向上找祖先文字，匹配
@@ -630,8 +708,10 @@ class Publisher:
         最后两个。上传后处理裁剪框确定（经验13）。
         """
         pairs = [
-            (["赞赏引导图", "引导图"], self.config.tip_guide_img),
-            (["赞赏致谢图", "致谢图"], self.config.tip_thanks_img),
+            (["赞赏引导图", "引导图"],
+             getattr(assets, "tip_guide", None) or self.config.tip_guide_img),
+            (["赞赏致谢图", "致谢图"],
+             getattr(assets, "tip_thanks", None) or self.config.tip_thanks_img),
         ]
         for keywords, img_path in pairs:
             try:

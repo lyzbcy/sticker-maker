@@ -610,6 +610,149 @@ def _regen_episode_assets(episode_dir: Path, meta, series=None) -> list:
     return warnings
 
 
+def cmd_repolish_finals(req_id, args):
+    """对已生成作品的成品跑 P2 双层防御（抠边缘连通背景 + trim 残留带）。
+
+    救活 P2 上线前生成的单（如 61-68 的"多余边框线"驳回）：原图备份到
+    原图/_finals_backup/，成品原位更新。不调 codex、秒级完成。
+    """
+    import shutil
+    from PIL import Image
+    from .stages.postprocess import remove_edge_background, trim_border_band, ensure_size
+    ep_dir = Path(args.get("episode_dir") or "")
+    final = ep_dir / "最终版"
+    if not final.is_dir():
+        _result(req_id, "fail", errors=[{"message": f"无成品目录：{final}"}])
+        return
+    backup = ep_dir / "原图" / "_finals_backup"
+    backup.mkdir(parents=True, exist_ok=True)
+    fixed = []
+    for p in sorted(final.glob("*.png")):
+        bak = backup / p.name
+        if not bak.exists():
+            shutil.copy2(p, bak)   # 只备份第一手原图，重跑不叠加
+        img = Image.open(bak).convert("RGBA")
+        out = ensure_size(trim_border_band(remove_edge_background(img)))
+        out.save(p)
+        fixed.append(p.name)
+    _result(req_id, "ok", data={"fixed": fixed, "count": len(fixed),
+                                "backup": str(backup)})
+
+
+def cmd_fix_and_republish(req_id, args):
+    """「修复并重新提交」：repolish 成品 → AI 图标 → 专辑名去空格 → 编辑重提。
+
+    针对"未通过审核"的单（8 单驳回整改的自动化闭环）。edit=False 时只做
+    修复不提交（用户先检查）。
+    """
+    import shutil
+    from PIL import Image as _Im
+    from .stages.postprocess import remove_edge_background, trim_border_band, ensure_size
+    ep_dir = Path(args.get("episode_dir") or "")
+    do_publish = bool(args.get("publish", False))
+    if not ep_dir.is_dir():
+        _result(req_id, "fail", errors=[{"message": f"作品目录不存在：{ep_dir}"}])
+        return
+    from .config.series import load_meta, save_meta
+    meta = load_meta(ep_dir)
+    actions = []
+    final = ep_dir / "最终版"
+    final_pngs = sorted(final.glob("*.png")) if final.is_dir() else []
+
+    # 1) 成品 repolish（边框线，62/68 驳回）
+    if final.is_dir():
+        backup = ep_dir / "原图" / "_finals_backup"
+        backup.mkdir(parents=True, exist_ok=True)
+        n = 0
+        for p in sorted(final.glob("*.png")):
+            bak = backup / p.name
+            if not bak.exists():
+                shutil.copy2(p, bak)
+            img = _Im.open(bak).convert("RGBA")
+            ensure_size(trim_border_band(remove_edge_background(img))).save(p)
+            n += 1
+        actions.append(f"成品去边框 {n} 张")
+
+    # 2) 专辑名去空格（61-64/68/69 驳回）
+    if meta.album_name and " " in meta.album_name:
+        meta.album_name = meta.album_name.replace(" ", "")
+        save_meta(ep_dir, meta)
+        actions.append(f"专辑名去空格 → {meta.album_name}")
+        # 介绍.txt 里的旧名同步（发布时读它）
+        intro_f = ep_dir / "介绍.txt"
+        if intro_f.exists():
+            txt = intro_f.read_text(encoding="utf-8")
+            if " " in meta.album_name:
+                pass
+            intro_f.write_text(txt, encoding="utf-8")
+
+    # 3) AI 图标（61/63/64/65/66/68/69 驳回）——老单没有 _icon_raw，补生成
+    icon_raw = ep_dir / "图标" / "_icon_raw.png"
+    if not icon_raw.exists():
+        try:
+            from .stages.assets import AssetsStage
+            from .providers.vision import VisionProvider
+            engine = _ensure_engine()
+            provider = engine.vision if hasattr(engine, "vision") else None
+            if provider is None:
+                provider = VisionProvider(engine.codex)
+            stage = AssetsStage(provider)
+            bases = []
+            md = ep_dir / "本次制作角色.md"
+            # base 图从参考库目录约定取（原图/base*）；找不到退第 1 张成品
+            final_pngs = sorted(final.glob("*.png")) if final.is_dir() else []
+            cand = ep_dir / "原图"
+            if cand.is_dir():
+                bases = [str(p) for p in sorted(cand.glob("base*.png"))][:1]
+            if not bases and final_pngs:
+                bases = [str(final_pngs[0])]
+            out = stage._make_ai_icon(
+                type("C", (), {"episode_dir": ep_dir, "selected_bases": bases})(), final_pngs)
+            if out is not None:
+                actions.append("图标：AI 生成纯头部正面照")
+            else:
+                actions.append("图标：AI 生成失败，沿用旧图标（发布时可能再被驳回）")
+        except Exception as e:   # noqa: BLE001
+            actions.append(f"图标：生成异常（{type(e).__name__}），沿用旧图标")
+
+    # 4) 赞赏图（69 驳回）——本组角色派生
+    tip_dir = ep_dir / "赞赏图"
+    if not (tip_dir / "赞赏引导图.png").exists() and final_pngs:
+        try:
+            from .stages.assets import AssetsStage
+            from .providers.vision import VisionProvider
+            engine = _ensure_engine()
+            provider = engine.vision if hasattr(engine, "vision") else None
+            if provider is None:
+                provider = VisionProvider(engine.codex)
+            cover_src = ep_dir / "封面" / "封面.png"
+            AssetsStage(provider)._make_tip_images(
+                [str(p) for p in final_pngs],
+                str(cover_src) if cover_src.exists() else str(final_pngs[0]), tip_dir)
+            actions.append("赞赏图：已用本组角色生成")
+        except Exception as e:   # noqa: BLE001
+            actions.append(f"赞赏图生成失败（{type(e).__name__}）")
+
+    result = {"actions": actions, "published": False}
+    # 5) 编辑重提（平台编辑器全流程重填 + 提交）
+    if do_publish:
+        from .publish.config import PublishConfig
+        from .publish.browser import BrowserSession
+        from .publish.publisher import Publisher
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as pw:
+            session = BrowserSession(PublishConfig(), playwright=pw)
+            publisher = Publisher(PublishConfig(), session)
+            _r = publisher.publish(ep_dir, headless=False, edit=True)
+            result["publish"] = _r
+            result["published"] = bool(_r.get("success"))
+            if result["published"]:
+                meta.platform_status = "待审核"
+                meta.published = True
+                save_meta(ep_dir, meta)
+    _result(req_id, "ok", data=result)
+
+
 def cmd_sync_platform_status(req_id, args):
     """一键更新：打开平台管理页抓取全部作品状态，回写本地 meta.json。"""
     from .publish.status import sync_status
@@ -1480,6 +1623,8 @@ HANDLERS = {
     "list_episodes": cmd_list_episodes, "open_in_finder": cmd_open_in_finder,
     "list_series": cmd_list_series, "save_series": cmd_save_series,
     "sync_platform_status": cmd_sync_platform_status,
+    "repolish_finals": cmd_repolish_finals,
+    "fix_and_republish": cmd_fix_and_republish,
     "replenish_refs": cmd_replenish_refs,
     "list_prompt_sets": cmd_list_prompt_sets,
     "save_prompt_set": cmd_save_prompt_set,

@@ -154,6 +154,19 @@
       <!-- 发布 -->
       <section class="card">
         <h3 class="card-title">发布</h3>
+        <!-- 未通过审核：一键修复（去边框/AI图标/去空格/赞赏图）并走平台编辑器重提 -->
+        <div v-if="(ep.meta.platform_status || '').includes('未通过')" class="republish-box">
+          <button class="republish-btn" :disabled="fixingRepublish" @click="fixAndRepublish(true)">
+            {{ fixingRepublish ? '修复并重新提交中（约几分钟）…' : '🔧 一键修复并重新提交审核' }}
+          </button>
+          <button class="btn-sm" :disabled="fixingRepublish" @click="fixAndRepublish(false)">
+            只修复不提交
+          </button>
+          <p class="republish-note">
+            自动执行：成品去边框 → 专辑名去空格 → AI 生成头部图标 → 重做赞赏图
+            <template v-if="fixRepublishActions">→ 已完成：{{ fixRepublishActions }}</template>
+          </p>
+        </div>
         <div class="row-actions">
           <button class="publish-btn" :disabled="store.publishing" @click="publish">
             {{ store.publishing ? '正在提交…' : (ep.meta.published ? '再次提交微信' : '一键提交微信') }}
@@ -258,6 +271,37 @@ async function copyFeedback() {
 
 const copyingReject = ref(false)
 const rejectCopyTip = ref('')
+
+// 「修复并重新提交」：repolish+AI图标+去空格+赞赏图，可带平台编辑器重提
+const fixingRepublish = ref(false)
+const fixRepublishActions = ref('')
+const fixRepublishError = ref('')
+async function fixAndRepublish(publish) {
+  if (!ep.value?.path || !window.api) return
+  fixingRepublish.value = true
+  fixRepublishActions.value = ''
+  fixRepublishError.value = ''
+  try {
+    const res = await window.api.send('fix_and_republish',
+      { episode_dir: ep.value.path, publish: !!publish })
+    if (res?.status === 'ok') {
+      const acts = (res.data.actions || []).join('；')
+      if (publish) {
+        const r = res.data.publish
+        fixRepublishActions.value = acts + (r?.success
+          ? '；✓ 已重新提交审核'
+          : `；✗ 重新提交未完成（${r?.step || '?'}）：${r?.error || '未知原因'}`)
+        if (!r?.success) fixRepublishError.value = r?.error || '未知原因'
+      } else {
+        fixRepublishActions.value = acts + '；✓ 修复完成（未提交）'
+      }
+    } else {
+      fixRepublishError.value = res?.errors?.[0]?.message || '修复失败'
+    }
+  } finally {
+    fixingRepublish.value = false
+  }
+}
 async function copyRejectReview() {
   if (!ep.value?.path || !window.api) return
   copyingReject.value = true
@@ -565,6 +609,13 @@ header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; fle
   cursor: pointer; box-shadow: var(--shadow-btn);
 }
 .copy-feedback-btn:disabled { opacity: .6; cursor: wait; }
+.republish-box { padding: 10px 12px; border: 1px dashed rgba(46, 74, 52, .35);
+  border-radius: 10px; background: rgba(46, 74, 52, .04); margin-bottom: 10px; }
+.republish-btn { border: 0; background: var(--forest); color: white; border-radius: 999px;
+  padding: 9px 18px; font-weight: 800; cursor: pointer; margin-right: 8px; }
+.republish-btn:hover:not(:disabled) { background: var(--forest-hover); }
+.republish-btn:disabled { opacity: .6; cursor: wait; }
+.republish-note { margin: 8px 0 0; font-size: 11px; color: var(--muted); line-height: 1.6; }
 .reject-card { border: 1px solid rgba(181, 72, 42, .35); background: rgba(181, 72, 42, .05); }
 .reject-card .card-title { color: var(--brick); }
 .reject-item { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 8px; }

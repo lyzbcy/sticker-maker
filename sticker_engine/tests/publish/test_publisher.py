@@ -47,7 +47,8 @@ def _write_png(path: Path) -> None:
 
 def make_episode(tmp_path: Path, *, meanings=None, has_char_card=True,
                  contains_laoyu=False, with_meaning_map=True,
-                 with_assets=True, intro="这是介绍", n=16) -> Path:
+                 with_assets=True, intro="这是介绍", n=16,
+                 characters=None) -> Path:
     """构造一个 episode 目录。返回 episode 路径。
 
     meanings: 16 个含义词列表（默认 meaning_01..）。若 with_meaning_map 且 meanings
@@ -84,7 +85,9 @@ def make_episode(tmp_path: Path, *, meanings=None, has_char_card=True,
 
     if has_char_card:
         line = "含捞鱼：是" if contains_laoyu else "含捞鱼：否"
-        (ep / "本次制作角色.md").write_text(f"# 角色\n{line}\n", encoding="utf-8")
+        roles = "、".join(characters) if characters else "捞鱼"
+        (ep / "本次制作角色.md").write_text(
+            f"# 角色\n角色：{roles}\n{line}\n", encoding="utf-8")
 
     return ep
 
@@ -445,14 +448,27 @@ def test_step_select_categories_clicks_all_constants(tmp_path):
     # 两组地区（全球）走 _click_label_all_unchecked（payload 不是 list）
     assert any(not isinstance(p, list) and p == "全球" for p in payloads)
 
-def test_select_role_uses_laoyu_title_when_contains_laoyu(tmp_path):
-    """含捞鱼→点 ROLE_WITH_LAOYU_TITLE 对应 title。"""
+def test_select_role_single_character_uses_gender_not_compilation(tmp_path):
+    """2026-08-29（69 驳回）：单角色（含捞鱼）→【男人】，不再盲目人物合辑。"""
     ep = make_episode(tmp_path, contains_laoyu=True)
     assets = EpisodeAssets.from_dir(ep)
     publisher, session, page = _make_publisher(tmp_path)
     publisher._select_role(page, assets)
     click_sels = [c.args[0] for c in page.click.call_args_list]
-    assert any(S.ROLE_DROPDOWN_DT in c for c in click_sels)
+    expected = S.ROLE_WITHOUT_LAOYU_TITLE.split("(")[0]
+    assert any(f'[title*="{expected}"]' in c for c in click_sels)
+    forbidden = S.ROLE_WITH_LAOYU_TITLE.split("(")[0]
+    assert not any(f'[title*="{forbidden}"]' in c for c in click_sels)
+
+
+def test_select_role_multi_character_uses_compilation(tmp_path):
+    """多角色（2 个及以上）→ 人物合辑。"""
+    ep = make_episode(tmp_path, contains_laoyu=True,
+                      characters=["捞鱼", "星星布丁"])
+    assets = EpisodeAssets.from_dir(ep)
+    publisher, session, page = _make_publisher(tmp_path)
+    publisher._select_role(page, assets)
+    click_sels = [c.args[0] for c in page.click.call_args_list]
     expected = S.ROLE_WITH_LAOYU_TITLE.split("(")[0]
     assert any(f'[title*="{expected}"]' in c for c in click_sels)
 
@@ -472,7 +488,7 @@ def test_step_tips_fills_thanks_text_and_clicks_accept(tmp_path):
     page.evaluate.return_value = True
     # 让 _upload_tip_images 不真跑（避免 mock query 复杂度）
     publisher._upload_tip_images = MagicMock()
-    publisher._step_tips(page)
+    publisher._step_tips(page, EpisodeAssets.from_dir(make_episode(tmp_path)))
     # 接受赞赏走 evaluate label 点击（防 toggle 取消）
     payloads = [c.args[1] for c in page.evaluate.call_args_list if len(c.args) > 1]
     assert any(p and p[0] == "接受赞赏" for p in payloads)
