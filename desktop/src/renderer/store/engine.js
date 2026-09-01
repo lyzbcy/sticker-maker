@@ -246,6 +246,32 @@ export const useEngineStore = defineStore('engine', () => {
     }
   }
 
+  // 批量生成：count 组串行；autoPublish 每组自动命名+提交平台
+  const batchInfo = ref(null)   // {requested, completed, generated_ok, published_ok, results}
+  async function runBatch(count, autoPublish) {
+    if (!api || running.value) return
+    running.value = true
+    progress.value = null
+    lastError.value = null
+    lastEpisode.value = null
+    batchInfo.value = null
+    runStartedAt.value = Date.now()
+    pushActivity({ stage: 'RUN', message: `批量任务开始：${count} 组${autoPublish ? '（完成后自动发布）' : ''}` })
+    try {
+      const res = await api.send('run_batch', { count, auto_publish: !!autoPublish })
+      if (res && res.status === 'ok') {
+        batchInfo.value = res.data
+        pushActivity({ stage: 'RUN', message: `批量完成：生成 ${res.data.generated_ok}/${res.data.requested} 组，发布 ${res.data.published_ok} 组` })
+      } else {
+        lastError.value = (res && res.errors) || [{ message: '批量任务失败' }]
+      }
+    } catch (e) {
+      lastError.value = (e && e.errors) || [{ message: (e && e.message) || '批量任务失败' }]
+    } finally {
+      running.value = false
+    }
+  }
+
   async function runGenerate() {
     if (!api) return
     running.value = true
@@ -518,7 +544,7 @@ export const useEngineStore = defineStore('engine', () => {
     seriesList, selectedEpisode,
     reviewAskVisible, shouldAskForReview, dismissReviewAsk,
     init, checkCodex, installCodex, loadCharacters, ensureProbabilityDefaults,
-    savePrefs, runGenerate, stopRun, loadEpisodes, clearResult, pushActivity,
+    savePrefs, runGenerate, runBatch, batchInfo, stopRun, loadEpisodes, clearResult, pushActivity,
     loadSeries, saveSeriesList, openEpisode, refreshEpisode,
     updateEpisodeMeta, regenEpisodeIntro, regenEpisodeAssets,
     publishEpisode, loadLogs, clearLogs, refreshAgent, startAgent, stopAgent,

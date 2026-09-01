@@ -54,8 +54,27 @@
             <button class="start-btn" @click="store.runGenerate">
               <span class="start-emoji">🎨</span>开始生图
             </button>
-            <p class="cta-hint">点一下就好 ✨ 几分钟收获一整包能斗图的小表情</p>
+            <div class="batch-box">
+              <label class="batch-label">
+                批量
+                <select v-model="batchCount" class="batch-select">
+                  <option v-for="n in [2,3,5,10,20]" :key="n" :value="n">{{ n }} 组</option>
+                </select>
+              </label>
+              <label class="batch-check">
+                <input type="checkbox" v-model="batchAutoPublish" />
+                完成后自动发布
+              </label>
+              <button class="batch-btn" :disabled="store.running" @click="startBatch">
+                {{ store.running ? '运行中…' : '🚀 批量生成' }}
+              </button>
+            </div>
+            <p class="cta-hint">点一下就好 ✨ 单组几分钟；批量时每组完成后自动命名并提交（需在设置里配好默认系列）</p>
           </div>
+          <p v-if="store.batchInfo" class="batch-summary">
+            上次批量：生成 {{ store.batchInfo.generated_ok }}/{{ store.batchInfo.requested }} 组，
+            发布 {{ store.batchInfo.published_ok }} 组
+          </p>
         </div>
 
         <!-- 贴纸拼图预览：纯 CSS，呼应本次宫格配置 -->
@@ -141,13 +160,21 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useEngineStore } from '../store/engine'
 import ProgressBar from './ProgressBar.vue'
 import ResultPreview from './ResultPreview.vue'
 import FeaturedShowcase from './FeaturedShowcase.vue'
 
 const store = useEngineStore()
+
+// 批量生成（组数 + 完成后自动发布）
+const batchCount = ref(5)
+const batchAutoPublish = ref(true)
+function startBatch() {
+  if (store.running) return
+  store.runBatch(batchCount.value, batchAutoPublish.value)
+}
 
 const gridSize = computed(() => Number(store.prefs?.grid_size) || 4)
 const gridLabel = computed(() => `${gridSize.value}×${gridSize.value} · ${gridSize.value * gridSize.value} 张`)
@@ -354,6 +381,15 @@ onMounted(() => {
 
 /* 主按钮（大热区胶囊） */
 .cta-row { margin-top: 20px; }
+.batch-box { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.batch-label { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+.batch-select { border: 1px solid #ddd; border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+.batch-check { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.batch-btn { border: 0; background: var(--brick, #b5482a); color: white; border-radius: 999px;
+  padding: 10px 18px; font-weight: 800; cursor: pointer; }
+.batch-btn:hover:not(:disabled) { filter: brightness(1.1); }
+.batch-btn:disabled { opacity: .6; cursor: wait; }
+.batch-summary { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
 .start-btn {
   display: inline-flex;
   align-items: center;

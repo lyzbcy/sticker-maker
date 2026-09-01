@@ -395,6 +395,108 @@ def cmd_run(req_id, args):
         _stop_events.pop(req_id, None)
 
 
+
+def _auto_assign_series_name(ep_dir: Path, engine):
+    """run 成功后按默认系列自动命名（返回专辑名；无默认系列返回 None）。"""
+    from .config.series import load_series, save_series, load_meta, save_meta
+    prefs = engine.config.prefs
+    if not prefs.default_series_id:
+        return None
+    series_list = load_series()
+    target = next((x for x in series_list if x.id == prefs.default_series_id), None)
+    if target is None:
+        return None
+    n = target.take_number()
+    save_series(series_list)
+    meta = load_meta(ep_dir)
+    meta.series_id = target.id
+    meta.series_name = target.name
+    meta.number = n
+    meta.album_name = target.album_name(n)
+    save_meta(ep_dir, meta)
+    return meta.album_name
+
+
+def cmd_run_batch(req_id, args):
+    """批量生成：count 组串行；auto_publish 时每组自动命名（默认系列）+提交。
+
+    每组进度经原有 run 的 progress 通道透传；批量粒度进度用 stage="batch"。
+    stop 可中断（中断前已完成的组保留结果）。
+    """
+    count = max(1, min(50, int(args.get("count") or 1)))
+    auto_publish = bool(args.get("auto_publish"))
+    engine = _ensure_engine()
+    _sync_custom_bases(engine)
+    stop = threading.Event()
+    _stop_events[req_id] = stop
+    results = []
+
+    def _say(msg):
+        _emit({"id": req_id, "type": "progress", "stage": "batch",
+               "phase": "batch", "message": msg, "percent": None,
+               "eta_seconds": None})
+
+    try:
+        for i in range(1, count + 1):
+            if stop.is_set():
+                _say(f"收到停止请求，批量在完成 {i - 1} 组后中断")
+                break
+            _say(f"—— 第 {i}/{count} 组开始 ——")
+            episode = engine.run(
+                progress_callback=lambda ev: _progress(req_id, ev),
+                stop_event=stop)
+            item = {
+                "index": i,
+                "success": bool(episode.success),
+                "episode_dir": str(episode.episode_dir) if episode.episode_dir else None,
+                "stickers": len(episode.stickers),
+            }
+            if not episode.success:
+                errs = "; ".join(e.message for e in episode.errors[:3])
+                item["error"] = errs or episode.aborted_reason or "生成未完成"
+                _say(f"第 {i} 组未完成：{item['error'][:80]}")
+                results.append(item)
+                if stop.is_set():
+                    break
+                continue
+            if auto_publish and episode.episode_dir:
+                ep_dir = Path(episode.episode_dir)
+                name = _auto_assign_series_name(ep_dir, engine)
+                if not name:
+                    item["published"] = False
+                    item["publish_skip"] = "未设置默认系列，跳过自动发布（设置→系列与命名→默认系列）"
+                    _say(item["publish_skip"])
+                else:
+                    _say(f"第 {i} 组命名「{name}」，正在自动提交平台…")
+                    r = _publish_episode(
+                        ep_dir,
+                        lambda stage, message, percent: _emit({
+                            "id": req_id, "type": "progress", "stage": "publish",
+                            "phase": stage, "message": message,
+                            "percent": percent, "eta_seconds": None}))
+                    item["published"] = bool(r.get("success"))
+                    if r.get("success"):
+                        from .config.series import mark_published
+                        try:
+                            mark_published(ep_dir)
+                        except Exception:   # noqa: BLE001
+                            pass
+                        _say(f"✓ 第 {i} 组「{name}」已提交审核")
+                    else:
+                        item["publish_error"] = (r.get("error") or "")[:150]
+                        _say(f"✗ 第 {i} 组提交未完成：{item['publish_error'][:80]}")
+            results.append(item)
+            _say(f"—— 第 {i}/{count} 组完成 ——")
+        ok = sum(1 for x in results if x.get("success"))
+        pub = sum(1 for x in results if x.get("published"))
+        _result(req_id, "ok", data={
+            "requested": count, "completed": len(results),
+            "generated_ok": ok, "published_ok": pub,
+            "stopped": stop.is_set(), "results": results})
+    finally:
+        _stop_events.pop(req_id, None)
+
+
 def cmd_stop(req_id, args):
     target = args.get("target_id") or args.get("target")
     ev = _stop_events.get(target)
@@ -1844,7 +1946,8 @@ HANDLERS = {
     "load_prefs": cmd_load_prefs, "save_prefs": cmd_save_prefs,
     "list_characters": cmd_list_characters, "generate_base": cmd_generate_base,
     "add_base": cmd_add_base,
-    "run": cmd_run, "stop": cmd_stop,
+    "run": cmd_run,
+    "run_batch": cmd_run_batch, "stop": cmd_stop,
     "list_episodes": cmd_list_episodes, "open_in_finder": cmd_open_in_finder,
     "list_series": cmd_list_series, "save_series": cmd_save_series,
     "sync_platform_status": cmd_sync_platform_status,
