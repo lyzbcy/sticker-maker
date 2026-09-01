@@ -174,3 +174,59 @@ def test_five_not_matched_when_only_longer_exists():
     hit = match_episode("周三涵做表情5", [
         {"album_name": "周三涵做表情57", "name": "episode_import_057"}])
     assert hit is None
+
+
+# ---------------- 评审加固回归（2026-09-01 无上下文子 Agent 对抗评审） ----------------
+
+def test_base_album_not_hijacked_by_numbered_row():
+    """高危：57 的行不得命中无编号基础专辑（单侧无尾守卫）。"""
+    assert match_episode("周三涵做表情57", [
+        {"album_name": "周三涵做表情", "name": "episode_x"}]) is None
+
+
+def test_base_album_row_not_hijacked_to_numbered_local():
+    """高危：基础专辑的行不得命中 周三涵做表情1（5/57 复活口）。"""
+    assert match_episode("周三涵做表情", [
+        {"album_name": "周三涵做表情1", "name": "episode_import_001"},
+        {"album_name": "周三涵做表情2", "name": "episode_import_002"}]) is None
+
+
+def test_letter_suffix_cannot_bypass_guard():
+    """字母后缀（尾数字取不到）不得绕过守卫。"""
+    assert match_episode("episode20260825180912", [
+        {"album_name": "episode_20260825_180912_extra",
+         "name": "episode_20260825_180912_extra"}]) is None
+
+
+def test_ambiguous_truncation_rejected():
+    """中危：同小时两个时间戳作品截断歧义 → 拒配（不按目录序先到先得）。"""
+    cands = [
+        {"album_name": "episode_20260825_180958", "name": "episode_20260825_180958"},
+        {"album_name": "episode_20260825_180912", "name": "episode_20260825_180912"},
+    ]
+    assert match_episode("episode202608251", cands) is None
+
+
+def test_unambiguous_truncation_still_ok():
+    """唯一真身截断（18 点档只有一单）仍匹配。"""
+    assert match_episode("episode20260825180", [
+        {"album_name": "episode_20260825_180912", "name": "episode_20260825_180912"},
+    ])["album_name"] == "episode_20260825_180912"
+
+
+def test_fullwidth_digits_normalized():
+    """全角数字（平台表单手输事故高频）折叠后正常匹配。"""
+    hit = match_episode("周三涵做表情５７", [
+        {"album_name": "周三涵做表情57", "name": "episode_import_057"}])
+    assert hit and hit["album_name"] == "周三涵做表情57"
+
+
+def test_case_insensitive():
+    assert match_episode("Episode202608251", [
+        {"album_name": "episode_20260825_180912", "name": "episode_20260825_180912"}])
+
+
+def test_unrelated_names_no_match():
+    """无数字尾的行名（星星布丁）对无关候选（星星）不得互配。"""
+    assert match_episode("星星布丁", [
+        {"album_name": "星星", "name": "episode_y"}]) is None
