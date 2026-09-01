@@ -424,9 +424,11 @@ def test_step_fill_album_info_uses_constants_and_intro(tmp_path):
     ep = make_episode(tmp_path, intro="你好表情")
     assets = EpisodeAssets.from_dir(ep)
     publisher, session, page = _make_publisher(tmp_path)
+    # 选后验证版：fill 带 timeout kwarg；mock input_value 返回非空
+    page.locator.return_value.input_value.return_value = "你好表情"
     publisher._step_fill_album_info(page, assets)
     page.fill.assert_any_call(S.ALBUM_NAME_INPUT, "episode_test")
-    page.fill.assert_any_call(S.INTRO_TEXTAREA, "你好表情")
+    page.fill.assert_any_call(S.INTRO_TEXTAREA, "你好表情", timeout=5000)
 
 
 def test_step_fill_copyright_uses_config(tmp_path):
@@ -449,16 +451,29 @@ def test_step_select_categories_clicks_all_constants(tmp_path):
     # 两组地区（全球）走 _click_label_all_unchecked（payload 不是 list）
     assert any(not isinstance(p, list) and p == "全球" for p in payloads)
 
+def _mock_dt(page, word):
+    """mock 角色 dt 的 inner_text（选后验证用）。"""
+    page.locator.return_value.inner_text.return_value = f"人物角色{word}"
+
+
+def _picked_word(page):
+    """新版 _select_role 通过 get_by_text(exact) 点文本叶子——取其入参。"""
+    for c in page.get_by_text.call_args_list:
+        if c.args and isinstance(c.args[0], str):
+            return c.args[0]
+    return None
+
+
 def test_select_role_single_character_uses_gender_not_compilation(tmp_path):
     """2026-08-29（69 驳回）：单角色男性（捞鱼）→【男人】（评审F1：按性别不按合辑）。"""
     ep = make_episode(tmp_path, contains_laoyu=True, characters=["捞鱼"])
     assets = EpisodeAssets.from_dir(ep)
     publisher, session, page = _make_publisher(tmp_path)
+    _mock_dt(page, S.ROLE_MALE_TITLE)
     publisher._select_role(page, assets)
-    click_sels = [c.args[0] for c in page.click.call_args_list]
-    assert any(f'[title*="{S.ROLE_MALE_TITLE}"]' in c for c in click_sels)
+    assert _picked_word(page) == S.ROLE_MALE_TITLE
     forbidden = S.ROLE_WITH_LAOYU_TITLE.split("(")[0]
-    assert not any(f'[title*="{forbidden}"]' in c for c in click_sels)
+    assert _picked_word(page) != forbidden
 
 
 def test_select_role_single_female_uses_woman(tmp_path):
@@ -466,10 +481,10 @@ def test_select_role_single_female_uses_woman(tmp_path):
     ep = make_episode(tmp_path, contains_laoyu=False, characters=["星星布丁"])
     assets = EpisodeAssets.from_dir(ep)
     publisher, session, page = _make_publisher(tmp_path)
-    publisher._select_role(page, assets)
-    click_sels = [c.args[0] for c in page.click.call_args_list]
     expected = S.ROLE_WITHOUT_LAOYU_TITLE.split("(")[0]
-    assert any(f'[title*="{expected}"]' in c for c in click_sels)
+    _mock_dt(page, expected)
+    publisher._select_role(page, assets)
+    assert _picked_word(page) == expected
 
 
 def test_select_role_multi_character_uses_compilation(tmp_path):
@@ -478,20 +493,20 @@ def test_select_role_multi_character_uses_compilation(tmp_path):
                       characters=["捞鱼", "星星布丁"])
     assets = EpisodeAssets.from_dir(ep)
     publisher, session, page = _make_publisher(tmp_path)
-    publisher._select_role(page, assets)
-    click_sels = [c.args[0] for c in page.click.call_args_list]
     expected = S.ROLE_WITH_LAOYU_TITLE.split("(")[0]
-    assert any(f'[title*="{expected}"]' in c for c in click_sels)
+    _mock_dt(page, expected)
+    publisher._select_role(page, assets)
+    assert _picked_word(page) == expected
 
 
 def test_select_role_uses_woman_title_when_no_laoyu(tmp_path):
     ep = make_episode(tmp_path, contains_laoyu=False)
     assets = EpisodeAssets.from_dir(ep)
     publisher, session, page = _make_publisher(tmp_path)
-    publisher._select_role(page, assets)
-    click_sels = [c.args[0] for c in page.click.call_args_list]
     expected = S.ROLE_WITHOUT_LAOYU_TITLE.split("(")[0]
-    assert any(f'[title*="{expected}"]' in c for c in click_sels)
+    _mock_dt(page, expected)
+    publisher._select_role(page, assets)
+    assert _picked_word(page) == expected
 
 
 def test_step_tips_fills_thanks_text_and_clicks_accept(tmp_path):

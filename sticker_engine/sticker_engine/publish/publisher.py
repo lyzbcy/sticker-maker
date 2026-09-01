@@ -542,15 +542,23 @@ class Publisher:
             raise RuntimeError("含义词识图失败（codex 无有效输出）")
         import json as _json
         m = _json.loads(text[text.index("{"): text.rindex("}") + 1])
-        # 填格（格序=截图序）
+        # 填格（格序=截图序）。用 evaluate 直设 value——个别格子 input
+        # 处于不可见态（Vue 条件渲染），fill 的 actionability 检查会卡死
         for i in range(n):
             word = m.get(str(i + 1), "")
             if not word:
                 continue
-            box = page.get_by_placeholder("输入含义词").nth(i)
-            box.fill(word)
-            box.dispatch_event("input")
-            page.wait_for_timeout(150)
+            page.evaluate(
+                """([i, w]) => {
+                  const ins = [...document.querySelectorAll(
+                    'input[placeholder="输入含义词"]')];
+                  const inp = ins[i - 1];
+                  if (!inp) return;
+                  inp.value = w;
+                  inp.dispatchEvent(new Event('input', {bubbles: true}));
+                  inp.dispatchEvent(new Event('change', {bubbles: true}));
+                }""", [i, word])
+            page.wait_for_timeout(120)
 
     def _step_replace_stickers(self, page, assets: EpisodeAssets) -> None:
         """编辑模式：清空已有贴纸 → 重传修好的 16 张 → 填含义词。
@@ -641,13 +649,25 @@ class Publisher:
     # ---- 步骤8-9：专辑名 + 介绍 ----
 
     def _step_fill_album_info(self, page, assets: EpisodeAssets) -> None:
-        """步骤8：专辑名（episode 目录名）；步骤9：介绍（优先 介绍.txt）。"""
+        """步骤8：专辑名；步骤9：介绍（选后验证+兜底，59/60 事故收尾）。"""
         page.fill(S.ALBUM_NAME_INPUT, assets.album_name)
         if assets.intro:
-            try:
-                page.fill(S.INTRO_TEXTAREA, assets.intro)
-            except Exception as e:  # noqa: BLE001
-                self._warn(e)
+            for attempt in range(2):
+                try:
+                    page.fill(S.INTRO_TEXTAREA, assets.intro, timeout=5000)
+                    page.wait_for_timeout(500)
+                    val = page.locator(S.INTRO_TEXTAREA).input_value(timeout=3000)
+                    if val and val.strip():
+                        return
+                    self._warn(f"介绍第 {attempt + 1} 次填写后为空，重填")
+                except Exception as e:  # noqa: BLE001
+                    self._warn(f"介绍填写异常（第 {attempt + 1} 次）：{e}")
+                    try:   # 兜底：placeholder 变了就找任意 textarea
+                        page.locator("textarea").first.fill(assets.intro)
+                        page.wait_for_timeout(500)
+                        return
+                    except Exception:   # noqa: BLE001
+                        pass
 
     # ---- 步骤10：版权 ----
 
@@ -676,8 +696,12 @@ class Publisher:
                 continue
             # 给第 slot 个可见 file input 打临时 class
             ok = page.evaluate("""(label) => {
+              // 2026-09-01 修复：必须过滤可见 input——表情图 drop zone
+              // （页面顶部隐藏 input，accept 同样含 jpeg）曾抢走横幅槽位，
+              // 导致横幅/封面全部空提交（59/60 两单事故）
               const vis = el => !!(el.offsetParent || el.getClientRects().length);
-              const files = [...document.querySelectorAll('input[type=file]')].filter(vis);
+              const files = [...document.querySelectorAll('input[type=file]')]
+                .filter(vis);
               // 按标签找槽位：横幅=第一个含 jpeg 的；封面=其后第一个 png；图标=最后一个 png
               let idx = -1;
               if (label === '横幅') {
@@ -702,9 +726,27 @@ class Publisher:
                 page.set_input_files('._asset_target', str(img))
                 page.wait_for_timeout(1500)
                 self._confirm_crop(page)
-                page.wait_for_timeout(1500)
+                # 2026-09-02 修复：上传是异步的——Vue 组件收文件后立即清空
+                # input（nfiles=0 是正常现象），固定 1.5s 后提交时横幅可能
+                # 还没绑上（59/60 两单"横幅不能为空"事故）。轮询等缩略图：
+                # 横幅槽附近文本"JPG 或 PNG"，封面/图标依次为第 1/2 个
+                # "PNG 格式"槽出现 img。
+                need_kw = "JPG 或 PNG" if label == "横幅" else "PNG 格式"
+                page.wait_for_function(
+                    """([kw, nth]) => {
+                      const zones = [...document.querySelectorAll('div')]
+                        .filter(d => d.querySelectorAll('img').length
+                                 && (d.innerText || '').includes(kw)
+                                 && d.getBoundingClientRect().width > 50
+                                 && d.getBoundingClientRect().width < 400);
+                      return zones.length >= nth;
+                    }""",
+                    arg=[need_kw, 1 if label == "横幅" else
+                         (1 if label == "封面" else 2)],
+                    timeout=20000)
+                page.wait_for_timeout(500)
             except Exception as e:  # noqa: BLE001
-                self._warn(e)
+                self._warn(f"{label}上传后未见缩略图：{e}")
 
     def _upload_uploader_at(self, page, index: int, img_path: Path) -> None:
         """上传到第 index 个 uploader__init 区域，处理裁剪框确定。"""
@@ -812,7 +854,14 @@ class Publisher:
               const cp = document.querySelector('input[placeholder*="版权信息"]');
               if (cp && !cp.value.trim()) missing.push('版权');
               const dt = document.querySelector('.weui-desktop-form__dropdowncascade__dt');
-              if (dt && (dt.innerText || '').includes('未选择')) missing.push('角色/内容');
+              if (dt) {
+                const t = (dt.innerText || '').trim();
+                // dt 选完形如"人物角色女人"（逗号是 CSS 分隔样式不进文本）
+                const lv2 = t.includes('女人') || t.includes('男人')
+                  || t.includes('人物合辑') || t.includes('人物角色-');
+                if (t.includes('未选择') || !lv2)
+                  missing.push('角色/内容(级联未到二级)');
+              }
               return missing;
             }""")
             return list(missing) if isinstance(missing, list) else []
@@ -852,32 +901,45 @@ class Publisher:
         # 勾上会要求上传「证明文件」（自创角色无需授权，保持未勾选状态）
 
     def _select_role(self, page, assets: EpisodeAssets) -> None:
-        """步骤15：角色/内容级联下拉。
+        """步骤15：角色/内容级联下拉（点开→一级→二级，选后验证+重试）。
 
-        含捞鱼→"人物合辑(包含以上多个)"，不含→"女人"。失败不阻塞（提交前平台会校验）。
+        2026-09-02 修复（59/60 事故）：①点击必须落在**文本叶子**上（事件绑
+        在叶子，点 title 容器不触发）；②选后验证 dt 文本含目标二级值，失败
+        重试 3 次——旧版静默失败时 dt 停在一级"人物角色"，本地 verify 检
+        "未选择"能过、平台却报"角色/内容不能为空"。
         """
-        try:
-            page.click(S.ROLE_DROPDOWN_DT, timeout=3000)
-            page.wait_for_timeout(1000)
-            # 点 first-level "人物角色"展开二级
-            page.click(
-                f'.weui-desktop-dropdown__list-ele.first-level:has-text("{S.ROLE_FIRST_LEVEL}")',
-                timeout=2000,
-            )
-            page.wait_for_timeout(1500)
-            # 二级菜单选目标（title 包含目标前缀）
-            # 2026-08-29（69 驳回 F1 修正）：按角色性别选——单角色男性（捞鱼）
-            # →【男人】（平台明示），其余单角色→【女人】；多角色才人物合辑
-            chars = getattr(assets, "characters", []) or []
-            if len(chars) >= 2:
-                target = S.ROLE_WITH_LAOYU_TITLE
-            elif chars and chars[0] in S.ROLE_MALE_NAMES:
-                target = S.ROLE_MALE_TITLE
-            else:
-                target = S.ROLE_WITHOUT_LAOYU_TITLE
-            page.click(f'[title*="{target.split("(")[0]}"]', timeout=2000)
-        except Exception as e:  # noqa: BLE001
-            self._warn(e)
+        chars = getattr(assets, "characters", []) or []
+        if len(chars) >= 2:
+            target = S.ROLE_WITH_LAOYU_TITLE.split("(")[0]
+        elif chars and chars[0] in S.ROLE_MALE_NAMES:
+            target = S.ROLE_MALE_TITLE
+        else:
+            target = S.ROLE_WITHOUT_LAOYU_TITLE.split("(")[0]
+
+        for attempt in range(3):
+            try:
+                page.click(S.ROLE_DROPDOWN_DT, timeout=4000)
+                page.wait_for_selector(
+                    ".weui-desktop-dropdown__list-ele.first-level",
+                    timeout=5000, state="attached")
+                page.click(
+                    f'.weui-desktop-dropdown__list-ele.first-level:has-text("'
+                    f'{S.ROLE_FIRST_LEVEL}")', timeout=4000)
+                page.wait_for_selector(f'[title*="{target}"]', timeout=6000,
+                                       state="attached")
+                try:
+                    page.get_by_text(target, exact=True).first.click(timeout=3000)
+                except Exception:   # noqa: BLE001
+                    page.click(f'[title*="{target}"]', timeout=3000)
+                page.wait_for_timeout(1000)
+                dt_text = page.locator(S.ROLE_DROPDOWN_DT).inner_text(timeout=3000)
+                if target in dt_text:
+                    return
+                self._warn(f"角色/内容第 {attempt + 1} 次选择后 dt="
+                           f"{dt_text.strip()[:20]}，重试")
+            except Exception as e:   # noqa: BLE001
+                self._warn(f"角色/内容选择异常（第 {attempt + 1} 次）：{e}")
+        self._warn(f"角色/内容最终未确认选中【{target}】，提交可能被平台拒绝")
 
     # ---- 步骤19：表情价格（免费） ----
 
@@ -973,8 +1035,13 @@ class Publisher:
         2. 明确失败：仍停在表单页且出现校验错误提示（必填/请填写等）；
         3. 轮询 60 秒仍无明确标志 → 判失败（调用方截图保现场）。
         """
+        # 2026-09-02 修复：必须精确匹配「提交」（text-is）——顶部「提交作品」
+        # 按钮同是 btn_primary，:has-text 模糊匹配会点到它 → 打开全新空白
+        # 表单 → 空表单的"请填写"提示被误判为校验失败（61-69 之后平台把
+        # 顶部按钮也改成了 primary 样式，59/60 事故连环根因之一）
         page.click(
-            f'button.weui-desktop-btn_primary:has-text("{S.SUBMIT_BUTTON_TEXT}")'
+            f'button.weui-desktop-btn_primary:text-is("{S.SUBMIT_BUTTON_TEXT}")',
+            timeout=8000,
         )
         for _ in range(12):   # 最多 60 秒
             page.wait_for_timeout(5000)
@@ -988,10 +1055,31 @@ class Publisher:
             # 回到管理首页 = 提交后跳转成功
             if "home/index" in url and "login" not in url:
                 return True
-            # 停在表单页：检测平台校验错误 → 明确失败并记录原因
+            # 停在表单页：检测平台校验错误 → 明确失败并收集具体红字字段
             for err_kw in ("请填写", "必填", "不能为空", "提交失败", "格式不正确", "请完善"):
                 if err_kw in body:
-                    self._warn(f"平台校验未通过：页面提示含「{err_kw}」，"
-                               "可能有必填字段没填上")
+                    try:
+                        reds = page.evaluate(
+                            """() => {
+                              const out = [];
+                              for (const el of document.querySelectorAll('*')) {
+                                const t = el.textContent.trim();
+                                if (t.includes('不能为空') && el.children.length === 0
+                                    && el.getBoundingClientRect().width > 0) {
+                                  let p = el.parentElement, ctx = '';
+                                  for (let k = 0; k < 4 && p; k++) {
+                                    p = p.parentElement;
+                                    if (p) { ctx = (p.innerText || '').trim().split('\n')[0].slice(0, 20); if (ctx) break; }
+                                  }
+                                  out.push(ctx + '→' + t.slice(0, 20));
+                                }
+                                if (out.length >= 6) break;
+                              }
+                              return out;
+                            }""")
+                    except Exception:   # noqa: BLE001
+                        reds = []
+                    self._warn(f"平台校验未通过：页面提示含「{err_kw}」"
+                               + (f"，具体：{reds}" if reds else ""))
                     return False
         return False
