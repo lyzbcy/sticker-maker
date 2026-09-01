@@ -152,20 +152,57 @@ def normalize_name(name: str) -> str:
 def match_episode(row_name: str, candidates: List[dict]) -> Optional[dict]:
     """把平台行名匹配到本地 episode（candidates 含 album_name/name 键）。
 
-    匹配规则（按优先级）：
-    1. 归一化后完全相等
-    2. 平台名（可能被截断）是本地名归一化形式的前缀，或互为前缀
+    匹配规则（两轮，2026-09-01 修复历史弹导入后的灾难性错配）：
+    1. 第一轮：归一化后**完全相等**——系列编号名（周三涵做表情5/57）只有
+       精确匹配才归属，绝不允许前缀放行（57 的平台行曾抢走 5 的本地单，
+       一个 bug 同时造成"5 显示未通过审核"+"历史弹全部未同步"）。
+    2. 第二轮（截断容错）：平台把长名截断显示（episode_20260825_180912 →
+       episode202608251）——前缀互含且**数字尾满足截断特征**（短的数字尾
+       >=4 位且是长数字尾的前缀；系列编号 1-2 位不满足，天然免疫）。
     """
     rn = normalize_name(row_name)
     if not rn:
         return None
+    # 第一轮：全局精确（不感知候选顺序，杜绝"短名先到先得"）
     for c in candidates:
         for key in ("album_name", "name"):
             ln = normalize_name(c.get(key) or "")
+            if ln and rn == ln:
+                return c
+
+    def _tail_num(raw: str) -> str:
+        # 对归一化名取尾数字（原始名的下划线会把尾数字截成最后一段）
+        m = re.search(r"(\d+)$", normalize_name(raw))
+        return m.group(1) if m else ""
+
+    rn_tail = _tail_num(row_name)
+    # 第二轮：截断前缀容错（带数字尾守卫）
+    for c in candidates:
+        for key in ("album_name", "name"):
+            raw = c.get(key) or ""
+            ln = normalize_name(raw)
             if not ln:
                 continue
-            if rn == ln or ln.startswith(rn) or rn.startswith(ln):
-                return c
+            if not (ln.startswith(rn) or rn.startswith(ln)):
+                continue
+            lt = _tail_num(raw)
+            if rn_tail and lt:
+                if rn_tail == lt:
+                    return c                      # 数字尾相同：放心归属
+                short, long_ = sorted([rn_tail, lt], key=len)
+                if len(short) >= 4 and long_.startswith(short):
+                    continue                      # 截断特征：先看有没有更精确的
+                continue                          # 5/57 型：拒绝
+            return c                              # 无数字尾：前缀互含即认
+    # 截断特征命中但没找到更好的——回头取第一个截断候选
+    for c in candidates:
+        for key in ("album_name", "name"):
+            ln = normalize_name(c.get(key) or "")
+            if ln and (ln.startswith(rn) or rn.startswith(ln)):
+                lt_tail = _tail_num(c.get(key) or "")
+                short, long_ = sorted([rn_tail, lt_tail], key=len) if (rn_tail and lt_tail) else ("", "")
+                if rn_tail and lt_tail and len(short) >= 4 and long_.startswith(short):
+                    return c
     return None
 
 

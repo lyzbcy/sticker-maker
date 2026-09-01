@@ -134,3 +134,43 @@ def test_reject_reason_persisted_in_meta():
     # 旧 meta（无该字段）反序列化兼容
     m2 = EpisodeMeta.from_dict({"album_name": "x", "platform_status": "已上架"})
     assert m2.platform_reject_reason == ""
+
+
+# ---------------- 匹配器错配回归（2026-09-01 历史 60 弹导入事故） ----------------
+
+def _cands():
+    """模拟目录序：episode_2026xxx 在前，import_001-060 在后（5 在 57 前）。"""
+    real = [{"album_name": "周三涵做表情61", "name": "episode_20260825_180912"}]
+    imports = [{"album_name": f"周三涵做表情{n}", "name": f"episode_import_{n:03d}"}
+               for n in range(1, 61)]
+    return real + imports
+
+
+def test_no_prefix_hijack_between_numbered_series():
+    """57 的平台行绝不能抢走 5 的本地单（前缀互含在编号场景必须拒绝）。"""
+    hit = match_episode("周三涵做表情57", _cands())
+    assert hit and hit["album_name"] == "周三涵做表情57"
+
+
+def test_exact_match_first_for_every_number():
+    """1-60 每个编号的平台行都精确归属到同号本地单。"""
+    cands = _cands()
+    for n in (1, 5, 9, 16, 59, 60):
+        hit = match_episode(f"周三涵做表情 {n}", cands)   # 平台名带空格也归一
+        assert hit and hit["album_name"] == f"周三涵做表情{n}", n
+
+
+def test_truncated_timestamp_still_matches():
+    """时间戳长名被平台截断（episode202608251）仍能容错匹配。"""
+    hit = match_episode("episode202608251", [
+        {"album_name": "episode_20260825_180912", "name": "episode_20260825_180912"},
+        {"album_name": "周三涵做表情5", "name": "episode_import_005"},
+    ])
+    assert hit and hit["album_name"] == "episode_20260825_180912"
+
+
+def test_five_not_matched_when_only_longer_exists():
+    """只有 57 本地单时，5 的平台行不得错配到它。"""
+    hit = match_episode("周三涵做表情5", [
+        {"album_name": "周三涵做表情57", "name": "episode_import_057"}])
+    assert hit is None
