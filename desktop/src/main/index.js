@@ -22,7 +22,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 960, height: 680, minWidth: 800, minHeight: 600,
     title: '表情包一键制作',
-    icon: path.join(____, 'build', 'icon.png').replace('mainuild', 'build'),
+    icon: path.join(app.getAppPath(), 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
       contextIsolation: true, nodeIntegration: false,
