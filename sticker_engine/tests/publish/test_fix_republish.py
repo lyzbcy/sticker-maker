@@ -57,5 +57,25 @@ def test_fix_strips_album_spaces_without_publish(tmp_path, monkeypatch):
     from sticker_engine.config.series import load_meta
     m = load_meta(ep)
     assert m.album_name == "周三涵做表情61"          # 空格已去
+    # 精准化：61 的理由只提名称空格 → 只改 album，不跑去边框
+    assert data["fields"] == ["album"]
     joined = "；".join(data["actions"])
-    assert "去空格" in joined and "去边框" in joined
+    assert "去空格" in joined
+    assert "去边框" not in joined
+
+
+def test_fix_fields_from_border_reason(tmp_path):
+    """边框线理由 → repolish 跑 + stickers/cover 进编辑字段。"""
+    ep = _make_rejected_ep(tmp_path)
+    from sticker_engine.config.series import load_meta, save_meta
+    m = load_meta(ep)
+    m.platform_reject_reason = "总体驳回理由\n表情图中含有多余边框线，需要去除。"
+    save_meta(ep, m)
+    st, data = _call(cmd_fix_and_republish, {"episode_dir": str(ep), "publish": False})
+    assert st == "ok"
+    assert "stickers" in data["fields"] and "cover" in data["fields"]
+    joined = "；".join(data["actions"])
+    assert "去边框" in joined
+    # 品红边框被抠
+    out = Image.open(ep / "最终版" / "欢呼.png").convert("RGBA")
+    assert out.getpixel((3, 3))[3] == 0

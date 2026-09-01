@@ -653,11 +653,31 @@ def cmd_repolish_finals(req_id, args):
                                 "backup": str(backup)})
 
 
-def cmd_fix_and_republish(req_id, args):
-    """「修复并重新提交」：repolish 成品 → AI 图标 → 专辑名去空格 → 编辑重提。
+def _reject_fix_fields(reason: str) -> set:
+    """从驳回理由原文推断编辑器里要改的字段（精准修改，2026-08-29 用户 SOP：
+    只改有问题的部分，不全量重传）。"""
+    f = set()
+    if "空格" in reason:
+        f.add("album")
+    if "图标" in reason:
+        f.add("icon")
+    if "边框" in reason:
+        f.update({"stickers", "cover"})
+    if "角色" in reason or "合辑" in reason:
+        f.add("role")
+    if "赞赏" in reason:
+        f.add("tips")
+    if "封面" in reason:
+        f.add("cover")
+    return f
 
-    针对"未通过审核"的单（8 单驳回整改的自动化闭环）。edit=False 时只做
-    修复不提交（用户先检查）。
+
+def cmd_fix_and_republish(req_id, args):
+    """「修改完毕，去平台重新提交」：按驳回理由精准修复 + 编辑器精准重提。
+
+    fix="auto"（默认）：从 meta.platform_reject_reason 推断要改的字段；
+    本地修复只做选中字段相关的部分；publish=True 时打开平台编辑器
+    （详情页→编辑→新标签）只改这些字段后点提交。
     """
     import shutil
     from PIL import Image as _Im
@@ -672,9 +692,35 @@ def cmd_fix_and_republish(req_id, args):
     actions = []
     final = ep_dir / "最终版"
     final_pngs = sorted(final.glob("*.png")) if final.is_dir() else []
+    reason = meta.platform_reject_reason or ""
+    fields = _reject_fix_fields(reason)
+    if not fields:
+        # 驳回理由没有可识别关键词 → 全量重走（最稳）
+        fields = {"album", "stickers", "icon", "cover", "tips", "role",
+                  "categories", "price"}
+    # cover 选中（68 驳回"表情封面含边框线"）：用 repolish 后的成品重做封面
+    if "cover" in fields and final_pngs:
+        try:
+            from .stages.assets import AssetsStage
+            from .providers.codex import CodexProvider
+            from .providers.vision import VisionProvider
+            engine = _ensure_engine()
+            provider = VisionProvider(CodexProvider(
+                codex_exec=engine.config.paths.codex_exec,
+                output_dir=engine.config.paths.codex_output_dir))
+            cover_dir = ep_dir / "封面"; cover_dir.mkdir(exist_ok=True)
+            best = AssetsStage(provider)._pick_best_face(
+                [str(p) for p in final_pngs])
+            from .stages.assets import resize_save as _rs
+            _rs(best, cover_dir / "封面.png", 240, 240)
+            actions.append("封面：已用去边框成品重做")
+        except Exception as e:   # noqa: BLE001
+            actions.append(f"封面重做失败（{type(e).__name__}: {e}）")
 
-    # 1) 成品 repolish（边框线，62/68 驳回）
-    if final.is_dir():
+    result = {"actions": actions, "fields": sorted(fields), "published": False}
+
+    # 1) 成品 repolish（边框线，62/68 驳回）——仅当选了 stickers/cover
+    if final.is_dir() and ({"stickers", "cover"} & fields):
         backup = ep_dir / "原图" / "_finals_backup"
         backup.mkdir(parents=True, exist_ok=True)
         n = 0
@@ -688,14 +734,14 @@ def cmd_fix_and_republish(req_id, args):
         actions.append(f"成品去边框 {n} 张")
 
     # 2) 专辑名去空格（61-64/68/69 驳回）；介绍.txt 不含专辑名，无需同步
-    if meta.album_name and " " in meta.album_name:
+    if "album" in fields and meta.album_name and " " in meta.album_name:
         meta.album_name = meta.album_name.replace(" ", "")
         save_meta(ep_dir, meta)
         actions.append(f"专辑名去空格 → {meta.album_name}")
 
     # 3) AI 图标（61/63/64/65/66/68/69 驳回）——老单没有 _icon_raw，补生成
     icon_raw = ep_dir / "图标" / "_icon_raw.png"
-    if not icon_raw.exists():
+    if "icon" in fields and not icon_raw.exists():
         try:
             from .stages.assets import AssetsStage, resize_save
             from .providers.codex import CodexProvider
@@ -748,7 +794,7 @@ def cmd_fix_and_republish(req_id, args):
 
     # 4) 赞赏图（69 驳回）——本组角色派生
     tip_dir = ep_dir / "赞赏图"
-    if not (tip_dir / "赞赏引导图.png").exists() and final_pngs:
+    if "tips" in fields and not (tip_dir / "赞赏引导图.png").exists() and final_pngs:
         try:
             from .stages.assets import AssetsStage
             from .providers.codex import CodexProvider
@@ -765,7 +811,6 @@ def cmd_fix_and_republish(req_id, args):
         except Exception as e:   # noqa: BLE001
             actions.append(f"赞赏图生成失败（{type(e).__name__}: {e}）")
 
-    result = {"actions": actions, "published": False}
     # 5) 编辑重提（平台编辑器全流程重填 + 提交）
     if do_publish:
         from .publish.config import PublishConfig
@@ -775,7 +820,8 @@ def cmd_fix_and_republish(req_id, args):
         with sync_playwright() as pw:
             session = BrowserSession(PublishConfig(), playwright=pw)
             publisher = Publisher(PublishConfig(), session)
-            _r = publisher.publish(ep_dir, headless=False, edit=True)
+            _r = publisher.publish(ep_dir, headless=False, edit=True,
+                                   fix_fields=fields)
             result["publish"] = _r
             result["published"] = bool(_r.get("success"))
             if result["published"]:

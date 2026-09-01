@@ -154,17 +154,19 @@
       <!-- 发布 -->
       <section class="card">
         <h3 class="card-title">发布</h3>
-        <!-- 未通过审核：一键修复（去边框/AI图标/去空格/赞赏图）并走平台编辑器重提 -->
+        <!-- 未通过审核：按驳回理由精准修复 + 平台编辑器重提（用户 SOP） -->
         <div v-if="(ep.meta.platform_status || '').includes('未通过')" class="republish-box">
+          <p class="republish-title">⛔ 这单被驳回——按驳回理由修改后再提交：</p>
           <button class="republish-btn" :disabled="fixingRepublish" @click="fixAndRepublish(true)">
-            {{ fixingRepublish ? '修复并重新提交中（约几分钟）…' : '🔧 一键修复并重新提交审核' }}
+            {{ fixingRepublish ? '正在修改并重新提交（约几分钟）…' : '✅ 修改完毕，去平台重新提交' }}
           </button>
           <button class="btn-sm" :disabled="fixingRepublish" @click="fixAndRepublish(false)">
-            只修复不提交
+            只修复本地素材
           </button>
           <p class="republish-note">
-            自动执行：成品去边框 → 专辑名去空格 → AI 生成头部图标 → 重做赞赏图
-            <template v-if="fixRepublishActions">→ 已完成：{{ fixRepublishActions }}</template>
+            流程：本地按驳回理由修复（去边框/改空格名/AI 头部图标/重做赞赏图）→
+            打开平台该单的编辑页 → 只把有问题的部分改掉 → 点提交
+            <template v-if="fixRepublishActions"><br />→ 已完成：{{ fixRepublishActions }}</template>
           </p>
         </div>
         <div class="row-actions">
@@ -615,6 +617,7 @@ header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; fle
 .copy-feedback-btn:disabled { opacity: .6; cursor: wait; }
 .republish-box { padding: 10px 12px; border: 1px dashed rgba(46, 74, 52, .35);
   border-radius: 10px; background: rgba(46, 74, 52, .04); margin-bottom: 10px; }
+.republish-title { margin: 0 0 8px; font-size: 12px; font-weight: 700; color: var(--brick); }
 .republish-btn { border: 0; background: var(--forest); color: white; border-radius: 999px;
   padding: 9px 18px; font-weight: 800; cursor: pointer; margin-right: 8px; }
 .republish-btn:hover:not(:disabled) { background: var(--forest-hover); }

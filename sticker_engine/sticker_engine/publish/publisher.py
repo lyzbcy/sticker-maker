@@ -228,10 +228,15 @@ class Publisher:
 
     # ---- 主流程 ----
 
-    def publish(self, episode_dir, headless: bool = False, edit: bool = False) -> dict:
+    def publish(self, episode_dir, headless: bool = False, edit: bool = False,
+                fix_fields=None) -> dict:
         """发布一弹。edit=True 走「编辑已驳回作品」入口（修改后重新提交审核）。
 
+        fix_fields：编辑模式下**只改这些字段**（"album"/"stickers"/"icon"/
+        "cover"/"tips"/"role"/"categories"），None=全量重走。精准修改来自
+        驳回理由关键词（2026-08-29 用户 SOP：只改有问题的部分）。
         返回 ``{success, step, error?, album_name?}``。"""
+        fields = set(fix_fields) if fix_fields else None
         assets = EpisodeAssets.from_dir(Path(episode_dir))
 
         # ---- 步骤前：本地校验，早退 ----
@@ -265,30 +270,46 @@ class Publisher:
                 page = self._step_open_editor(page, assets)
             else:
                 self._step_open_submit_form(page)
-            # 步骤6：上传表情图（按故事线顺序）
-            self._report("upload", f"正在上传 {len(assets.stickers)} 张表情图…", 0.45)
-            self._step_upload_stickers(page, assets)
-            # 步骤7：填含义词
-            self._report("meanings", "正在填写每张表情的含义…", 0.55)
-            self._step_fill_meanings(page, assets)
-            # 步骤8-9：专辑名 + 介绍
-            self._report("album", "正在填写专辑信息…", 0.65)
-            self._step_fill_album_info(page, assets)
-            # 步骤10：版权
-            self._report("copyright", "正在填写版权信息…", 0.70)
+            # 精准修改模式：need(f) 判定该字段是否要改（非编辑模式恒 True）
+            need = (lambda f: True) if not edit or fields is None else (
+                lambda f: f in fields)
+
+            if need("stickers"):
+                # 步骤6：上传表情图（按故事线顺序）
+                self._report("upload", f"正在上传 {len(assets.stickers)} 张表情图…", 0.45)
+                self._step_upload_stickers(page, assets)
+                # 步骤7：填含义词
+                self._report("meanings", "正在填写每张表情的含义…", 0.55)
+                self._step_fill_meanings(page, assets)
+            else:
+                self._report("upload", "表情图无需修改，跳过上传", 0.45)
+            if need("album"):
+                # 步骤8-9：专辑名 + 介绍
+                self._report("album", "正在填写专辑信息…", 0.65)
+                self._step_fill_album_info(page, assets)
+            # 步骤10：版权（预填，重填无害）
             self._step_fill_copyright(page)
-            # 步骤11-13：横幅/封面/图标
-            self._report("assets", "正在上传横幅/封面/图标…", 0.78)
-            self._step_upload_assets(page, assets)
-            # 步骤14-18：类型/角色/风格/主题/地区
-            self._report("categories", "正在选择专辑分类…", 0.85)
-            self._step_select_categories(page, assets)
-            # 步骤19：表情价格（免费）
-            self._report("price", "正在选择价格（免费）…", 0.90)
-            self._step_select_price(page)
-            # 步骤20-22：接受赞赏 + 引导语 + 两张赞赏图
-            self._report("tips", "正在配置赞赏图…", 0.94)
-            self._step_tips(page, assets)
+            if need("cover") or need("icon") or need("banner"):
+                # 步骤11-13：横幅/封面/图标（按需只传指定项）
+                self._report("assets", "正在上传横幅/封面/图标…", 0.78)
+                self._step_upload_assets(
+                    page, assets,
+                    only=[f for f in ("banner", "cover", "icon") if need(f)])
+            if need("categories") or need("role"):
+                # 步骤14-18：类型/角色/风格/主题/地区
+                self._report("categories", "正在选择专辑分类…", 0.85)
+                self._step_select_categories(page, assets)
+            if need("role"):
+                # 角色分类单独重选（69：合辑→按性别）
+                self._select_role(page, assets)
+            if need("price"):
+                # 步骤19：表情价格（免费）
+                self._report("price", "正在选择价格（免费）…", 0.90)
+                self._step_select_price(page)
+            if need("tips"):
+                # 步骤20-22：接受赞赏 + 引导语 + 两张赞赏图
+                self._report("tips", "正在配置赞赏图…", 0.94)
+                self._step_tips(page, assets)
             # 步骤24：提交前自检（实时监测：必填项是否全部就位）
             missing = self._verify_form(page)
             if missing:
@@ -466,14 +487,16 @@ class Publisher:
 
     # ---- 步骤11-13：横幅/封面/图标 ----
 
-    def _step_upload_assets(self, page, assets: EpisodeAssets) -> None:
-        """步骤11-13：横幅、封面、图标。
+    def _step_upload_assets(self, page, assets: EpisodeAssets, only=None) -> None:
+        """步骤11-13：横幅、封面、图标。only=[label,...] 时只传指定项（精准修改）。
 
         2026-08 实测：页面改版后 uploader__init 消失；表单上有且仅有 3 个
         可见的 file input，顺序即 横幅/封面/图标（横幅 accept 含 jpeg，
         封面/图标 accept=image/png）。用 JS 打临时 class 后 set_input_files。
         """
         pairs = [("横幅", assets.banner), ("封面", assets.cover), ("图标", assets.icon)]
+        if only:
+            pairs = [(l, i) for l, i in pairs if l in only]
         for label, img in pairs:
             if img is None:
                 self._warn(f"{label}文件缺失，跳过上传（详情页可重新生成）")
