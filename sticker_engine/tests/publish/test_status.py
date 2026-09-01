@@ -230,3 +230,17 @@ def test_unrelated_names_no_match():
     """无数字尾的行名（星星布丁）对无关候选（星星）不得互配。"""
     assert match_episode("星星布丁", [
         {"album_name": "星星", "name": "episode_y"}]) is None
+
+
+def test_ui_button_words_filtered():
+    """幻影行：页头按钮"创建形象"不得被当成作品行。"""
+    from sticker_engine.publish.status import parse_rows_from_text
+    text = """创建形象
+星星布丁
+-	1	-	已上架	原创	2026-09-01	详情
+周三涵做表情67
+-	2	-	待审核	原创	2026-09-01	详情"""
+    rows = parse_rows_from_text(text)
+    names = [r.name for r in rows]
+    assert "创建形象" not in names
+    assert "星星布丁" in names and "周三涵做表情67" in names

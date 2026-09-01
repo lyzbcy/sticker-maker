@@ -22,6 +22,7 @@ from typing import Callable, List, Optional
 HOME_URL = ("https://sticker.weixin.qq.com/cgi-bin/mmemoticon-bin/"
             "readtemplate?t=home/index")
 MAX_PAGES = 40          # 防失控上限（全量翻页，80+ 作品约 8 页，40 富余）
+_UI_BUTTON_WORDS = {"创建形象"}   # 列表页头部的 UI 按钮（非作品行，回归发现）
 _STALL_ROWS = 20        # 连续 N 行已上架/下架 → 停止翻页（用户策略：翻到最深的活跃单为止）
 # 状态词按精确匹配顺序排：否定词在前（"审核通过"是"审核未通过"的子串场景
 # 由关键词表+先判长词避免）。2026-09-01 事故：缺"审核通过"导致过审单在
@@ -303,6 +304,9 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
             for page_no in range(1, MAX_PAGES + 1):
                 page.wait_for_timeout(1200)
                 rows = parse_rows_from_text(page.inner_text("body"))
+                # 过滤幻影行（2026-09-01 回归发现：页头按钮"创建形象"被当成
+                # 行名，混进 unmatched 列表显示为不存在的作品）
+                rows = [r for r in rows if r.name not in _UI_BUTTON_WORDS]
                 if rows:
                     # 卡页检测（2026-09-01：后段点"下一页"偶发不前进，同内容
                     # 反复累计 180+ 条假数据）。签名取第 3-5 行（前两行是每页
@@ -316,7 +320,15 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
                     pages = page_no
                     say(f"已读取第 {page_no} 页（累计 {len(all_rows)} 条作品）…")
                     # 未通过审核的行：就地进详情抓驳回理由（用户需要知道为什么被拒）
-                    rejects = [r for r in rows if "未通过" in r.status and "审核" in r.status]
+                    _seen_r = set()
+                    rejects = []
+                    for r in rows:
+                        if "未通过" in r.status and "审核" in r.status:
+                            key = normalize_name(r.name)
+                            if key in _seen_r:
+                                continue   # 平台同名重复行，省一次详情往返
+                            _seen_r.add(key)
+                            rejects.append(r)
                     if rejects:
                         # 恢复分页位置（2026-09-01 根因：进详情抓理由后 go_back，
                         # 平台列表是 SPA 路由——回到的是第 1 页且分页状态丢失。
