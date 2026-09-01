@@ -626,13 +626,27 @@ def cmd_repolish_finals(req_id, args):
         return
     backup = ep_dir / "原图" / "_finals_backup"
     backup.mkdir(parents=True, exist_ok=True)
+    # R3（评审）：ref_library 保留背景模式（prompt.txt 的 # mode:）不跑第一层
+    # 抠边缘背景——只 trim，尊重"保留参考图原有背景"策略矩阵
+    mode = ""
+    pf = ep_dir / "原图" / "prompt.txt"
+    if pf.exists():
+        try:
+            for line in pf.read_text(encoding="utf-8").splitlines():
+                if line.startswith("# mode:"):
+                    mode = line.replace("# mode:", "").strip()
+                    break
+        except OSError:
+            pass
+    skip_bg = mode == "ref_library"
     fixed = []
     for p in sorted(final.glob("*.png")):
         bak = backup / p.name
         if not bak.exists():
             shutil.copy2(p, bak)   # 只备份第一手原图，重跑不叠加
         img = Image.open(bak).convert("RGBA")
-        out = ensure_size(trim_border_band(remove_edge_background(img)))
+        out = img if skip_bg else remove_edge_background(img)
+        out = ensure_size(trim_border_band(out))
         out.save(p)
         fixed.append(p.name)
     _result(req_id, "ok", data={"fixed": fixed, "count": len(fixed),
@@ -673,65 +687,83 @@ def cmd_fix_and_republish(req_id, args):
             n += 1
         actions.append(f"成品去边框 {n} 张")
 
-    # 2) 专辑名去空格（61-64/68/69 驳回）
+    # 2) 专辑名去空格（61-64/68/69 驳回）；介绍.txt 不含专辑名，无需同步
     if meta.album_name and " " in meta.album_name:
         meta.album_name = meta.album_name.replace(" ", "")
         save_meta(ep_dir, meta)
         actions.append(f"专辑名去空格 → {meta.album_name}")
-        # 介绍.txt 里的旧名同步（发布时读它）
-        intro_f = ep_dir / "介绍.txt"
-        if intro_f.exists():
-            txt = intro_f.read_text(encoding="utf-8")
-            if " " in meta.album_name:
-                pass
-            intro_f.write_text(txt, encoding="utf-8")
 
     # 3) AI 图标（61/63/64/65/66/68/69 驳回）——老单没有 _icon_raw，补生成
     icon_raw = ep_dir / "图标" / "_icon_raw.png"
     if not icon_raw.exists():
         try:
-            from .stages.assets import AssetsStage
+            from .stages.assets import AssetsStage, resize_save
+            from .providers.codex import CodexProvider
             from .providers.vision import VisionProvider
             engine = _ensure_engine()
-            provider = engine.vision if hasattr(engine, "vision") else None
-            if provider is None:
-                provider = VisionProvider(engine.codex)
+            # F2（评审）：StickerEngine 无 vision/codex 属性——按 cmd_check_codex
+            # 同款方式从 paths 构造
+            provider = VisionProvider(CodexProvider(
+                codex_exec=engine.config.paths.codex_exec,
+                output_dir=engine.config.paths.codex_output_dir))
             stage = AssetsStage(provider)
             bases = []
+            # R6（评审）：base*.png 约定在真实单 0 命中——base 在参考图库，
+            # 按角色名匹配；匹配不到退第 1 张成品（弱参考，actions 里注明）
             md = ep_dir / "本次制作角色.md"
-            # base 图从参考库目录约定取（原图/base*）；找不到退第 1 张成品
-            final_pngs = sorted(final.glob("*.png")) if final.is_dir() else []
-            cand = ep_dir / "原图"
-            if cand.is_dir():
-                bases = [str(p) for p in sorted(cand.glob("base*.png"))][:1]
+            char_names = []
+            if md.exists():
+                for line in md.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if line.startswith("角色："):
+                        char_names = [c for c in line[len("角色："):].split("、") if c]
+                        break
+            reflib = Path(engine.config.paths.reference_lib)
+            if reflib.is_dir() and char_names:
+                for c in char_names:
+                    hits = [p for p in sorted(reflib.rglob("*.png"))
+                            if c in p.stem]
+                    if hits:
+                        bases = [str(hits[0])]
+                        break
             if not bases and final_pngs:
                 bases = [str(final_pngs[0])]
+                weak_ref = True
+            else:
+                weak_ref = False
             out = stage._make_ai_icon(
                 type("C", (), {"episode_dir": ep_dir, "selected_bases": bases})(), final_pngs)
             if out is not None:
-                actions.append("图标：AI 生成纯头部正面照")
+                # F3（评审）：_make_ai_icon 只写 _icon_raw——必须回写正式图标
+                resize_save(out, ep_dir / "图标" / "图标.png", 50, 50)
+                note = "图标：AI 生成纯头部正面照（已更新 50×50）"
+                if weak_ref:
+                    note += "（参考为成品图，保真可能偏弱，建议重生成本组获得最佳图标）"
+                actions.append(note)
             else:
-                actions.append("图标：AI 生成失败，沿用旧图标（发布时可能再被驳回）")
+                why = getattr(stage, "_icon_last_error", "") or "未知原因"
+                actions.append(f"图标：AI 生成失败（{why[:80]}），沿用旧图标")
         except Exception as e:   # noqa: BLE001
-            actions.append(f"图标：生成异常（{type(e).__name__}），沿用旧图标")
+            actions.append(f"图标：生成异常（{type(e).__name__}: {e}），沿用旧图标")
 
     # 4) 赞赏图（69 驳回）——本组角色派生
     tip_dir = ep_dir / "赞赏图"
     if not (tip_dir / "赞赏引导图.png").exists() and final_pngs:
         try:
             from .stages.assets import AssetsStage
+            from .providers.codex import CodexProvider
             from .providers.vision import VisionProvider
             engine = _ensure_engine()
-            provider = engine.vision if hasattr(engine, "vision") else None
-            if provider is None:
-                provider = VisionProvider(engine.codex)
+            provider = VisionProvider(CodexProvider(
+                codex_exec=engine.config.paths.codex_exec,
+                output_dir=engine.config.paths.codex_output_dir))
             cover_src = ep_dir / "封面" / "封面.png"
             AssetsStage(provider)._make_tip_images(
                 [str(p) for p in final_pngs],
                 str(cover_src) if cover_src.exists() else str(final_pngs[0]), tip_dir)
             actions.append("赞赏图：已用本组角色生成")
         except Exception as e:   # noqa: BLE001
-            actions.append(f"赞赏图生成失败（{type(e).__name__}）")
+            actions.append(f"赞赏图生成失败（{type(e).__name__}: {e}）")
 
     result = {"actions": actions, "published": False}
     # 5) 编辑重提（平台编辑器全流程重填 + 提交）
@@ -749,6 +781,7 @@ def cmd_fix_and_republish(req_id, args):
             if result["published"]:
                 meta.platform_status = "待审核"
                 meta.published = True
+                meta.platform_reject_reason = ""   # S2（评审）：清旧驳回理由
                 save_meta(ep_dir, meta)
     _result(req_id, "ok", data=result)
 

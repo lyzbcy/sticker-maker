@@ -41,6 +41,9 @@ ROLE_DROPDOWN_DT = 'dt.weui-desktop-form__dropdowncascade__dt'
 ROLE_FIRST_LEVEL = "人物角色"
 ROLE_WITH_LAOYU_TITLE = "人物合辑(包含以上多个)"
 ROLE_WITHOUT_LAOYU_TITLE = "女人"
+# 2026-08-29（69 驳回：平台明示"请只选择【人物角色/男人】"）——男性角色映射
+ROLE_MALE_TITLE = "男人"
+ROLE_MALE_NAMES = {"捞鱼"}   # 已知男性角色名（后续可入角色库）
 STYLE_CHECKBOX_SOFT = 'input[type="checkbox"][value="软萌可爱"]'
 STYLE_CHECKBOX_DAILY = 'input[type="checkbox"][value="日常"]'
 THEME_RADIO_VALUE = "万能通用"

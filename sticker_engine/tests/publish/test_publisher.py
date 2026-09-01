@@ -85,7 +85,8 @@ def make_episode(tmp_path: Path, *, meanings=None, has_char_card=True,
 
     if has_char_card:
         line = "含捞鱼：是" if contains_laoyu else "含捞鱼：否"
-        roles = "、".join(characters) if characters else "捞鱼"
+        default_role = "捞鱼" if contains_laoyu else "星星布丁"
+        roles = "、".join(characters) if characters else default_role
         (ep / "本次制作角色.md").write_text(
             f"# 角色\n角色：{roles}\n{line}\n", encoding="utf-8")
 
@@ -449,16 +450,26 @@ def test_step_select_categories_clicks_all_constants(tmp_path):
     assert any(not isinstance(p, list) and p == "全球" for p in payloads)
 
 def test_select_role_single_character_uses_gender_not_compilation(tmp_path):
-    """2026-08-29（69 驳回）：单角色（含捞鱼）→【男人】，不再盲目人物合辑。"""
-    ep = make_episode(tmp_path, contains_laoyu=True)
+    """2026-08-29（69 驳回）：单角色男性（捞鱼）→【男人】（评审F1：按性别不按合辑）。"""
+    ep = make_episode(tmp_path, contains_laoyu=True, characters=["捞鱼"])
+    assets = EpisodeAssets.from_dir(ep)
+    publisher, session, page = _make_publisher(tmp_path)
+    publisher._select_role(page, assets)
+    click_sels = [c.args[0] for c in page.click.call_args_list]
+    assert any(f'[title*="{S.ROLE_MALE_TITLE}"]' in c for c in click_sels)
+    forbidden = S.ROLE_WITH_LAOYU_TITLE.split("(")[0]
+    assert not any(f'[title*="{forbidden}"]' in c for c in click_sels)
+
+
+def test_select_role_single_female_uses_woman(tmp_path):
+    """单角色女性（星星布丁）→【女人】。"""
+    ep = make_episode(tmp_path, contains_laoyu=False, characters=["星星布丁"])
     assets = EpisodeAssets.from_dir(ep)
     publisher, session, page = _make_publisher(tmp_path)
     publisher._select_role(page, assets)
     click_sels = [c.args[0] for c in page.click.call_args_list]
     expected = S.ROLE_WITHOUT_LAOYU_TITLE.split("(")[0]
     assert any(f'[title*="{expected}"]' in c for c in click_sels)
-    forbidden = S.ROLE_WITH_LAOYU_TITLE.split("(")[0]
-    assert not any(f'[title*="{forbidden}"]' in c for c in click_sels)
 
 
 def test_select_role_multi_character_uses_compilation(tmp_path):

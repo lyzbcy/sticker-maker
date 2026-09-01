@@ -670,10 +670,13 @@ class Publisher:
             )
             page.wait_for_timeout(1500)
             # 二级菜单选目标（title 包含目标前缀）
-            # 2026-08-29（69 驳回）：平台裁定单角色「捞鱼」应选【人物角色/男人】，
-            # 「人物合辑」相关度不高被拒——只有多角色（2 个及以上）才用人物合辑
-            if len(getattr(assets, "characters", []) or []) >= 2:
+            # 2026-08-29（69 驳回 F1 修正）：按角色性别选——单角色男性（捞鱼）
+            # →【男人】（平台明示），其余单角色→【女人】；多角色才人物合辑
+            chars = getattr(assets, "characters", []) or []
+            if len(chars) >= 2:
                 target = S.ROLE_WITH_LAOYU_TITLE
+            elif chars and chars[0] in S.ROLE_MALE_NAMES:
+                target = S.ROLE_MALE_TITLE
             else:
                 target = S.ROLE_WITHOUT_LAOYU_TITLE
             page.click(f'[title*="{target.split("(")[0]}"]', timeout=2000)

@@ -278,6 +278,9 @@ const fixRepublishActions = ref('')
 const fixRepublishError = ref('')
 async function fixAndRepublish(publish) {
   if (!ep.value?.path || !window.api) return
+  // R5（评审）：与普通发布互斥——占住 publishing 锁，防并发双开浏览器
+  if (store.publishing) return
+  store.publishing = true
   fixingRepublish.value = true
   fixRepublishActions.value = ''
   fixRepublishError.value = ''
@@ -300,6 +303,7 @@ async function fixAndRepublish(publish) {
     }
   } finally {
     fixingRepublish.value = false
+    store.publishing = false
   }
 }
 async function copyRejectReview() {

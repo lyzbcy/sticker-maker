@@ -116,9 +116,11 @@ class AssetsStage:
                 break
 
         def _compose(size, text):
-            canvas = Image.new("RGBA", size, (255, 244, 242, 255))   # 奶油粉底
+            # R4（评审）：底色用纯白——非透明封面（白底 JPEG）贴上来无边界；
+            # 透明贴纸在白底上同样干净
+            canvas = Image.new("RGBA", size, (255, 255, 255, 255))
             d = ImageDraw.Draw(canvas)
-            # 顶部/底部淡色饰带
+            # 顶部/底部粉色饰带（保留一点赞赏卡的暖感）
             d.rectangle([0, 0, size[0], 26], fill=(255, 214, 214, 255))
             d.rectangle([0, size[1] - 26, size[0], size[1]], fill=(255, 214, 214, 255))
             # 角色贴纸放大居中（等比，占高 ~70%）
