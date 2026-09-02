@@ -497,6 +497,24 @@ class Publisher:
         except Exception:
             pass
         page.wait_for_timeout(2500)
+        # 2026-09-02 平台流程变化（删废品实测发现）：待审核单的详情页
+        # 没有「编辑」按钮（此前被当成"审核中锁定"），正确路径是先
+        # 「撤回编辑」→确认→状态变「已保存」→再「编辑」。撤回-重提交
+        # 正是"修改后重新送审"的平台语义。
+        edit_btn = page.locator("button:has-text('编辑')")
+        if not edit_btn.count():
+            withdraw = page.locator(
+                "button:has-text('撤回编辑'), a:has-text('撤回编辑')")
+            if withdraw.count():
+                withdraw.first.click()
+                page.wait_for_timeout(1500)
+                try:
+                    page.locator(
+                        '.weui-desktop-dialog:visible '
+                        'button:has-text("确定")').first.click(timeout=4000)
+                except Exception:   # noqa: BLE001
+                    pass
+                page.wait_for_timeout(3000)
         before = set(id(pg) for pg in page.context.pages)
         page.locator("button:has-text('编辑')").first.click()
         page.wait_for_timeout(6000)
