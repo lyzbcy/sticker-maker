@@ -267,13 +267,14 @@ def test_publish_happy_path_calls_steps_in_order_and_closes(tmp_path):
     # _step_submit 直接返回 True（不进真实 page.click）
     publisher._step_submit = MagicMock(return_value=True)
     publisher._verify_form = MagicMock(return_value=[])
-    # 其余 step 用 spy（不抛）
-    for name in ("_step_open_submit_form", "_step_upload_stickers",
-                 "_step_fill_meanings", "_step_fill_album_info",
-                 "_step_fill_copyright", "_step_upload_assets",
-                 "_step_select_categories", "_step_select_price",
-                 "_step_tips"):
-        setattr(publisher, name, MagicMock(name=name))
+    # 其余 step 用 spy（不抛），用 manager 记录调用顺序
+    manager = MagicMock(name="manager")
+    for name in ("_step_open_submit_form", "_step_tips", "_step_upload_assets",
+                 "_step_upload_stickers", "_step_fill_meanings",
+                 "_step_fill_album_info", "_step_fill_copyright",
+                 "_step_select_categories", "_step_select_price"):
+        m = getattr(manager, name)
+        setattr(publisher, name, m)
 
     result = publisher.publish(ep)
 
@@ -283,17 +284,67 @@ def test_publish_happy_path_calls_steps_in_order_and_closes(tmp_path):
     # 登录、开表单、上传表情图都应被调用
     session.ensure_login.assert_called_once()
     session.ensure_login.assert_called_once_with(page, on_status=ANY)
-    publisher._step_open_submit_form.assert_called_once()
-    publisher._step_upload_stickers.assert_called_once()
-    publisher._step_fill_meanings.assert_called_once()
-    publisher._step_fill_album_info.assert_called_once()
-    publisher._step_fill_copyright.assert_called_once()
-    publisher._step_upload_assets.assert_called_once()
-    publisher._step_select_categories.assert_called_once()
-    publisher._step_select_price.assert_called_once()
-    publisher._step_tips.assert_called_once()
+    for name in ("_step_open_submit_form", "_step_tips", "_step_upload_assets",
+                 "_step_upload_stickers", "_step_fill_meanings",
+                 "_step_fill_album_info", "_step_fill_copyright",
+                 "_step_select_categories", "_step_select_price"):
+        getattr(manager, name).assert_called_once()
     publisher._step_submit.assert_called_once()
     session.close.assert_called_once()
+
+
+def test_publish_new_mode_uploads_assets_before_stickers(tmp_path):
+    """2026-09-02 顺序重构（71-89 批量失败事故）：新建模式素材图（赞赏/
+    横幅/封面/图标）必须先于 16 张表情图上传——表情图 set 后占满平台
+    异步上传队列，紧随其后的素材 set 会被吞（提交时红字"横幅不能为空"）。"""
+    ep = make_episode(tmp_path)
+    publisher, session, page = _make_publisher(tmp_path)
+    publisher._step_submit = MagicMock(return_value=True)
+    publisher._verify_form = MagicMock(return_value=[])
+    order = []
+    for name in ("_step_tips", "_step_upload_assets", "_step_upload_stickers",
+                 "_step_fill_meanings", "_step_fill_album_info"):
+        def _spy(*_a, _name=name, **_k):
+            order.append(_name)
+            return True   # tips 先行成功，不触发兜底
+        setattr(publisher, name, _spy)
+
+    result = publisher.publish(ep)
+
+    assert result["success"] is True
+    assert order == ["_step_tips", "_step_upload_assets",
+                     "_step_upload_stickers", "_step_fill_meanings",
+                     "_step_fill_album_info"]
+
+
+def test_publish_tips_fallback_reruns_after_categories(tmp_path):
+    """赞赏区先前未就绪（_step_tips 返回 False）→ 分类/价格之后兜底重跑。"""
+    ep = make_episode(tmp_path)
+    publisher, session, page = _make_publisher(tmp_path)
+    publisher._step_submit = MagicMock(return_value=True)
+    publisher._verify_form = MagicMock(return_value=[])
+    calls = []
+    state = {"tips": 0}
+
+    def _tips(page, assets):
+        state["tips"] += 1
+        calls.append(f"_step_tips#{state['tips']}")
+        return state["tips"] >= 2   # 第一次 False（区未渲染），第二次 True
+
+    publisher._step_tips = _tips
+    for name in ("_step_upload_assets", "_step_upload_stickers",
+                 "_step_fill_meanings", "_step_fill_album_info",
+                 "_step_select_categories", "_step_select_price"):
+        def _spy(*_a, _name=name, **_k):
+            calls.append(_name)
+        setattr(publisher, name, _spy)
+
+    result = publisher.publish(ep)
+
+    assert result["success"] is True
+    assert calls.count("_step_tips#1") == 1 and calls.count("_step_tips#2") == 1
+    # 第二次赞赏兜底必须发生在分类之后
+    assert calls.index("_step_tips#2") > calls.index("_step_select_categories")
 
 
 def test_publish_early_exit_when_no_stickers(tmp_path):
@@ -396,16 +447,40 @@ def test_publish_passes_headless_to_session(tmp_path):
 
 
 def test_step_fill_meanings_passes_meanings_and_selector(tmp_path):
-    """步骤7：evaluate(script, [meanings, MEANING_INPUT])。"""
+    """步骤7：evaluate(script, [meanings, MEANING_INPUT])。
+    2026-09-02 加固后填完会做数量验证（多一次 evaluate 检查）——填充
+    调用要从 call_args_list 里按 payload 形状找。"""
     ep = make_episode(tmp_path, meanings=["aa", "bb"], with_meaning_map=False)
     assets = EpisodeAssets.from_dir(ep)
     publisher, session, page = _make_publisher(tmp_path)
+    # 检查 evaluate 返回 {n, filled} 满足条件 → 一轮成功
+    page.evaluate.side_effect = [None, {"n": 2, "filled": 2}]
     publisher._step_fill_meanings(page, assets)
-    args, _ = page.evaluate.call_args
-    # evaluate(script, payload)：args[0]=script, args[1]=[meanings, selector]
-    payload = args[1]
+    fill_calls = [c for c in page.evaluate.call_args_list
+                  if len(c.args) > 1 and isinstance(c.args[1], list)]
+    assert fill_calls, "应至少有一次填充 evaluate"
+    payload = fill_calls[0].args[1]
     assert payload[0] == ["aa", "bb"]
     assert payload[1] == S.MEANING_INPUT
+    # 验证通过后不重填
+    assert len(fill_calls) == 1
+
+
+def test_step_fill_meanings_retries_when_cells_not_rendered(tmp_path):
+    """2026-09-02（71 单实测）：含义词格子逐个渲染——首轮只有 1/2 格有值
+    时必须重填，直到全部有值。"""
+    ep = make_episode(tmp_path, meanings=["aa", "bb"], with_meaning_map=False)
+    assets = EpisodeAssets.from_dir(ep)
+    publisher, session, page = _make_publisher(tmp_path)
+    page.evaluate.side_effect = [
+        None, {"n": 2, "filled": 1},          # 第 1 轮：只填上 1 格
+        None, {"n": 2, "filled": 2},          # 第 2 轮：全填上
+    ]
+    publisher._step_fill_meanings(page, assets)
+    fill_calls = [c for c in page.evaluate.call_args_list
+                  if isinstance(c.args[1], list)]
+    assert len(fill_calls) == 2
+    assert any("重填" in w for w in publisher.warnings)
 
 
 def test_step_open_submit_form_uses_selector_constants(tmp_path):
@@ -602,3 +677,65 @@ def test_step_upload_assets_uses_visible_file_inputs(tmp_path):
     assert any(c[0] == '._asset_target' and c[1] == str(assets.banner) for c in calls)
     assert any(c[0] == '._asset_target' and c[1] == str(assets.cover) for c in calls)
     assert any(c[0] == '._asset_target' and c[1] == str(assets.icon) for c in calls)
+
+
+def test_step_upload_assets_only_english_keys(tmp_path):
+    """2026-09-02 破案（71-89 全军覆没根因）：主流程传英文键
+    only=["banner","cover","icon"]，内部曾用中文标签匹配导致 pairs 被过滤
+    成空——素材上传整体空转、零告警。英文键/中文标签都必须生效。"""
+    ep = make_episode(tmp_path)
+    assets = EpisodeAssets.from_dir(ep)
+    publisher, session, page = _make_publisher(tmp_path)
+    page.evaluate.return_value = {"ok": True, "zone": True, "srcs": []}
+
+    publisher._step_upload_assets(page, assets, only=["banner", "icon"])
+
+    calls = [c.args for c in page.set_input_files.call_args_list]
+    assert any(c[1] == str(assets.banner) for c in calls)
+    assert any(c[1] == str(assets.icon) for c in calls)
+    assert not any(c[1] == str(assets.cover) for c in calls)
+
+    # 中文标签同样生效
+    page.set_input_files.reset_mock()
+    publisher._step_upload_assets(page, assets, only=["封面"])
+    calls = [c.args for c in page.set_input_files.call_args_list]
+    assert len(calls) == 1 and calls[0][1] == str(assets.cover)
+
+
+def test_step_upload_assets_retries_when_thumbnail_missing(tmp_path):
+    """2026-09-02：槽位级缩略图确认失败（wait_for_function 超时）→ 重传一次；
+    两次都失败 → 记两条 warning，不抛异常。"""
+    ep = make_episode(tmp_path)
+    assets = EpisodeAssets.from_dir(ep)
+    publisher, session, page = _make_publisher(tmp_path)
+    page.evaluate.return_value = {"ok": True, "zone": True, "srcs": []}
+    page.wait_for_function.side_effect = TimeoutError("wait_for_function: timeout")
+
+    publisher._step_upload_assets(page, assets)
+
+    # 横幅重试：每张素材 set_input_files 2 次（首轮 + 重传）
+    calls = [c.args for c in page.set_input_files.call_args_list]
+    assert sum(1 for c in calls if c[1] == str(assets.banner)) == 2
+    assert any("第 1 次" in w for w in publisher.warnings)
+    assert any("均未确认缩略图" in w for w in publisher.warnings)
+
+
+def test_step_upload_assets_second_attempt_succeeds(tmp_path):
+    """重传后缩略图出现 → 不再记「均未确认」告警。"""
+    ep = make_episode(tmp_path)
+    assets = EpisodeAssets.from_dir(ep)
+    publisher, session, page = _make_publisher(tmp_path)
+    page.evaluate.return_value = {"ok": True, "zone": True, "srcs": []}
+    calls = {"n": 0}
+
+    def _wff(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise TimeoutError("first attempt timeout")
+
+    page.wait_for_function.side_effect = _wff
+
+    publisher._step_upload_assets(page, assets)
+
+    assert not any("均未确认缩略图" in w for w in publisher.warnings)
+    assert any("第 1 次" in w for w in publisher.warnings)

@@ -186,6 +186,7 @@ class Publisher:
         "_step_open_submit_form": "打开提交表单", "_step_upload_stickers": "上传表情图",
         "_step_fill_meanings": "填写含义词", "_step_fill_album_info": "填写专辑信息",
         "_step_fill_copyright": "填写版权信息", "_step_upload_assets": "上传横幅/封面/图标",
+        "_upload_asset": "上传素材图",
         "_step_select_categories": "选择分类", "_step_select_price": "选择价格",
         "_step_tips": "配置赞赏", "_step_submit": "提交",
         "_upload_uploader_at": "上传宣传图", "_confirm_crop": "确认裁剪",
@@ -276,52 +277,100 @@ class Publisher:
             need = (lambda f: True) if not edit or fields is None else (
                 lambda f: f in fields)
 
-            if need("stickers"):
-                if edit:
+            if edit:
+                if need("stickers"):
                     # 编辑模式：清空旧 16 张 → 重传修好的 → 填含义词
                     self._report("upload", "正在清空旧表情并重新上传…", 0.45)
                     self._step_replace_stickers(page, assets)
                 else:
-                    # 步骤6：上传表情图（按故事线顺序）
-                    self._report("upload", f"正在上传 {len(assets.stickers)} 张表情图…", 0.45)
-                    self._step_upload_stickers(page, assets)
-                    # 步骤7：填含义词
-                    self._report("meanings", "正在填写每张表情的含义…", 0.55)
-                    self._step_fill_meanings(page, assets)
+                    self._report("upload", "表情图无需修改，跳过上传", 0.45)
+                if edit and need("meanings"):
+                    # 步骤7'：含义词与图不符类驳回——只重填词，不动图
+                    self._report("meanings", "正在按图重填含义词…", 0.60)
+                    self._step_fix_meanings_by_vision(
+                        page, sorted({p.stem for p in assets.stickers}))
+                if need("album"):
+                    # 步骤8-9：专辑名 + 介绍
+                    self._report("album", "正在填写专辑信息…", 0.65)
+                    self._step_fill_album_info(page, assets)
+                # 步骤10：版权（预填，重填无害）
+                self._step_fill_copyright(page)
+                if need("cover") or need("icon") or need("banner"):
+                    # 步骤11-13：横幅/封面/图标（按需只传指定项）
+                    self._report("assets", "正在上传横幅/封面/图标…", 0.78)
+                    self._step_upload_assets(
+                        page, assets,
+                        only=[f for f in ("banner", "cover", "icon") if need(f)])
+                if need("categories") or need("role"):
+                    # 步骤14-18：类型/角色/风格/主题/地区
+                    self._report("categories", "正在选择专辑分类…", 0.85)
+                    self._step_select_categories(page, assets)
+                if need("role"):
+                    # 角色分类单独重选（69：合辑→按性别）
+                    self._select_role(page, assets)
+                if need("price"):
+                    # 步骤19：表情价格（免费）
+                    self._report("price", "正在选择价格（免费）…", 0.90)
+                    self._step_select_price(page)
+                if need("tips"):
+                    # 步骤20-22：接受赞赏 + 引导语 + 两张赞赏图
+                    self._report("tips", "正在配置赞赏图…", 0.94)
+                    self._step_tips(page, assets)
             else:
-                self._report("upload", "表情图无需修改，跳过上传", 0.45)
-            if edit and need("meanings"):
-                # 步骤7'：含义词与图不符类驳回——只重填词，不动图
-                self._report("meanings", "正在按图重填含义词…", 0.60)
-                self._step_fix_meanings_by_vision(
-                    page, sorted({p.stem for p in assets.stickers}))
-            if need("album"):
-                # 步骤8-9：专辑名 + 介绍
-                self._report("album", "正在填写专辑信息…", 0.65)
-                self._step_fill_album_info(page, assets)
-            # 步骤10：版权（预填，重填无害）
-            self._step_fill_copyright(page)
-            if need("cover") or need("icon") or need("banner"):
-                # 步骤11-13：横幅/封面/图标（按需只传指定项）
-                self._report("assets", "正在上传横幅/封面/图标…", 0.78)
-                self._step_upload_assets(
-                    page, assets,
-                    only=[f for f in ("banner", "cover", "icon") if need(f)])
-            if need("categories") or need("role"):
-                # 步骤14-18：类型/角色/风格/主题/地区
-                self._report("categories", "正在选择专辑分类…", 0.85)
-                self._step_select_categories(page, assets)
-            if need("role"):
-                # 角色分类单独重选（69：合辑→按性别）
-                self._select_role(page, assets)
-            if need("price"):
-                # 步骤19：表情价格（免费）
-                self._report("price", "正在选择价格（免费）…", 0.90)
-                self._step_select_price(page)
-            if need("tips"):
-                # 步骤20-22：接受赞赏 + 引导语 + 两张赞赏图
-                self._report("tips", "正在配置赞赏图…", 0.94)
-                self._step_tips(page, assets)
+                # ---- 新建模式：素材先传 → 表情图后传（2026-09-02 顺序重构）----
+                # 71-89 批量提交全失败事故（同一套代码 61-69 却全过）：16 张
+                # 表情图一次 set 后平台异步上传/处理队列被占满，紧随其后的
+                # 横幅/封面/图标 set 请求被吞（set 本身不报错，旧的全页计数
+                # 判定提前放行），提交时红字「横幅不能为空/封面不能为空」。
+                # 老项目 skill 降级经验（经验10 + 实战）：会出问题的素材图
+                # 先传、表情图最后传，绕开队列拥堵。新顺序：
+                #   赞赏(勾选+引导语+两图) → 横幅/封面/图标(逐个等缩略图)
+                #   → 16 张表情图 → 含义词 → 专辑名/介绍/版权 → 分类/价格
+                #   → 赞赏兜底（先前未就绪则补） → 提交
+                tips_done = False
+                if need("tips"):
+                    self._report("tips", "正在优先上传赞赏图（避开上传队列拥堵）…", 0.35)
+                    try:
+                        tips_done = self._step_tips(page, assets)
+                    except Exception as e:  # noqa: BLE001
+                        self._warn(e)
+                if need("cover") or need("icon") or need("banner"):
+                    # 步骤11-13 提前：横幅/封面/图标（逐个等各自槽位缩略图）
+                    self._report("assets", "正在优先上传横幅/封面/图标…", 0.45)
+                    self._step_upload_assets(
+                        page, assets,
+                        only=[f for f in ("banner", "cover", "icon") if need(f)])
+                # 步骤6：上传表情图（按故事线顺序；放在素材之后）
+                self._report("upload", f"正在上传 {len(assets.stickers)} 张表情图…", 0.55)
+                self._step_upload_stickers(page, assets)
+                # 步骤7：填含义词
+                self._report("meanings", "正在填写每张表情的含义…", 0.62)
+                self._step_fill_meanings(page, assets)
+                if need("album"):
+                    # 步骤8-9：专辑名 + 介绍
+                    self._report("album", "正在填写专辑信息…", 0.70)
+                    self._step_fill_album_info(page, assets)
+                # 步骤10：版权（预填，重填无害）
+                self._step_fill_copyright(page)
+                if need("categories") or need("role"):
+                    # 步骤14-18：类型/角色/风格/主题/地区
+                    self._report("categories", "正在选择专辑分类…", 0.80)
+                    self._step_select_categories(page, assets)
+                if need("role"):
+                    # 角色分类单独重选（69：合辑→按性别；幂等，已选对则跳过）
+                    self._select_role(page, assets)
+                if need("price"):
+                    # 步骤19：表情价格（免费）
+                    self._report("price", "正在选择价格（免费）…", 0.86)
+                    self._step_select_price(page)
+                if need("tips") and not tips_done:
+                    # 赞赏区先前未就绪（如勾选/引导语没填上）→ 分类选完后
+                    # 区块必然渲染，这里补一轮（幂等：已选跳过、图重传无害）
+                    self._report("tips", "赞赏先前未确认成功，正在补传赞赏图…", 0.92)
+                    try:
+                        self._step_tips(page, assets)
+                    except Exception as e:  # noqa: BLE001
+                        self._warn(e)
             # 步骤24：提交前自检（实时监测：必填项是否全部就位）
             missing = self._verify_form(page)
             if missing:
@@ -632,19 +681,40 @@ class Publisher:
     def _step_fill_meanings(self, page, assets: EpisodeAssets) -> None:
         """步骤7：填含义词（evaluate 设 value + dispatch input 事件，比 type 快）。
 
+        2026-09-02 加固（71 单实测）：表情图上传后含义词输入框是**逐个
+        渲染**的（裁剪框挂着时更是只渲染出第 1 格）——填完必须验证
+        「格数够 + 每格有值」，不足等 1s 重填，最多 3 轮。
         把选择器作为参数传给 JS（避免字符串拼接转义出错）。
         """
-        page.evaluate(
-            """([meanings, selector]) => {
-                const inputs = document.querySelectorAll(selector);
-                for (let i = 0; i < inputs.length && i < meanings.length; i++) {
-                    inputs[i].value = meanings[i];
-                    inputs[i].dispatchEvent(new Event('input', {bubbles: true}));
-                    inputs[i].dispatchEvent(new Event('change', {bubbles: true}));
-                }
-            }""",
-            [assets.meanings, S.MEANING_INPUT],
-        )
+        for attempt in range(3):
+            page.evaluate(
+                """([meanings, selector]) => {
+                    const inputs = document.querySelectorAll(selector);
+                    for (let i = 0; i < inputs.length && i < meanings.length; i++) {
+                        inputs[i].value = meanings[i];
+                        inputs[i].dispatchEvent(new Event('input', {bubbles: true}));
+                        inputs[i].dispatchEvent(new Event('change', {bubbles: true}));
+                    }
+                }""",
+                [assets.meanings, S.MEANING_INPUT],
+            )
+            page.wait_for_timeout(1000)
+            try:
+                state = page.evaluate(
+                    """(sel) => {
+                        const ins = [...document.querySelectorAll(sel)];
+                        return {n: ins.length,
+                                filled: ins.filter(i => (i.value || '').trim()).length};
+                    }""", S.MEANING_INPUT)
+            except Exception:   # noqa: BLE001
+                state = None
+            n = state.get("n", 0) if isinstance(state, dict) else 0
+            filled = state.get("filled", 0) if isinstance(state, dict) else 0
+            if n >= len(assets.meanings) and filled >= len(assets.meanings):
+                return
+            self._warn(f"含义词第 {attempt + 1} 次填写后 "
+                       f"{filled}/{len(assets.meanings)} 格有值"
+                       f"（渲染出 {n} 格），重填")
 
     # ---- 步骤8-9：专辑名 + 介绍 ----
 
@@ -680,13 +750,28 @@ class Publisher:
 
     # ---- 步骤11-13：横幅/封面/图标 ----
 
-    def _step_upload_assets(self, page, assets: EpisodeAssets, only=None) -> None:
-        """步骤11-13：横幅、封面、图标。only=[label,...] 时只传指定项（精准修改）。
+    # only 参数的英文键 → 中文标签映射（71-89 全军覆没的根因：主流程传
+    # 英文键 ["banner","cover","icon"]，这里却用中文标签做 in 匹配 →
+    # pairs 被过滤成空 → 素材上传整体空转、零告警 → 提交红字"横幅不能为空"）
+    _ASSET_ONLY_ALIAS = {"banner": "横幅", "cover": "封面", "icon": "图标"}
 
-        2026-08 实测：页面改版后 uploader__init 消失；表单上有且仅有 3 个
-        可见的 file input，顺序即 横幅/封面/图标（横幅 accept 含 jpeg，
-        封面/图标 accept=image/png）。用 JS 打临时 class 后 set_input_files。
+    def _step_upload_assets(self, page, assets: EpisodeAssets, only=None) -> None:
+        """步骤11-13：横幅、封面、图标。only=[键,...] 时只传指定项（精准修改）。
+
+        only 同时接受中文标签（"横幅"）和英文键（"banner"）——2026-09-02
+        破案：两套键名不一致曾让上传整体空转（见 _ASSET_ONLY_ALIAS 注释）。
+        2026-08 实测：页面改版后 uploader__init 消失；表单上的可见 file
+        input 槽位顺序即 横幅/封面/图标（横幅 accept 含 jpeg，封面/图标
+        accept=image/png）。
+        2026-09-02 重构（71-89 批量失败事故）：
+        ①每张素材上传后等**自己槽位**出现新缩略图（旧的全页计数判定会
+          提前放行），超时自动重传一次；
+        ②图标定位从「最后一个 png」改为「封面之后第一个 png」——赞赏图
+          提前上传后其 input 已渲染（accept 同为 png），旧定位会把图标
+          错传进赞赏致谢图槽。
         """
+        if only:
+            only = {self._ASSET_ONLY_ALIAS.get(f, f) for f in only}
         pairs = [("横幅", assets.banner), ("封面", assets.cover), ("图标", assets.icon)]
         if only:
             pairs = [(l, i) for l, i in pairs if l in only]
@@ -694,59 +779,118 @@ class Publisher:
             if img is None:
                 self._warn(f"{label}文件缺失，跳过上传（详情页可重新生成）")
                 continue
-            # 给第 slot 个可见 file input 打临时 class
-            ok = page.evaluate("""(label) => {
-              // 2026-09-01 修复：必须过滤可见 input——表情图 drop zone
-              // （页面顶部隐藏 input，accept 同样含 jpeg）曾抢走横幅槽位，
-              // 导致横幅/封面全部空提交（59/60 两单事故）
-              const vis = el => !!(el.offsetParent || el.getClientRects().length);
-              const files = [...document.querySelectorAll('input[type=file]')]
-                .filter(vis);
-              // 按标签找槽位：横幅=第一个含 jpeg 的；封面=其后第一个 png；图标=最后一个 png
-              let idx = -1;
-              if (label === '横幅') {
-                idx = files.findIndex(f => (f.accept || '').includes('jpeg') || (f.accept || '').includes('jpg'));
-              } else if (label === '封面') {
-                const b = files.findIndex(f => (f.accept || '').includes('jpeg') || (f.accept || '').includes('jpg'));
-                idx = files.findIndex((f, i) => i > b && (f.accept || '').includes('png'));
-              } else {
-                for (let i = files.length - 1; i >= 0; i--) {
-                  if ((files[i].accept || '').includes('png')) { idx = i; break; }
-                }
-              }
-              if (idx < 0) return false;
-              files.forEach(f => f.classList.remove('_asset_target'));
-              files[idx].classList.add('_asset_target');
-              return true;
-            }""", label)
+            ok = False
+            for attempt in range(2):   # 未见缩略图 → 重传一次（防异步吞请求）
+                if attempt > 0:
+                    # 先清掉可能挂着的裁剪框（上一轮漏点确定会让重传也无效）
+                    self._confirm_crop(page, wait_seconds=2.0)
+                try:
+                    if self._upload_asset(page, label, img):
+                        ok = True
+                        break
+                except Exception as e:  # noqa: BLE001
+                    self._warn(f"{label}第 {attempt + 1} 次上传异常：{e}")
+                    continue
+                self._warn(f"{label}第 {attempt + 1} 次上传后未见缩略图，重试")
             if not ok:
-                self._warn(f"{label}：页面上找不到对应上传控件（可能改版）")
-                continue
-            try:
-                page.set_input_files('._asset_target', str(img))
-                page.wait_for_timeout(1500)
-                self._confirm_crop(page)
-                # 2026-09-02 修复：上传是异步的——Vue 组件收文件后立即清空
-                # input（nfiles=0 是正常现象），固定 1.5s 后提交时横幅可能
-                # 还没绑上（59/60 两单"横幅不能为空"事故）。轮询等缩略图：
-                # 横幅槽附近文本"JPG 或 PNG"，封面/图标依次为第 1/2 个
-                # "PNG 格式"槽出现 img。
-                need_kw = "JPG 或 PNG" if label == "横幅" else "PNG 格式"
-                page.wait_for_function(
-                    """([kw, nth]) => {
-                      const zones = [...document.querySelectorAll('div')]
-                        .filter(d => d.querySelectorAll('img').length
-                                 && (d.innerText || '').includes(kw)
-                                 && d.getBoundingClientRect().width > 50
-                                 && d.getBoundingClientRect().width < 400);
-                      return zones.length >= nth;
-                    }""",
-                    arg=[need_kw, 1 if label == "横幅" else
-                         (1 if label == "封面" else 2)],
-                    timeout=20000)
-                page.wait_for_timeout(500)
-            except Exception as e:  # noqa: BLE001
-                self._warn(f"{label}上传后未见缩略图：{e}")
+                self._warn(f"{label}两次上传后均未确认缩略图，提交可能被平台拒绝")
+
+    def _upload_asset(self, page, label: str, img: Path) -> bool:
+        """上传单张素材并等它的槽位出现新缩略图。返回是否确认成功。"""
+        info = page.evaluate("""(label) => {
+          // 可见性过滤：表情图 drop zone（页面顶部隐藏 input，accept 同样
+          // 含 jpeg）会抢走横幅槽位（59/60 两单事故），必须排除
+          const vis = el => !!(el.offsetParent || el.getClientRects().length);
+          const files = [...document.querySelectorAll('input[type=file]')]
+            .filter(vis);
+          const hasJpg = f => ['jpeg', 'jpg'].some(w => (f.accept || '').includes(w));
+          const hasPng = f => (f.accept || '').includes('png');
+          // 槽位：横幅=第一个含 jpeg 的；封面=其后第一个 png；
+          // 图标=封面之后第一个 png（不用「最后一个 png」：赞赏图先传后
+          // 其 input（accept 也含 png）已渲染，会抢走图标槽位）
+          const b = files.findIndex(hasJpg);
+          let c = -1, idx = -1;
+          if (label === '横幅') {
+            idx = b;
+          } else {
+            if (c < 0) c = files.findIndex((f, i) => i > b && hasPng(f));
+            if (label === '封面') idx = c;
+            else idx = files.findIndex((f, i) => i > c && hasPng(f));
+          }
+          if (idx < 0) return {ok: false, srcs: []};
+          files.forEach(f => f.classList.remove('_asset_target'));
+          files[idx].classList.add('_asset_target');
+          // zone：从 input 向上找最近的「上传卡」容器（内含格式说明文字、
+          // 宽度有限、file input 数 ≤ 1），打 _asset_zone 标记
+          document.querySelectorAll('._asset_zone')
+            .forEach(z => z.classList.remove('_asset_zone'));
+          let zone = files[idx];
+          for (let k = 0; k < 12 && zone; k++) {
+            zone = zone.parentElement;
+            if (!zone) break;
+            const ownFiles = zone.querySelectorAll('input[type=file]').length;
+            const txt = zone.innerText || '';
+            const w = zone.getBoundingClientRect().width;
+            if (ownFiles <= 1 && w > 40 && w < 800
+                && (txt.includes('JPG') || txt.includes('PNG')
+                    || txt.includes('jpg') || txt.includes('png')
+                    || txt.includes('格式'))) {
+              break;
+            }
+          }
+          const srcs = zone
+            ? [...zone.querySelectorAll('img')]
+                .map(i => i.src || i.getAttribute('src') || '')
+            : [];
+          if (zone) zone.classList.add('_asset_zone');
+          return {ok: true, zone: !!zone, srcs};
+        }""", label)
+        # mock/异常容错：info 可能不是 dict（测试里 evaluate 返回 True）
+        if not info:
+            self._warn(f"{label}：页面上找不到对应上传控件（可能改版）")
+            return False
+        prev_srcs = info.get("srcs", []) if isinstance(info, dict) else []
+        has_zone = info.get("zone", False) if isinstance(info, dict) else True
+        try:
+            page.set_input_files('._asset_target', str(img))
+        except Exception as e:  # noqa: BLE001
+            self._warn(f"{label} set_input_files 失败：{e}")
+            return False
+        page.wait_for_timeout(1500)
+        self._confirm_crop(page)
+        if not has_zone:
+            # zone 没找到：退化用旧的全页计数判定（聊胜于无）
+            need_kw = "JPG 或 PNG" if label == "横幅" else "PNG 格式"
+            page.wait_for_function(
+                """([kw, nth]) => {
+                  const zones = [...document.querySelectorAll('div')]
+                    .filter(d => d.querySelectorAll('img').length
+                             && (d.innerText || '').includes(kw)
+                             && d.getBoundingClientRect().width > 50
+                             && d.getBoundingClientRect().width < 400);
+                  return zones.length >= nth;
+                }""",
+                arg=[need_kw, 1 if label != "图标" else 2],
+                timeout=20000)
+            page.wait_for_timeout(500)
+            return True
+        # 槽位级确认：zone 内出现**新增的可见 img，且不在裁剪 dialog 子树内**
+        # （2026-09-02 破案：裁剪框挂在 zone 里，其预览图曾被误判为上传
+        # 成功的缩略图 → 假阳性 → 未点「确定」→ 提交红字「横幅不能为空」）
+        page.wait_for_function(
+            """(prevSrcs) => {
+              const z = document.querySelector('._asset_zone');
+              if (!z) return false;
+              return [...z.querySelectorAll('img')].some(im => {
+                if (im.closest('.weui-desktop-dialog__wrp')) return false;
+                const s = im.src || im.getAttribute('src') || '';
+                if (!s || prevSrcs.includes(s)) return false;
+                return !!(im.offsetParent || im.getClientRects().length);
+              });
+            }""",
+            arg=prev_srcs, timeout=25000)
+        page.wait_for_timeout(500)
+        return True
 
     def _upload_uploader_at(self, page, index: int, img_path: Path) -> None:
         """上传到第 index 个 uploader__init 区域，处理裁剪框确定。"""
@@ -868,15 +1012,38 @@ class Publisher:
         except Exception:
             return []
 
-    def _confirm_crop(self, page) -> None:
-        """uploadFile 后若有"确定"裁剪框，点掉（经验13）。
+    def _confirm_crop(self, page, wait_seconds: float = 8.0) -> None:
+        """上传素材后可能弹出「裁剪横幅/封面/图标」dialog（图片需手动
+        确认尺寸才生效——2026-09-02 真机破案：71-89 事故里横幅/封面/
+        图标 set 后平台弹裁剪框，不点「确定」上传就不落地，提交时红字
+        「横幅不能为空」，且挂着的裁剪预览图会被误判成上传成功缩略图）。
 
-        2026-08 改版后页面没有裁剪框——超时属正常情况，静默忽略（不再刷警告）。
+        轮询最多 wait_seconds 等**可见** dialog 出现；出现则点其中的
+        「确定」；无 dialog（赞赏组件/直传成功路径）快速退出。
         """
-        try:
-            page.click(f'button:has-text("{S.CROP_CONFIRM_TEXT}")', timeout=2000)
-        except Exception:  # noqa: BLE001
-            pass   # 无裁剪框 = 新版页面正常状态
+        # 迭代上限而非纯时间 deadline（避免无框时忙等；间隔靠
+        # wait_for_timeout，真实环境 14×600ms ≈ 8.4s 封顶）
+        n_iters = max(1, int(wait_seconds / 0.6))
+        for _ in range(n_iters):
+            state = page.evaluate("""() => {
+              const vis = el => !!(el.offsetParent || el.getClientRects().length);
+              const wrps = [...document.querySelectorAll(
+                '.weui-desktop-dialog__wrp')].filter(w => vis(w));
+              if (!wrps.length) return 'none';
+              for (const w of wrps) {
+                const btns = [...w.querySelectorAll('button, a')].filter(vis);
+                const ok = btns.find(b =>
+                  ((b.innerText || '').replace(/\\s+/g, '')) === '确定');
+                if (ok) { ok.click(); return 'clicked'; }
+              }
+              return 'noBtn';
+            }""")
+            if state == "clicked":
+                page.wait_for_timeout(800)   # 等 dialog 收起 + 上传落地
+                return
+            if state == "noBtn":
+                return   # 有框但找不到确定按钮：异常，不死等
+            page.wait_for_timeout(600)
 
     # ---- 步骤14-18：类型/角色/风格/主题/地区 ----
 
@@ -949,24 +1116,32 @@ class Publisher:
 
     # ---- 步骤20-22：赞赏 ----
 
-    def _step_tips(self, page, assets: EpisodeAssets) -> None:
-        """步骤20：接受赞赏；步骤21：赞赏引导语；步骤22-23：上传两张赞赏图。"""
+    def _step_tips(self, page, assets: EpisodeAssets) -> bool:
+        """步骤20：接受赞赏；步骤21：赞赏引导语；步骤22-23：上传两张赞赏图。
+
+        返回是否全部确认成功（勾选+引导语+两图缩略图）——新建模式下赞赏
+        提前到素材阶段，若区块未渲染会返回 False，主流程在分类选完后兜底
+        重跑一轮（幂等）。
+        """
         # 步骤21：接受赞赏（平台隐藏 checkbox，点 label；已选跳过防取消）
-        self._click_label(page, "接受赞赏", check=True)
+        ok_accept = self._click_label(page, "接受赞赏", check=True)
         # 步骤21：赞赏引导语
+        ok_text = True
         try:
             page.fill(S.TIPS_TEXT_INPUT, self.config.thanks_text, timeout=3000)
         except Exception as e:  # noqa: BLE001
+            ok_text = False
             self._warn(e)
         # 步骤22-23：上传赞赏引导图 + 致谢图
-        self._upload_tip_images(page, assets)
+        ok_imgs = self._upload_tip_images(page, assets)
+        return bool(ok_accept and ok_text and ok_imgs)
 
-    def _upload_tip_images(self, page, assets: EpisodeAssets) -> None:
-        """上传赞赏引导图 + 致谢图。
+    def _upload_tip_images(self, page, assets: EpisodeAssets) -> bool:
+        """上传赞赏引导图 + 致谢图。返回两张是否都确认出现缩略图。
 
         定位策略（迁移原 skill 方案 A）：逐个 file input 向上找祖先文字，匹配
         "赞赏引导图/引导图" 或 "赞赏致谢图/致谢图"。失败回退：按 uploader__init
-        最后两个。上传后处理裁剪框确定（经验13）。
+        最后两个。上传后处理裁剪框确定（经验13）+ 槽位级缩略图确认（经验12）。
         """
         pairs = [
             (["赞赏引导图", "引导图"],
@@ -974,16 +1149,25 @@ class Publisher:
             (["赞赏致谢图", "致谢图"],
              getattr(assets, "tip_thanks", None) or self.config.tip_thanks_img),
         ]
+        all_ok = True
         for keywords, img_path in pairs:
+            ok = False
             try:
-                self._upload_tip_by_label(page, keywords, Path(img_path))
+                ok = self._upload_tip_by_label(page, keywords, Path(img_path))
             except Exception:  # noqa: BLE001
                 # 回退：最后两个 uploader__init
-                self._upload_uploader_last(page, keywords, Path(img_path))
+                try:
+                    self._upload_uploader_last(page, keywords, Path(img_path))
+                    ok = True   # 回退路径无槽位级确认，仅尽力而为
+                except Exception as e:  # noqa: BLE001
+                    self._warn(f"{'/'.join(keywords)} 上传失败：{e}")
+            if not ok:
+                all_ok = False
+        return all_ok
 
-    def _upload_tip_by_label(self, page, keywords, img_path: Path) -> None:
-        """按文字标签定位 file input 并上传。"""
-        idx = page.evaluate(
+    def _upload_tip_by_label(self, page, keywords, img_path: Path) -> bool:
+        """按文字标签定位 file input 并上传，等槽位缩略图出现（经验12）。"""
+        info = page.evaluate(
             """(kws) => {
                 const inputs = document.querySelectorAll('input[type="file"]');
                 for (let i = 0; i < inputs.length; i++) {
@@ -991,24 +1175,65 @@ class Publisher:
                     for (let k = 0; k < 8 && p; k++) {
                         const t = (p.innerText || p.textContent || '').trim();
                         if (t && t.length < 120 && kws.some(w => t.includes(w))) {
-                            return i;
+                            // 给命中的 input 打标 + 向上找含标签文字的容器
+                            inputs.forEach(x => x.classList.remove('_tip_target'));
+                            inputs[i].classList.add('_tip_target');
+                            let zone = inputs[i];
+                            for (let z = 0; z < 10 && zone; z++) {
+                                zone = zone.parentElement;
+                                if (!zone) break;
+                                const txt = zone.innerText || '';
+                                if (kws.some(w => txt.includes(w))
+                                    && zone.getBoundingClientRect().width < 900
+                                    && zone.querySelectorAll('input[type=file]').length <= 1) {
+                                    break;
+                                }
+                            }
+                            document.querySelectorAll('._tip_zone')
+                              .forEach(x => x.classList.remove('_tip_zone'));
+                            const srcs = zone ? [...zone.querySelectorAll('img')]
+                                .map(im => im.src || im.getAttribute('src') || '') : [];
+                            if (zone) zone.classList.add('_tip_zone');
+                            return {idx: i, srcs};
                         }
                         p = p.parentElement;
                     }
                 }
-                return -1;
+                return {idx: -1, srcs: []};
             }""",
             keywords,
         )
+        idx = info.get("idx", -1) if isinstance(info, dict) else (
+            info if isinstance(info, int) else -1)
         if idx < 0:
             raise RuntimeError(f"未找到含 {keywords} 的 file input")
         file_inputs = page.query_selector_all('input[type="file"]')
         if idx >= len(file_inputs):
             raise RuntimeError(f"file input 索引 {idx} 越界")
+        prev_srcs = info.get("srcs", []) if isinstance(info, dict) else []
         file_inputs[idx].set_input_files(str(img_path))
         page.wait_for_timeout(1500)
         self._confirm_crop(page)
-        page.wait_for_timeout(2000)
+        # 槽位级缩略图确认（同 _upload_asset：等 zone 内出现新增 img，
+        # 排除裁剪 dialog 子树内的预览图，防假阳性）
+        try:
+            page.wait_for_function(
+                """(prevSrcs) => {
+                  const z = document.querySelector('._tip_zone');
+                  if (!z) return false;
+                  return [...z.querySelectorAll('img')].some(im => {
+                    if (im.closest('.weui-desktop-dialog__wrp')) return false;
+                    const s = im.src || im.getAttribute('src') || '';
+                    if (!s || prevSrcs.includes(s)) return false;
+                    return !!(im.offsetParent || im.getClientRects().length);
+                  });
+                }""",
+                arg=prev_srcs, timeout=20000)
+        except Exception as e:  # noqa: BLE001
+            self._warn(f"{'/'.join(keywords)} 上传后未见缩略图：{e}")
+            return False
+        page.wait_for_timeout(500)
+        return True
 
     def _upload_uploader_last(self, page, keywords, img_path: Path) -> None:
         """赞赏图回退：用 uploader__init 倒数第 1/2 个。"""

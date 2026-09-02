@@ -58,6 +58,10 @@ cd desktop && PYTHONPATH=../sticker_engine npx electron . --remote-debugging-por
   `PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright python -m playwright install chromium`（2026-08-29 实测镜像 1 分钟装完）。
 - venv 装依赖后注意 playwright 版本是否被顺带升级（版本变→浏览器目录号变→
   `Executable doesn't exist` 秒失败），重装浏览器即可。
+- **平台素材上传（2026-09-02，71-89 批量全败事故，三层坑叠加）**：
+  1. **过滤键名两套写法**：`_step_upload_assets(only=["banner",...])` 英文键 vs 内部中文标签 `("横幅",...)` 不匹配 → 上传整体空转且零告警 → 提交红字「横幅不能为空」。61-69 全过只因发布早于该 bug 引入。`_ASSET_ONLY_ALIAS` 做了映射，动 only 逻辑必须跑 `test_step_upload_assets_only_english_keys`。
+  2. **上传顺序**：16 张表情图批量 set 会占满平台异步上传通道，素材 set 紧随其后容易不落地（老项目 skill 降级经验：素材图先传、表情图后传）。publisher 新建模式已按「赞赏→横幅/封面/图标→表情图→文本→分类」排序，别改回去。
+  3. **裁剪框与假阳性确认**：素材上传后可能弹「裁剪横幅」dialog，不点「确定」上传不落地；且 dialog 内预览图、空槽常驻隐藏 img 都会被"zone 出现新 img"误判成功。确认必须：槽位级 zone + 排除 `.weui-desktop-dialog__wrp` 子树 + 对比上传前 src 集合；超时重传一次。图标槽定位用「封面后第一个 png」（赞赏 input 的 accept 也含 png）。
 
 ## 深入阅读
 
