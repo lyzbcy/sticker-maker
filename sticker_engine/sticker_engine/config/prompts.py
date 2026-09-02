@@ -28,6 +28,9 @@ BUILTIN_STANDARD_ID = "builtin-standard"
 # 标准版风格块（2026-08-27 萌系升级之前的规格：1:1 头身、不带眼位/腮红/无关节细节）
 _STANDARD_STYLE_BLOCK = (
     "STYLE (strictly identical across all panels):\n"
+    "- Keep every panel CUTE and lovable (kawaii): soft pastel colors, gentle "
+    "rounded shapes; never scary, grotesque, undead, ghostly, zombie-like, "
+    "injured or dirty; exaggeration must always stay adorable\n"
     "- Chibi aesthetic: exaggerated expressive big eyes, soft rounded facial "
     "lines, large head-to-body ratio (about 1:1)\n"
     "- 3D clay style, soft matte clay material, soft studio lighting\n"

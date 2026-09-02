@@ -40,6 +40,30 @@ def test_banner_is_750x400(tmp_path):
     assert (w, h) == (750, 400)
 
 
+def test_banner_new_style_cute_card_layout(tmp_path):
+    """2026-09-02 横幅重做：奶油粉实底（不再透明底黑底观感）+ 白色圆角卡片。
+
+    - 模式为 RGB（实底，不带 alpha 通道）
+    - 四角是浅色渐变底（萌系氛围），不再是透明/黑
+    - 画面里有大量近白像素（4 张白色圆角卡片）
+    """
+    import numpy as np
+    ctx = _ctx_with_stickers(tmp_path)
+    stage = AssetsStage(vision=MagicMock())
+    stage.run(ctx)
+    img = Image.open(ctx.episode_dir/"横幅"/"横幅.png")
+    assert img.mode == "RGB"
+    arr = np.asarray(img)
+    # 四角均为浅奶油粉（渐变底）
+    for corner in [(2, 2), (2, 747), (397, 2), (397, 747)]:
+        px = arr[corner[0], corner[1]]
+        assert px[0] >= 245 and px[1] >= 220 and px[2] >= 228, corner
+    # 白色卡片像素充足（近白 且绿色通道也高）
+    near_white = ((arr[:, :, 0] >= 248) & (arr[:, :, 1] >= 248) &
+                  (arr[:, :, 2] >= 248)).sum()
+    assert near_white > 3000
+
+
 def test_cover_is_240x240_and_differs_from_banner_source(tmp_path):
     ctx = _ctx_with_stickers(tmp_path)
     stage = AssetsStage(vision=MagicMock())

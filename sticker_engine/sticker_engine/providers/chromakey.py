@@ -138,11 +138,77 @@ class ChromaKeyProvider:
         return Image.fromarray(out)  # RGBA uint8 → 推断模式
 
     # ------------------------------------------------------------------ #
-    # 自动选 key（洋红优先；冲突回退绿色，决策 E1）
+    # 去色边（defringe，2026-09-02 评分复盘：69 单"紫红色边框没有剔除干净"）
+    # ------------------------------------------------------------------ #
+    def remove_fringe(self, img: Image.Image, key_color: str = "#ff00ff",
+                      hue_tol: float = 25.0, sat_min: float = 0.05,
+                      radius: int = 3) -> Image.Image:
+        """清掉白描边与 key 底抗锯齿混出的低饱和 key 色光环。
+
+        根因：prompt 要求白描边 + 洋红底，两者边缘的混色（如 255,128,255）
+        hue 仍在 300° 但饱和度 ~0.5 < SAT_MIN(0.85)，remove_key 判不中，
+        成品贴纸轮廓外挂一圈剔不掉的粉紫边（用户原话"边框本身就有颜色，
+        和洋红一叠加……只剔除了洋红色，这个叠加色就剔除不了"）。
+        对策：只把「已透明区域向外 radius 圈内」的 key 色族像素清透明
+        （放宽饱和度下限到 sat_min，纯白/纯灰 sat≈0 仍安全），不贴边的
+        角色粉色（hue 多在 330-360°，不在洋红 ±25° 内）不受影响。
+        remove_key 判据本身不动（A/B 对齐验收红线）。
+        """
+        import numpy as np
+        from scipy import ndimage
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
+        arr = np.array(img)
+        trans = arr[:, :, 3] == 0
+        if not trans.any():
+            return img
+        rgb = arr[:, :, :3].astype(np.float64)
+        r = rgb[:, :, 0] / 255.0
+        g = rgb[:, :, 1] / 255.0
+        b = rgb[:, :, 2] / 255.0
+        mx = np.maximum(np.maximum(r, g), b)
+        mn = np.minimum(np.minimum(r, g), b)
+        delta = mx - mn
+        sat = np.zeros_like(mx)
+        nz = mx > 0
+        sat[nz] = delta[nz] / mx[nz]
+        hue_deg = np.zeros_like(mx)
+        has_delta = delta > 0
+        with np.errstate(divide="ignore", invalid="ignore"):
+            rc = (mx - r) / delta
+            gc = (mx - g) / delta
+            bc = (mx - b) / delta
+            mask_r = has_delta & (mx == r)
+            mask_g = has_delta & (mx == g) & ~mask_r
+            mask_b = has_delta & (mx == b) & ~(mask_r | mask_g)
+            raw_h = np.zeros_like(mx)
+            raw_h[mask_r] = (bc - gc)[mask_r]
+            raw_h[mask_g] = (2.0 + rc - bc)[mask_g]
+            raw_h[mask_b] = (4.0 + gc - rc)[mask_b]
+            hue_deg = ((raw_h / 6.0) % 1.0) * 360.0
+        kc = key_color.lower()
+        if kc == "#00ff00":
+            center, tol = _GREEN_HUE, 60.0
+        else:
+            center, tol = _MAGENTA_HUE, hue_tol
+        dh = np.minimum(np.abs(hue_deg - center),
+                        360.0 - np.abs(hue_deg - center))
+        family = (dh <= tol) & (sat >= sat_min)
+        near = ndimage.binary_dilation(trans, iterations=radius)
+        kill = family & near & ~trans
+        if not kill.any():
+            return img
+        out_arr = arr.copy()
+        out_arr[kill] = (0, 0, 0, 0)
+        return Image.fromarray(out_arr)
+
+    # ------------------------------------------------------------------ #
+    # 自动选 key（洋红优先；冲突回退绿色，决策 E1）+ 去色边收尾
     # ------------------------------------------------------------------ #
     def remove_key_auto(self, img: Image.Image) -> Image.Image:
         """洋红优先；如果洋红 key 几乎抠不掉任何东西（说明背景其实不是洋红，
-        很可能是绿色），回退到绿色 key（决策 E1）。
+        很可能是绿色），回退到绿色 key（决策 E1）。抠完接 remove_fringe
+        清理描边混色光环（2026-09-02 复盘：紫红边框残留）。
 
         启发式：洋红抠图后透明占比 < 1%（背景不是洋红）→ 改用绿色重抠。
         阈值取 1% 而非 0%，是为了容忍极小尺寸/单像素图的数值边界。
@@ -152,5 +218,6 @@ class ChromaKeyProvider:
         total = arr.shape[0] * arr.shape[1]
         trans_pct = int((arr[:, :, 3] == 0).sum()) / total
         if trans_pct < 0.01:
-            return self.remove_key(img, "#00ff00")
-        return out_mag
+            return self.remove_fringe(self.remove_key(img, "#00ff00"),
+                                      "#00ff00")
+        return self.remove_fringe(out_mag, "#ff00ff")

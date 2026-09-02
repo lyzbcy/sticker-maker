@@ -49,6 +49,43 @@ def test_auto_select_magenta_then_fallback_green():
     assert out.getpixel((10, 10))[3] > 0    # 红衣保留
 
 
+def test_remove_key_auto_defringes_low_sat_magenta_halo():
+    """2026-09-02 复盘（69 单"紫红色边框没有剔除干净"）：
+
+    白描边与洋红底抗锯齿混出的 (255,128,255)（hue=300 但 sat≈0.5<0.85）
+    remove_key 判不中 → 成品外圈残留粉紫光环。remove_key_auto 现在接
+    remove_fringe：贴着透明区的低饱和洋红族像素要被清掉，白描边核心保留。
+    """
+    provider = ChromaKeyProvider()
+    # 30x30（真实邻接布局：混色光环直接贴着洋红底，外面才是白描边核心）：
+    # 左 10 列洋红底，第 10-12 列为抗锯齿混色光环，右侧为白描边/角色
+    arr = np.zeros((30, 30, 4), dtype=np.uint8)
+    arr[:, :10] = (255, 0, 255, 255)        # 洋红底
+    arr[:, 10:13] = (255, 128, 255, 255)    # 低饱和洋红光环（抗锯齿混色）
+    arr[:, 13:] = (255, 255, 255, 255)      # 白描边核心/角色
+    img = Image.fromarray(arr)
+    out = provider.remove_key_auto(img)
+    out_arr = np.array(out)
+    assert (out_arr[:, :10, 3] == 0).all()          # 洋红底已透明
+    # 光环贴着透明区（distance<=3）→ 应被清掉
+    assert (out_arr[:, 10:13, 3] == 0).all()
+    # 白描边核心（不贴透明区、sat=0）→ 保留
+    assert (out_arr[:, 13:, 3] > 0).all()           # 角色侧不受伤
+
+
+def test_remove_fringe_leaves_inner_pink_alone():
+    """不贴透明区的角色内部粉色（hue 330-360° 或远离边缘）不被误伤。"""
+    provider = ChromaKeyProvider()
+    arr = np.zeros((20, 20, 4), dtype=np.uint8)
+    arr[:, :] = (255, 0, 255, 255)                   # 洋红底
+    arr[5:15, 5:15] = (255, 200, 210, 255)           # 内部粉脸颊（hue≈349°）
+    img = Image.fromarray(arr)
+    out = provider.remove_key_auto(img)
+    out_arr = np.array(out)
+    assert out_arr[10, 10, 3] > 0                    # 粉脸颊完整保留
+    assert (out_arr[:, 0, 3] == 0).all()             # 底照常抠掉
+
+
 def test_vectorized_remove_key_matches_colorsys_baseline():
     """自证：向量化 remove_key 的 key 判定必须和逐像素 _is_key_pixel（colorsys 基准）一致。
     验收红线：Task 13 像素级 A/B 对齐依赖两者一致。"""

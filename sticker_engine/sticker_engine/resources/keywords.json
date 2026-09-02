@@ -26,7 +26,7 @@
     },
     {
       "en": "boiling mad",
-      "desc": "steam jetting from both ears, face flushed red, fists clenched and shaking"
+      "desc": "steam jetting from both ears, puffed cheeks, fists clenched and shaking"
     },
     {
       "en": "speechless",
@@ -34,19 +34,11 @@
     },
     {
       "en": "done with everything",
-      "desc": "lying flat on belly, arms spread limp, soul slightly leaving body"
-    },
-    {
-      "en": "soul leaving body",
-      "desc": "ghost version floating up out of the body, body slumped empty below"
-    },
-    {
-      "en": "petrified",
-      "desc": "frozen solid in gray stone pose, only eyes still darting around"
+      "desc": "lying flat on belly, arms spread limp, utterly drained, comic helpless pout"
     },
     {
       "en": "jaw dropped",
-      "desc": "mouth stretched into a huge O, eyes popping wide, hair standing on end"
+      "desc": "mouth stretched into a huge O, eyes popping wide, hands pressed on cheeks in shock"
     },
     {
       "en": "starstruck",
@@ -58,11 +50,11 @@
     },
     {
       "en": "blushing shy",
-      "desc": "face tomato-red, eyes looking away, fingers poking index fingers together"
+      "desc": "cheeks blushing warm pink, eyes looking away, fingers poking index fingers together"
     },
     {
       "en": "steaming embarrassed",
-      "desc": "steam whistling out of ears, face bright red, covering face with both hands"
+      "desc": "steam whistling out of ears, cheeks blushing pink, covering face with both hands"
     },
     {
       "en": "smug",
@@ -81,8 +73,8 @@
       "desc": "wide toothy grin with one fang, eyes gleaming with a sneaky plan"
     },
     {
-      "en": "sleepy melt",
-      "desc": "half-lidded drowsy eyes, body melting like warm mochi, tiny sleep bubbles"
+      "en": "sleepy drowse",
+      "desc": "half-lidded drowsy eyes, head drooping onto folded arms, tiny sleep bubbles"
     },
     {
       "en": "deep asleep",
@@ -105,16 +97,8 @@
       "desc": "eyes sparkling at a giant drumstick, drooling, hands clasped in prayer"
     },
     {
-      "en": "stuffed and happy",
-      "desc": "belly round like a balloon, satisfied squint, patting tummy"
-    },
-    {
       "en": "shivering cold",
       "desc": "wrapped in a tiny blanket burrito, teeth chattering, snowflake doodles"
-    },
-    {
-      "en": "overheated",
-      "desc": "melting into a puddle, tongue out panting, sun doodle overhead"
     },
     {
       "en": "determined fire",
@@ -204,9 +188,7 @@
   "actions": [
     "laughing hysterically on the floor",
     "flailing arms frantically",
-    "squished flat like a pancake",
     "bouncing like jelly",
-    "melting into a puddle",
     "spinning in panic",
     "comically slipping",
     "fainting backwards dramatically",

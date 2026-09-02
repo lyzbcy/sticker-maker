@@ -84,3 +84,34 @@ def test_story_mode_sends_all_selected_character_bases(tmp_path):
     assert "甲" in prompt and "乙" in prompt
     story_selector.pick.assert_called_once()
     assert story_selector.pick.call_args.kwargs["characters"] == ["甲", "乙"]
+
+
+def test_keywords_no_banned_low_rating_entries():
+    """2026-09-02 评分复盘锁：低分重灾词条不得回流 keywords.json。
+
+    灵魂出窍（1分x5 "跟鬼一样/不许做死人"）、石化（1分x3 "把石化
+    扔出去"）、融化系（"把融化删了/不要融化/腿呢"）、吃撑大肚
+    （"恶意丑化…露个大肚子"）。
+    """
+    import json
+    import sticker_engine as se
+    kw = json.loads((se.resources_path() / "keywords.json").read_text(
+        encoding="utf-8"))
+    banned_words = ("soul leaving body", "petrified", "overheated",
+                    "stuffed and happy", "sleepy melt",
+                    "melting into a puddle", "squished flat")
+    blob = json.dumps(kw, ensure_ascii=False).lower()
+    for w in banned_words:
+        assert w not in blob, f"低分词条 {w} 回流了 keywords.json"
+    # 描写级禁词也一并锁死（融化/鬼/大肚子/满脸红）
+    for w in ("melt", "ghost", "belly round", "tomato-red", "face flushed red",
+              "face bright red", "hair standing on end"):
+        assert w not in blob, f"低分描写 {w} 回流了 keywords.json"
+
+
+def test_combo_panels_contain_cute_guard(tmp_path):
+    """内置方案 STYLE 块必须带"可爱优先"负面约束（不可爱/吓人反馈）。"""
+    from sticker_engine.config.prompts import builtin_set, apply_set
+    prompt = apply_set("keyword_combo", builtin_set())
+    assert "CUTE and lovable" in prompt
+    assert "ghostly" in prompt

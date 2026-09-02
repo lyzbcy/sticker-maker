@@ -13,6 +13,9 @@ Case 21/27/28 等）的共性技巧——
 # ---- 统一风格块（三个模式共用，保证一套里风格严格一致） ----
 _STYLE_BLOCK = (
     "STYLE (strictly identical across all panels):\n"
+    "- Keep every panel CUTE and lovable (kawaii): soft pastel colors, gentle "
+    "rounded shapes; never scary, grotesque, undead, ghostly, zombie-like, "
+    "injured or dirty; exaggeration must always stay adorable\n"
     "- Chibi proportions: oversized head with a tiny stubby body, about "
     "two-heads-tall; round head wider than tall; no visible joints or bones\n"
     "- Face: huge sparkly eyes placed LOW on the head with a large forehead, "

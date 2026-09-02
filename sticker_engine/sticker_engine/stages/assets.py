@@ -221,13 +221,81 @@ class AssetsStage:
 # ---- 模块级函数：供 AssetsStage 与作品详情页 regen_assets 复用 ----
 
 def make_banner(src_paths: list, out: Path) -> None:
-    """前 4 张横向拼成 750×400 宽幅拼贴（横幅）。"""
-    cell_w = _BANNER_W // max(len(src_paths), 1)
-    banner = Image.new("RGBA", (_BANNER_W, _BANNER_H), (255, 255, 255, 0))
-    for i, p in enumerate(src_paths):
-        im = Image.open(p).convert("RGBA").resize((cell_w, _BANNER_H), Image.LANCZOS)
-        banner.paste(im, (i * cell_w, 0), im)
-    banner.save(out)
+    """前 4 张成品拼 750×400 横幅（2026-09-02 美观度重做，评分复盘驱动）。
+
+    旧版看图复盘（低分 84/77/69 与高分 86/80/import 单横幅共性一致）：
+    240×240 方图被硬拉成 187×400（纵向压扁变形）+ 全透明底，预览黑底
+    下就是"4 张变形截图拼接"，零氛围感——横幅难看与单子分数无关，
+    是生成方案本身的问题。新版：
+    - 奶油粉渐变实底 + 波点/小爱心点缀（萌系氛围，不再透明底）
+    - 每张贴纸等比缩放（不变形）放进白色圆角卡片，卡片带柔和投影
+    - 等距排布 + 轻微上下错落，整体居中，留白均匀
+    """
+    from PIL import ImageDraw, ImageFilter
+    import random as _random
+
+    paths = [Path(p) for p in src_paths[:4]]
+    n = max(len(paths), 1)
+
+    # 1) 奶油粉纵向渐变实底
+    top_rgb, bot_rgb = (255, 247, 250), (255, 226, 236)
+    banner = Image.new("RGBA", (_BANNER_W, _BANNER_H))
+    for y in range(_BANNER_H):
+        t = y / max(_BANNER_H - 1, 1)
+        row = tuple(int(a + (b - a) * t) for a, b in zip(top_rgb, bot_rgb))
+        ImageDraw.Draw(banner).line([(0, y), (_BANNER_W, y)], fill=row + (255,))
+
+    # 2) 波点 + 小爱心点缀（固定种子可复现，避开中心贴纸区也无妨——卡片会盖住）
+    rng = _random.Random(20260902)
+    d = ImageDraw.Draw(banner)
+    for _ in range(26):
+        x, y = rng.randrange(8, _BANNER_W - 8), rng.randrange(8, _BANNER_H - 8)
+        r = rng.randrange(3, 7)
+        d.ellipse([x - r, y - r, x + r, y + r], fill=(255, 208, 224, 110))
+    for _ in range(8):   # 极简小爱心（两圆+三角）
+        x, y = rng.randrange(20, _BANNER_W - 20), rng.randrange(20, _BANNER_H - 20)
+        s = rng.randrange(4, 7)
+        d.ellipse([x - s, y - s, x, y], fill=(255, 172, 193, 130))
+        d.ellipse([x, y - s, x + s, y], fill=(255, 172, 193, 130))
+        d.polygon([(x - s, y - s // 3), (x + s, y - s // 3), (x, y + s)],
+                  fill=(255, 172, 193, 130))
+
+    # 3) 白色圆角卡片（带柔和投影）+ 等比贴纸
+    # 两层循环：先把所有投影合成完，再画所有卡片——避免后画卡片的
+    # 投影叠到先画好的卡片上形成"错位深缝"（视觉复检发现）
+    margin_x, gap = 30, 18
+    card_w = (_BANNER_W - 2 * margin_x - (n - 1) * gap) // n
+    card_h = min(int(card_w * 1.35), 240)
+    base_y = (_BANNER_H - card_h) // 2 - 6
+    cards = []
+    for i, p in enumerate(paths):
+        cx = margin_x + i * (card_w + gap)
+        # 轻微上下错落（第 0/2 张略升，1/3 张略降），打破机械一排
+        cy = base_y + (8 if i % 2 else -8)
+        cards.append((cx, cy, p))
+    shadow = Image.new("RGBA", (_BANNER_W, _BANNER_H), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(shadow)
+    for cx, cy, _p in cards:
+        sd.rounded_rectangle(
+            [cx, cy + 5, cx + card_w, cy + card_h + 5], radius=22,
+            fill=(120, 80, 90, 60))
+    banner = Image.alpha_composite(banner, shadow.filter(
+        ImageFilter.GaussianBlur(6)))
+    d = ImageDraw.Draw(banner)
+    for cx, cy, p in cards:
+        d.rounded_rectangle([cx, cy, cx + card_w, cy + card_h], radius=22,
+                            fill=(255, 255, 255, 242))
+        # 贴纸等比缩放进卡片内边距，不变形
+        try:
+            im = Image.open(p).convert("RGBA")
+        except OSError:
+            continue
+        pad = 14
+        im.thumbnail((card_w - 2 * pad, card_h - 2 * pad), Image.LANCZOS)
+        banner.paste(im, (cx + (card_w - im.width) // 2,
+                          cy + (card_h - im.height) // 2), im)
+
+    banner.convert("RGB").save(out)
 
 
 def resize_save(src: Path, out: Path, w: int, h: int) -> None:
