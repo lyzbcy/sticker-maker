@@ -75,19 +75,29 @@ def _fetch_reject_reason_for_row(page, row: "PlatformRow") -> str:
     stage = "init"
 
     def _locate_and_click() -> bool:
-        """在当前列表页找目标行的「详情」并点入。"""
-        links = page.locator("a:has-text('详情'), td:has-text('详情')")
-        for i in range(links.count()):
-            el = links.nth(i)
+        """找目标行的「详情」并点入（翻页查找——2026-09-02：重提洗牌后
+        目标行可能不在当前页，60 的理由抓取失败即此因）。"""
+        for _pg in range(10):
+            links = page.locator("a:has-text('详情'), td:has-text('详情')")
+            for i in range(links.count()):
+                el = links.nth(i)
+                try:
+                    in_tr = el.evaluate("e=>e.closest('tr')!==null")
+                    row_txt = (el.locator("xpath=ancestor::tr[1]").inner_text(timeout=2000)
+                               if in_tr else el.inner_text(timeout=2000))
+                except Exception:
+                    continue
+                if target and target in normalize_name(row_txt):
+                    el.click()
+                    return True
+            nb = page.locator("a:has-text('下一页')")
+            if not nb.count():
+                return False
             try:
-                in_tr = el.evaluate("e=>e.closest('tr')!==null")
-                row_txt = (el.locator("xpath=ancestor::tr[1]").inner_text(timeout=2000)
-                           if in_tr else el.inner_text(timeout=2000))
-            except Exception:
-                continue
-            if target and target in normalize_name(row_txt):
-                el.click()
-                return True
+                nb.first.click(timeout=3000)
+            except Exception:   # noqa: BLE001
+                return False
+            page.wait_for_timeout(2000)
         return False
 
     try:

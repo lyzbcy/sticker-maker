@@ -844,20 +844,29 @@ def cmd_shelf_passed(req_id, args):
                     page.wait_for_timeout(4000)
                     links = page.locator("a:has-text('详情'), td:has-text('详情')")
                     hit = False
-                    for i in range(links.count()):
-                        el = links.nth(i)
-                        try:
-                            in_tr = el.evaluate("e=>e.closest('tr')!==null")
-                            row_txt = (
-                                el.locator("xpath=ancestor::tr[1]")
-                                .inner_text(timeout=2000) if in_tr
-                                else el.inner_text(timeout=2000))
-                        except Exception:
-                            continue
-                        if tn in normalize_name(row_txt):
-                            el.click()
-                            hit = True
+                    for _pg in range(12):   # 翻页查找（2026-09-02：62/59
+                        # 在第 2 页，旧实现只扫第 1 页导致上架全失败）
+                        for i in range(links.count()):
+                            el = links.nth(i)
+                            try:
+                                in_tr = el.evaluate("e=>e.closest('tr')!==null")
+                                row_txt = (
+                                    el.locator("xpath=ancestor::tr[1]")
+                                    .inner_text(timeout=2000) if in_tr
+                                    else el.inner_text(timeout=2000))
+                            except Exception:
+                                continue
+                            if tn in normalize_name(row_txt):
+                                el.click()
+                                hit = True
+                                break
+                        if hit:
                             break
+                        nb = page.locator("a:has-text('下一页')")
+                        if not nb.count():
+                            break
+                        nb.first.click(timeout=3000)
+                        page.wait_for_timeout(2200)
                     if not hit:
                         failed.append((album, "管理页未找到作品行"))
                         continue
