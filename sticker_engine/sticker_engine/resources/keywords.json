@@ -1,168 +1,467 @@
 {
+  "themes": {
+    "日常寒暄": [
+      {"en": "long time no see", "desc": "waving both paws high with sparkling watery eyes, tiny happy tears at the corners", "zh": "好久不见"},
+      {"en": "welcome back", "desc": "holding a tiny hand-drawn welcome sign, bouncing on toes, huge open smile", "zh": "欢迎回来"},
+      {"en": "see you tomorrow", "desc": "waving goodbye while walking backward, one eye winking, warm smile", "zh": "明天见"},
+      {"en": "take care", "desc": "cupping both paws around mouth calling out gently, caring soft eyes", "zh": "路上小心"},
+      {"en": "are you there", "desc": "tapping a tiny phone screen with one paw, big curious round eyes leaning close", "zh": "在吗在吗"},
+      {"en": "just checking in", "desc": "holding a tiny envelope, head tilted, gently worried but cute eyes", "zh": "冒个泡看看你"},
+      {"en": "come play with me", "desc": "tugging viewer's sleeve with pleading puppy eyes, hopeful pout", "zh": "陪我玩嘛"},
+      {"en": "missing you", "desc": "hugging a small pillow with half-lidded dreamy eyes, tiny floating hearts", "zh": "想你了"},
+      {"en": "good luck charm", "desc": "holding up a tiny four-leaf clover, other fist pumped in encouragement", "zh": "祝你好运"},
+      {"en": "happy weekend", "desc": "lying on belly with feet kicked up behind, chin resting on paws, big relaxed smile", "zh": "周末愉快"},
+      {"en": "what are you doing", "desc": "peeking in from the side edge with huge curious round eyes", "zh": "你在干嘛呀"},
+      {"en": "talk to me", "desc": "cupping cheeks with both paws leaning close, sparkling attentive eyes", "zh": "快跟我聊聊"},
+      {"en": "wait for me", "desc": "running with arms full of tiny snacks, determined puffed cheeks", "zh": "等等我"},
+      {"en": "group chat hi", "desc": "popping up from the bottom edge waving, only head and one paw visible", "zh": "群里冒个泡"}
+    ],
+    "打工人": [
+      {"en": "monday misery", "desc": "dragging a tiny briefcase with droopy half-tired eyes, slumped shoulders", "zh": "周一综合征"},
+      {"en": "meeting dozing", "desc": "nodding off with a tiny sleep bubble, jolting upright mid-drowse", "zh": "开会打瞌睡"},
+      {"en": "deadline sprint", "desc": "sprinting while hugging a laptop, sweat drops flying, panic-wide eyes", "zh": "死线到了"},
+      {"en": "overtime sigh", "desc": "slumped over a desk with tiny papers, long defeated sigh puff overhead", "zh": "又加班了"},
+      {"en": "coffee survival", "desc": "hugging a giant coffee cup bigger than itself, tiny tired but grateful smile", "zh": "靠咖啡续命"},
+      {"en": "salary landed", "desc": "jumping with joy as tiny coins rain down, arms wide open to catch them", "zh": "发工资啦"},
+      {"en": "boss incoming", "desc": "snapping into a fake-typing pose with guilty side eyes and stiff smile", "zh": "老板来了"},
+      {"en": "pretending busy", "desc": "intensely staring at an upside-down paper with a comically serious face", "zh": "假装很忙"},
+      {"en": "work wish", "desc": "pressing paws together in prayer before a tiny computer, pleading eyes", "zh": "求不加班"},
+      {"en": "small win proud", "desc": "proudly watering a tiny desk plant with a satisfied gentle smile", "zh": "今天也有小成就"},
+      {"en": "friday vibe", "desc": "cartwheeling with a tiny calendar marked with a star, ecstatic grin", "zh": "周五啦"},
+      {"en": "task mountain", "desc": "comically buried under a mountain of tiny paper stacks, one paw sticking out waving", "zh": "活儿堆成山"},
+      {"en": "not my pot", "desc": "holding a tiny pot lid as a shield, comically determined pout", "zh": "这锅我不背"},
+      {"en": "promotion dream", "desc": "wearing a tiny paper crown, eyes turned into sparkling stars", "zh": "升职加薪梦"},
+      {"en": "out the door", "desc": "mid-leap through a tiny door frame with bag flying, huge grin", "zh": "秒下班"},
+      {"en": "ignore work chat", "desc": "pushing a tiny buzzing phone away with one paw, eyes squeezed shut, hard pout", "zh": "不想回消息"}
+    ],
+    "学习考试": [
+      {"en": "study grind", "desc": "determinedly flipping tiny flash cards with fire doodles in the eyes, tiny headband", "zh": "专注学习"},
+      {"en": "exam cram", "desc": "hugging a book so hard it bends, sweat drops, wobbly nervous smile", "zh": "考前抱佛脚"},
+      {"en": "brain full", "desc": "tiny swirl doodles orbiting head, tongue peeking out in comic overload", "zh": "脑子装不下了"},
+      {"en": "genius moment", "desc": "lightbulb doodle popping above head, one paw pointing up with a wink", "zh": "灵光一现"},
+      {"en": "homework cry", "desc": "dramatic waterfall tears dripping onto an open notebook, trembling lips", "zh": "作业写不完了"},
+      {"en": "top marks", "desc": "holding up a paper with a big star doodle, chest puffed proudly", "zh": "满分飘过"},
+      {"en": "late night study", "desc": "droopy eyes propping head over stacked books, one tiny candle doodle glowing", "zh": "熬夜复习"},
+      {"en": "teaching you", "desc": "standing at a tiny chalkboard holding a pointer, proud teacher smile", "zh": "我来教你"},
+      {"en": "lost in formulas", "desc": "head surrounded by floating math symbol doodles, big lost round eyes", "zh": "这题好难"},
+      {"en": "exam passed", "desc": "jumping over a tiny finish-line ribbon, arms raised in triumph", "zh": "过啦过啦"},
+      {"en": "study buddy", "desc": "sitting with books stacked beside, content sleepy smile, tiny shared lamp", "zh": "一起自习吧"},
+      {"en": "knowledge power", "desc": "flexing one tiny arm while holding a book, confident grin", "zh": "知识就是力量"},
+      {"en": "desk nap", "desc": "face-down asleep on an open book, peaceful tiny snooze bubbles", "zh": "趴书睡着"},
+      {"en": "morning reading", "desc": "stretching with a book tucked under arm, morning sun doodle rays", "zh": "早读打卡"}
+    ],
+    "干饭": [
+      {"en": "hotpot hero", "desc": "dipping a fork into a steaming tiny hotpot, sparkling determined eyes", "zh": "冲火锅"},
+      {"en": "noodle slurp", "desc": "happily slurping long noodles with eyes folded into content arcs", "zh": "吸溜吸溜"},
+      {"en": "midnight snack sneak", "desc": "tiptoeing with a snack bag hugged to chest, sneaky satisfied grin", "zh": "深夜偷吃"},
+      {"en": "delivery arrived", "desc": "dashing toward a tiny delivery box, arms outstretched, stars in eyes", "zh": "外卖到了"},
+      {"en": "cooking attempt", "desc": "wearing a tiny chef hat holding a wobbling pan, nervous hopeful smile", "zh": "下厨翻车预警"},
+      {"en": "bubble tea bliss", "desc": "hugging a giant bubble tea cup with cheek pressed against it, dreamy smile", "zh": "奶茶快乐水"},
+      {"en": "spicy challenge", "desc": "fanning open mouth with one paw, tiny flame doodles, teary but happy eyes", "zh": "辣到跳脚"},
+      {"en": "drooling wait", "desc": "chin on table edge staring at a plated meal, tiny drool bubble growing", "zh": "等着开饭"},
+      {"en": "food coma happy", "desc": "lying back with paws behind head, content round smile, patting tummy gently", "zh": "吃饱了好满足"},
+      {"en": "pizza trophy", "desc": "holding a huge pizza slice overhead like a trophy, triumphant grin", "zh": "披萨日"},
+      {"en": "breakfast champion", "desc": "triumphantly holding up a fork with a tiny egg, bright morning smile", "zh": "早餐打卡"},
+      {"en": "snack stash", "desc": "peeking into a tiny drawer overflowing with snacks, glowing happy eyes", "zh": "零食宝藏"},
+      {"en": "cooked for you", "desc": "offering a steaming bowl with both paws, warm expectant smile", "zh": "给你做了饭"},
+      {"en": "dessert first", "desc": "holding a tiny cake with a cherry on top, blissful closed eyes", "zh": "甜点优先"},
+      {"en": "chopstick master", "desc": "picking up a dumpling with chopsticks high in the air, proud narrowed eyes", "zh": "筷子功"},
+      {"en": "one more cup", "desc": "raising an empty cup with pleading puppy eyes and tiny sparkle tears", "zh": "再来一杯"}
+    ],
+    "睡觉休息": [
+      {"en": "weekend lie-in", "desc": "burrowed deep in a soft blanket with only ears poking out", "zh": "周末赖床"},
+      {"en": "alarm battle", "desc": "slamming a tiny alarm clock with a soft mallet, gritted sleepy eyes", "zh": "关掉闹钟"},
+      {"en": "power nap", "desc": "curled into a circle on a cushion, deep peaceful snooze bubbles", "zh": "小睡片刻"},
+      {"en": "counting sheep", "desc": "lying with paws up, tiny sheep doodles jumping over in a line", "zh": "数羊中"},
+      {"en": "stretching awake", "desc": "big morning stretch with arms up and toes curled, wide sleepy yawn", "zh": "起床伸懒腰"},
+      {"en": "snuggle pillow", "desc": "hugging a pillow with a blissful drooling smile, one leg kicked over", "zh": "抱枕入睡"},
+      {"en": "saturday yawn", "desc": "wide sleepy yawn with tiny tears at eye corners, cozy relaxed ears", "zh": "周六犯困"},
+      {"en": "do not disturb", "desc": "holding up a tiny wooden sign, eyes firmly shut, determined pout", "zh": "勿扰充电中"},
+      {"en": "charging up", "desc": "sitting plugged into a tiny charger cable, content low-battery smile", "zh": "电量恢复中"},
+      {"en": "dream land", "desc": "floating on a tiny cloud with sleepy smile and tiny Z doodles trailing", "zh": "梦里见"},
+      {"en": "sleepy blur", "desc": "rubbing both eyes with paws, eyelids sagging, head wobbling", "zh": "困到模糊"},
+      {"en": "five more minutes", "desc": "clinging to a pillow with pleading half-asleep eyes", "zh": "再睡五分钟"},
+      {"en": "sleepwalk snack", "desc": "walking with closed eyes holding a cookie, dreamy floating smile", "zh": "梦游觅食"},
+      {"en": "blanket burrito", "desc": "rolled tightly in a blanket like a spring roll, only face peeking out", "zh": "裹成春卷"}
+    ],
+    "恋爱贴贴": [
+      {"en": "cupid arrow", "desc": "shooting a tiny heart arrow with a small bow, cheeky wink", "zh": "丘比特之箭"},
+      {"en": "heart eyes orbit", "desc": "big glowing heart-shaped eyes, tiny hearts orbiting the head", "zh": "为你心动"},
+      {"en": "hold hands offer", "desc": "extending an open paw shyly with warm pink cheeks, hopeful eyes", "zh": "牵手手"},
+      {"en": "you are mine", "desc": "hugging a tiny heart pillow possessively, happy determined pout", "zh": "你是我的"},
+      {"en": "shared scarf", "desc": "wrapped in one long cozy scarf, warm smiling cheeks pressed to paw", "zh": "同一条围巾"},
+      {"en": "love letter hide", "desc": "hiding a tiny pink envelope behind back with shy pink cheeks", "zh": "悄悄喜欢你"},
+      {"en": "waiting for reply", "desc": "staring at a glowing phone with one tiny nervous sweat drop", "zh": "等你回复"},
+      {"en": "forehead kiss", "desc": "leaning in with eyes closed and lips puckered, tiny hearts popping", "zh": "额头亲亲"},
+      {"en": "swing together", "desc": "sitting on a tiny swing kicking off happily, flowing motion lines", "zh": "一起荡秋千"},
+      {"en": "heartbeat blush", "desc": "both paws pressed on cheeks with warm pink blush, wobbly happy smile", "zh": "脸红心跳"},
+      {"en": "pinky promise", "desc": "linking a pinky with a floating soft paw, serious cute nod", "zh": "拉钩约定"},
+      {"en": "heart balloon", "desc": "floating off the ground holding a heart-shaped balloon, dreamy smile", "zh": "心形气球"},
+      {"en": "jealous puff", "desc": "puffed cheeks turned away with a tiny hmph puff, sideways glance", "zh": "吃醋了哼"},
+      {"en": "morning text joy", "desc": "woken by a softly glowing phone, sleepy but delighted smile", "zh": "你的早安"}
+    ],
+    "友谊互动": [
+      {"en": "fist bump offer", "desc": "holding out a tiny fist with a cool confident grin", "zh": "碰个拳"},
+      {"en": "secret handshake", "desc": "mid silly handshake pose with tongue-out focus and squinted eyes", "zh": "友谊暗号"},
+      {"en": "piggyback march", "desc": "marching proudly as if carrying a friend, big determined grin", "zh": "背你走"},
+      {"en": "got your back", "desc": "flexing tiny arms standing guard with a determined protective face", "zh": "有我在"},
+      {"en": "sharing umbrella", "desc": "holding a tiny leaf umbrella tilted to shelter a friend, gentle smile", "zh": "伞给你打"},
+      {"en": "surprise ready", "desc": "hiding behind a tiny cake with sparkling mischievous eyes", "zh": "给你惊喜"},
+      {"en": "listening ear", "desc": "leaning in with paws folded, big attentive caring eyes", "zh": "我在听"},
+      {"en": "comfort blanket hug", "desc": "wrapping a tiny soft blanket forward with gentle caring eyes", "zh": "别难过抱抱"},
+      {"en": "partners in fun", "desc": "fist pumped high with a matching troublemaker grin", "zh": "搞事搭子"},
+      {"en": "after you", "desc": "politely gesturing ahead with one paw and a warm smile", "zh": "你先请"},
+      {"en": "high five leap", "desc": "leaping mid-air for a high five with eyes squeezed happy", "zh": "击个掌"},
+      {"en": "cheering for you", "desc": "hoisting a tiny trophy overhead with a prouder smile than the winner", "zh": "为你喝彩"}
+    ],
+    "天气季节": [
+      {"en": "spring stroll", "desc": "walking with a tiny flower pinned, petals drifting around", "zh": "春天散步"},
+      {"en": "summer fan", "desc": "fanning with a tiny folding fan, tiny sweat drop but smiling", "zh": "夏天好热"},
+      {"en": "autumn leaf catch", "desc": "catching a falling leaf with delighted open palms", "zh": "接住落叶"},
+      {"en": "first snow", "desc": "catching snowflakes on tongue with arms wide and sparkling eyes", "zh": "初雪啦"},
+      {"en": "rainbow awe", "desc": "pointing up at a tiny rainbow arc with starry open-mouth eyes", "zh": "彩虹好美"},
+      {"en": "windy day", "desc": "ears flapping in the wind while holding down a tiny hat", "zh": "风好大"},
+      {"en": "puddle jump", "desc": "leaping over a tiny puddle in rubber boots with joyful grin", "zh": "踩水坑"},
+      {"en": "sun shade", "desc": "hiding under a tiny lotus-leaf umbrella with one eye peeking out", "zh": "太阳好晒"},
+      {"en": "cloud watching", "desc": "lying on a grass patch pointing at fluffy cloud doodles", "zh": "看云朵"},
+      {"en": "heat flop", "desc": "lying flat on back fanning with a tiny leaf, lolling lazy smile", "zh": "热到躺平"},
+      {"en": "umbrella twirl", "desc": "balancing a spinning tiny umbrella on one paw, playful grin", "zh": "转伞小能手"},
+      {"en": "star wish", "desc": "gazing up with paws clasped, tiny shooting star doodle above", "zh": "对星星许愿"}
+    ],
+    "节日庆祝": [
+      {"en": "birthday hat", "desc": "wearing a party hat blowing a tiny party blower, bouncing", "zh": "生日快乐"},
+      {"en": "cake candles", "desc": "leaning in to blow tiny candles with deeply puffed cheeks", "zh": "许愿吹蜡烛"},
+      {"en": "new year bow", "desc": "wearing a tiny festive outfit giving a happy new-year bow", "zh": "新年好"},
+      {"en": "red envelope joy", "desc": "hugging a tiny red envelope with eyes turned into sparkle coins", "zh": "收到红包啦"},
+      {"en": "party popper", "desc": "pulling a tiny party popper with a confetti burst overhead", "zh": "放礼花"},
+      {"en": "gift wrapping", "desc": "tying a ribbon on a tiny box with tongue-out focus", "zh": "包礼物中"},
+      {"en": "countdown jump", "desc": "jumping with both paws up under tiny firework doodles", "zh": "跨年倒数"},
+      {"en": "trick or treat", "desc": "wearing a tiny pumpkin bucket with a friendly sweet grin", "zh": "不给糖就捣蛋"},
+      {"en": "tree star", "desc": "on tiptoes placing a star on a tiny tree, concentrated smile", "zh": "挂圣诞星星"},
+      {"en": "mooncake time", "desc": "holding a tiny mooncake beside a big full-moon doodle", "zh": "吃月饼啦"},
+      {"en": "celebration twirl", "desc": "twirling with tiny streamers streaming from both paws", "zh": "转圈庆祝"},
+      {"en": "grateful basket", "desc": "carrying a tiny fruit basket with a warm grateful smile", "zh": "感谢有你"}
+    ],
+    "运动游戏": [
+      {"en": "warm up stretch", "desc": "doing exaggerated side stretches with a tiny sweatband on", "zh": "运动前热身"},
+      {"en": "victory jog", "desc": "jogging with a tiny medal bouncing on chest, proud smile", "zh": "得奖跑步"},
+      {"en": "racket miss", "desc": "racket swung wide while a shuttlecock lands on head, dizzy swirl doodle", "zh": "球拍挥空"},
+      {"en": "game win jump", "desc": "holding a tiny controller while jumping high with joy", "zh": "游戏赢了"},
+      {"en": "game over pout", "desc": "puffed cheeks slumping beside a tiny controller, comic anger puff", "zh": "游戏输了气鼓鼓"},
+      {"en": "dunk pose", "desc": "mid-jump holding a tiny ball overhead with determined grin", "zh": "灌篮高手"},
+      {"en": "yoga tree", "desc": "wobbling on one leg in tree pose with calm closed eyes", "zh": "瑜伽树式"},
+      {"en": "rope tangle", "desc": "comically tangled in a jump rope with a helpless smile", "zh": "跳绳缠住了"},
+      {"en": "paddle splash", "desc": "dog-paddling with tiny splash doodles and happy bubbles", "zh": "游泳扑腾"},
+      {"en": "counting to ten", "desc": "sitting cross-legged covering eyes with paws, counting peek", "zh": "数到十咯"},
+      {"en": "found you", "desc": "pointing forward with an open-mouth triumphant grin", "zh": "抓到你了"},
+      {"en": "board game slam", "desc": "slamming a tiny tile down with a victorious grin", "zh": "桌游必胜"},
+      {"en": "kite run", "desc": "running with a tiny kite trailing while looking back joyful", "zh": "放风筝"},
+      {"en": "on your marks", "desc": "crouched at a tiny start line with determined narrowed eyes", "zh": "预备备跑"}
+    ],
+    "音乐": [
+      {"en": "headphone groove", "desc": "eyes closed swaying with oversized headphones on, tiny music notes", "zh": "戴耳机听歌"},
+      {"en": "mic performance", "desc": "singing into a tiny microphone with mouth wide open, shining eyes", "zh": "麦霸上线"},
+      {"en": "air guitar", "desc": "strumming an air guitar with a rockstar squint grin", "zh": "空气吉他"},
+      {"en": "piano focus", "desc": "tapping a tiny piano with tongue peeking out in concentration", "zh": "弹琴认真脸"},
+      {"en": "tub singer", "desc": "singing passionately in a tiny tub full of bubbles", "zh": "浴室高歌"},
+      {"en": "note twirl", "desc": "twirling with floating music notes around, dreamy smile", "zh": "音符转圈"},
+      {"en": "tiny drummer", "desc": "drumming on a tiny tin with two sticks, bopping head", "zh": "小鼓手"},
+      {"en": "dj spin", "desc": "spinning a tiny record disc with a cool nodding grin", "zh": "打碟中"},
+      {"en": "share a song", "desc": "holding out one earcup of tiny headphones invitingly, warm smile", "zh": "一起听歌"},
+      {"en": "encore bow", "desc": "taking a deep bow with a tiny tossed rose nearby", "zh": "谢幕鞠躬"},
+      {"en": "humming along", "desc": "eyes closed humming with a tiny note doodle, swaying side to side", "zh": "哼着小曲"},
+      {"en": "volume max", "desc": "cranking a tiny volume dial to the top with an ecstatic grin", "zh": "音量拉满"}
+    ],
+    "旅行": [
+      {"en": "overpacked case", "desc": "sitting on an overstuffed tiny suitcase trying to zip it, strained face", "zh": "行李箱塞不下"},
+      {"en": "passport ready", "desc": "holding up a tiny passport with a determined adventure grin", "zh": "证件带好了"},
+      {"en": "train window", "desc": "chin on paws gazing out a tiny train window, peaceful smile", "zh": "车窗看风景"},
+      {"en": "upside down map", "desc": "holding a huge map upside down with big lost round eyes", "zh": "地图拿反了"},
+      {"en": "landmark pose", "desc": "throwing a peace sign in front of a tiny tower doodle", "zh": "旅游打卡"},
+      {"en": "souvenir haul", "desc": "hugging a bag of tiny souvenirs with a satisfied smirk", "zh": "买买买纪念品"},
+      {"en": "camping peek", "desc": "peeking out of a tiny tent holding a little lantern", "zh": "露营初体验"},
+      {"en": "sandcastle build", "desc": "building a tiny sandcastle with a tiny shovel, focused happy", "zh": "海边堆沙堡"},
+      {"en": "plane window awe", "desc": "face pressed against a tiny plane window in open-mouth awe", "zh": "飞机窗边"},
+      {"en": "lost and pouty", "desc": "standing by a tiny signpost doodle with tilted head and wobbly pout", "zh": "迷路了呜呜"},
+      {"en": "backpack march", "desc": "marching with a giant backpack nearly bigger than itself", "zh": "背包出发"},
+      {"en": "home sweet home", "desc": "hugging a tiny house doodle with teary happy eyes", "zh": "还是家里好"}
+    ],
+    "宠物互动": [
+      {"en": "kitten nose boop", "desc": "gently booping a tiny kitten's nose with one fingertip, focused smile", "zh": "戳戳猫鼻"},
+      {"en": "dog walk drag", "desc": "being pulled forward holding a tiny leash, comic stumbling", "zh": "遛狗被遛"},
+      {"en": "bird feeding", "desc": "offering seeds on an open palm to a tiny bird landing", "zh": "喂小鸟"},
+      {"en": "hamster pat", "desc": "gently patting a tiny hamster with sparkling adoring eyes", "zh": "摸摸仓鼠"},
+      {"en": "fish tank trance", "desc": "face pressed on a tiny fish tank, mesmerized smile", "zh": "看鱼看入迷"},
+      {"en": "bunny hop", "desc": "wearing a tiny bunny-ear headband hopping with both paws up", "zh": "兔耳蹦蹦"},
+      {"en": "pet nap pile", "desc": "napping curled around a tiny sleeping kitten, matching snooze bubbles", "zh": "和宠物一起睡"},
+      {"en": "cuteness duel", "desc": "in a staring cuteness contest with a tiny puppy, both sparkling", "zh": "卖萌对决"},
+      {"en": "flurry sneeze", "desc": "sneezing in a tiny flurry of floating fluff doodles", "zh": "毛毛满天飞"},
+      {"en": "treat magic", "desc": "holding up a tiny treat with a showy magician flourish", "zh": "变出小零食"},
+      {"en": "tail chase cheer", "desc": "clapping happily while a tiny puppy chases its own tail in a circle", "zh": "看它追尾巴"},
+      {"en": "stroller ride", "desc": "riding atop a tiny pet stroller like a float, waving proudly", "zh": "宠物推车兜风"}
+    ],
+    "搞怪扮装": [
+      {"en": "superhero cape", "desc": "hands on hips with a tiny cape fluttering behind, chest puffed", "zh": "超英披风"},
+      {"en": "little wizard", "desc": "wearing a pointed tiny hat waving a small wand with sparkles", "zh": "小小魔法师"},
+      {"en": "pirate patch", "desc": "one eye patch and a tiny sword held high, cheeky grin", "zh": "海盗船长"},
+      {"en": "detective squint", "desc": "magnifying glass up to one eye with an intense comic squint", "zh": "小侦探"},
+      {"en": "checkup time", "desc": "wearing a tiny nurse cap holding an oversized toy syringe, gentle smile", "zh": "打针别怕"},
+      {"en": "chef kiss", "desc": "tiny chef hat and apron, kissing fingertips with closed blissful eyes", "zh": "美味主厨"},
+      {"en": "space float", "desc": "wearing a tiny fishbowl helmet floating with zero-gravity paws", "zh": "太空漫步"},
+      {"en": "dino onesie", "desc": "wearing a tiny dino-kigurumi doing a small playful roar", "zh": "小恐龙嗷呜"},
+      {"en": "paper crown twirl", "desc": "wearing a tiny paper crown spinning with skirts flaring", "zh": "小公主转圈圈"},
+      {"en": "big glasses nerd", "desc": "pushing up huge round glasses with a know-it-all smirk", "zh": "学霸附体"},
+      {"en": "silly bow", "desc": "wearing a tiny round red nose taking a comedic deep bow", "zh": "滑稽鞠躬"},
+      {"en": "blanket cape pose", "desc": "draped in a tiny blanket cape striking a dramatic hero pose while giggling", "zh": "披风小怪兽"}
+    ],
+    "科技上网": [
+      {"en": "typing storm", "desc": "paws flying over a tiny keyboard with focused narrowed eyes", "zh": "键盘敲得飞起"},
+      {"en": "wifi begging", "desc": "hugging a tiny router with pleading upward eyes", "zh": "求个Wi-Fi"},
+      {"en": "battery panic", "desc": "holding a phone with a tiny empty-battery doodle, dramatic despair", "zh": "手机没电了"},
+      {"en": "loading wait", "desc": "staring at a tiny loading circle, cheeks puffed impatiently", "zh": "加载中等等"},
+      {"en": "video call ready", "desc": "sitting neatly in front of a tiny screen, best behaved smile", "zh": "视频通话中"},
+      {"en": "emoji spam", "desc": "tapping heart emojis on a phone with a mischievous grin", "zh": "刷屏表情"},
+      {"en": "unboxing joy", "desc": "carefully opening a tiny box with huge sparkling eyes", "zh": "开箱新品"},
+      {"en": "bug dizzy", "desc": "staring at a screen with swirl doodles circling overhead", "zh": "改bug改到晕"},
+      {"en": "screenshot saved", "desc": "pressing buttons triumphantly with a proud smirk", "zh": "截图保存了"},
+      {"en": "phone dive", "desc": "diving mid-air to catch a falling phone, determined grit", "zh": "手机要掉了"},
+      {"en": "binge watching", "desc": "lying on tummy kicking feet, chin in palms, glued to a tiny screen", "zh": "刷剧上头"},
+      {"en": "robot high five", "desc": "high-fiving a tiny boxy robot buddy, matching happy faces", "zh": "和机器人击掌"}
+    ],
+    "金钱消费": [
+      {"en": "money rain", "desc": "arms wide as tiny coins and bills rain down, ecstatic open mouth", "zh": "天降横财"},
+      {"en": "empty wallet", "desc": "holding an open empty wallet upside down with a single tear", "zh": "钱包空了"},
+      {"en": "budget math", "desc": "doing sums on tiny paper with a mini abacus, dead serious face", "zh": "精打细算"},
+      {"en": "piggy bank hug", "desc": "hugging a tiny piggy bank protectively with wary cute eyes", "zh": "抱紧存钱罐"},
+      {"en": "bargain win", "desc": "holding a tiny sale tag overhead with a triumphant grin", "zh": "抢到折扣"},
+      {"en": "treat myself", "desc": "carrying heaps of tiny shopping bags with a satisfied smile", "zh": "奖励自己"},
+      {"en": "payday countdown", "desc": "crossing off days on a tiny calendar with longing eyes", "zh": "等发工资"},
+      {"en": "coin counting", "desc": "counting tiny coins one by one with pursed concentrating lips", "zh": "数硬币"},
+      {"en": "lucky penny", "desc": "holding up one shiny coin with big starry eyes", "zh": "捡到钱啦"},
+      {"en": "split the bill", "desc": "holding out a tiny calculator with a fair-minded expression", "zh": "AA制算账"},
+      {"en": "window shopping", "desc": "pressed against a tiny shop window with a drooling gaze", "zh": "只看看不买"},
+      {"en": "chart watching", "desc": "staring at a tiny rising chart doodle, fists clenched in hope", "zh": "基金红了"}
+    ],
+    "健康生病": [
+      {"en": "fever check", "desc": "wrapped in a tiny scarf with thermometer in mouth, pathetic cute eyes", "zh": "发烧了量体温"},
+      {"en": "vitamin happy", "desc": "happily chewing a tiny vitamin tablet with a proud smile", "zh": "吃维生素"},
+      {"en": "tissue mountain", "desc": "wrapped in a blanket beside a mountain of tiny tissues, sniffly pout", "zh": "感冒纸巾山"},
+      {"en": "brave medicine", "desc": "holding a tiny spoon of medicine with eyes squeezed shut", "zh": "勇敢喝药"},
+      {"en": "warm water care", "desc": "hugging a tiny warm cup with a healing gentle smile", "zh": "多喝热水"},
+      {"en": "eye drop wobble", "desc": "head tilted back holding a tiny dropper, nervous wobbling lips", "zh": "点眼药水"},
+      {"en": "bandage pride", "desc": "showing off one tiny cute bandage on a paw with a brave grin", "zh": "小伤不怕"},
+      {"en": "doctor visit wave", "desc": "waving bravely from a tiny clinic door with a shaky smile", "zh": "去看医生"},
+      {"en": "rest day obey", "desc": "lying in a tiny bed with a small ice pack, obedient gentle smile", "zh": "好好休息"},
+      {"en": "push up count", "desc": "doing tiny push-ups counting with determined puffed effort face", "zh": "锻炼身体"},
+      {"en": "early sleep vow", "desc": "tucked in bed under a crescent moon doodle with a resolute nod", "zh": "今晚早睡"},
+      {"en": "full recovery", "desc": "jumping out of a tiny bed with renewed sparkle and energy", "zh": "满血复活"}
+    ]
+  },
   "emotions": [
     {
       "en": "overjoyed",
-      "desc": "eyes squeezed into happy arcs, mouth wide open showing tiny teeth, cheeks lifted high"
+      "desc": "eyes squeezed into happy arcs, mouth wide open showing tiny teeth, cheeks lifted high",
+      "zh": "开心到飞起"
     },
     {
       "en": "giggling",
-      "desc": "one hand covering mouth, eyes curved into crescents, shoulders bouncing"
+      "desc": "one hand covering mouth, eyes curved into crescents, shoulders bouncing",
+      "zh": "偷偷笑"
     },
     {
       "en": "laughing hysterically",
-      "desc": "rolling on the floor laughing, eyes squeezed shut, tears flying out, limbs flailing"
+      "desc": "rolling on the floor laughing, eyes squeezed shut, tears flying out, limbs flailing",
+      "zh": "笑到打滚"
     },
     {
       "en": "crying rivers",
-      "desc": "fountain tears squirting from big watery eyes, wobbly trembling lips"
+      "desc": "fountain tears squirting from big watery eyes, wobbly trembling lips",
+      "zh": "大哭一场"
     },
     {
       "en": "tearful pout",
-      "desc": "big glossy eyes brimming with tears, lips slightly trembling, hands clutching hem"
+      "desc": "big glossy eyes brimming with tears, lips slightly trembling, hands clutching hem",
+      "zh": "含泪嘟嘴"
     },
     {
       "en": "puffed-up angry",
-      "desc": "cheeks puffed like balloons, brows furrowed, tiny anger puff above head"
+      "desc": "cheeks puffed like balloons, brows furrowed, tiny anger puff above head",
+      "zh": "气鼓鼓"
     },
     {
       "en": "boiling mad",
-      "desc": "steam jetting from both ears, puffed cheeks, fists clenched and shaking"
+      "desc": "steam jetting from both ears, puffed cheeks, fists clenched and shaking",
+      "zh": "怒气冲天"
     },
     {
       "en": "speechless",
-      "desc": "flat dead-fish eyes, mouth a straight line, small dark cloud overhead"
+      "desc": "flat dead-fish eyes, mouth a straight line, small dark cloud overhead",
+      "zh": "无语死了"
     },
     {
       "en": "done with everything",
-      "desc": "lying flat on belly, arms spread limp, utterly drained, comic helpless pout"
+      "desc": "lying flat on belly, arms spread limp, utterly drained, comic helpless pout",
+      "zh": "累瘫了"
     },
     {
       "en": "jaw dropped",
-      "desc": "mouth stretched into a huge O, eyes popping wide, hands pressed on cheeks in shock"
+      "desc": "mouth stretched into a huge O, eyes popping wide, hands pressed on cheeks in shock",
+      "zh": "惊掉下巴"
     },
     {
       "en": "starstruck",
-      "desc": "eyes turned into big sparkling stars, hands pressed to cheeks"
+      "desc": "eyes turned into big sparkling stars, hands pressed to cheeks",
+      "zh": "眼冒星星"
     },
     {
       "en": "love struck",
-      "desc": "pink hearts floating around head, dreamy half-closed eyes, blushing hard"
+      "desc": "pink hearts floating around head, dreamy half-closed eyes, blushing hard",
+      "zh": "恋爱脑上线"
     },
     {
       "en": "blushing shy",
-      "desc": "cheeks blushing warm pink, eyes looking away, fingers poking index fingers together"
+      "desc": "cheeks blushing warm pink, eyes looking away, fingers poking index fingers together",
+      "zh": "害羞脸红"
     },
     {
       "en": "steaming embarrassed",
-      "desc": "steam whistling out of ears, cheeks blushing pink, covering face with both hands"
+      "desc": "steam whistling out of ears, cheeks blushing pink, covering face with both hands",
+      "zh": "羞到冒烟"
     },
     {
       "en": "smug",
-      "desc": "eyes closed triumphantly, nose up in the air, tiny smirk, arms crossed"
+      "desc": "eyes closed triumphantly, nose up in the air, tiny smirk, arms crossed",
+      "zh": "得意洋洋"
     },
     {
       "en": "proud sparkles",
-      "desc": "one hand on hip, other hand thumbs-up at viewer, confident wink, sparkle effects"
+      "desc": "one hand on hip, other hand thumbs-up at viewer, confident wink, sparkle effects",
+      "zh": "骄傲闪闪"
     },
     {
       "en": "sassy eye-roll",
-      "desc": "eyes rolled way up, one brow raised, hand waving dismissively"
+      "desc": "eyes rolled way up, one brow raised, hand waving dismissively",
+      "zh": "翻个白眼"
     },
     {
       "en": "mischievous grin",
-      "desc": "wide toothy grin with one fang, eyes gleaming with a sneaky plan"
+      "desc": "wide toothy grin with one fang, eyes gleaming with a sneaky plan",
+      "zh": "坏笑"
     },
     {
       "en": "sleepy drowse",
-      "desc": "half-lidded drowsy eyes, head drooping onto folded arms, tiny sleep bubbles"
+      "desc": "half-lidded drowsy eyes, head drooping onto folded arms, tiny sleep bubbles",
+      "zh": "困困点头"
     },
     {
       "en": "deep asleep",
-      "desc": "curled on a tiny pillow, sweet smile, sleep bubble with a tiny Z"
+      "desc": "curled on a tiny pillow, sweet smile, sleep bubble with a tiny Z",
+      "zh": "睡得香"
     },
     {
       "en": "groggy morning",
-      "desc": "hair sticking up wildly, eyes half open, holding a tiny coffee cup"
+      "desc": "hair sticking up wildly, eyes half open, holding a tiny coffee cup",
+      "zh": "早上没睡醒"
     },
     {
       "en": "bored to dust",
-      "desc": "cheek mashed on palm, eyes half dead, small bored swirl above head"
+      "desc": "cheek mashed on palm, eyes half dead, small bored swirl above head",
+      "zh": "无聊死了"
     },
     {
       "en": "social battery empty",
-      "desc": "hiding inside a cardboard box, only tired eyes peeking out"
+      "desc": "hiding inside a cardboard box, only tired eyes peeking out",
+      "zh": "社交电量耗尽"
     },
     {
       "en": "foodie mode",
-      "desc": "eyes sparkling at a giant drumstick, drooling, hands clasped in prayer"
+      "desc": "eyes sparkling at a giant drumstick, drooling, hands clasped in prayer",
+      "zh": "干饭模式"
     },
     {
       "en": "shivering cold",
-      "desc": "wrapped in a tiny blanket burrito, teeth chattering, snowflake doodles"
+      "desc": "wrapped in a tiny blanket burrito, teeth chattering, snowflake doodles",
+      "zh": "冷得发抖"
     },
     {
       "en": "determined fire",
-      "desc": "burning resolve in eyes, fists up in guard, tiny flame in eyes"
+      "desc": "burning resolve in eyes, fists up in guard, tiny flame in eyes",
+      "zh": "燃起来了"
     },
     {
       "en": "cheering",
-      "desc": "both arms raised high, jumping, confetti burst around"
+      "desc": "both arms raised high, jumping, confetti burst around",
+      "zh": "欢呼加油"
     },
     {
       "en": "begging",
-      "desc": "big pleading puppy eyes, hands pressed together, tiny sparkle tears"
+      "desc": "big pleading puppy eyes, hands pressed together, tiny sparkle tears",
+      "zh": "求求你了"
     },
     {
       "en": "blowing kiss",
-      "desc": "one eye winking, hand sending a heart off, heart trailing in air"
+      "desc": "one eye winking, hand sending a heart off, heart trailing in air",
+      "zh": "飞吻"
     },
     {
       "en": "finger heart",
-      "desc": "sweet smile with finger heart at viewer, tiny hearts popping"
+      "desc": "sweet smile with finger heart at viewer, tiny hearts popping",
+      "zh": "比心"
     },
     {
       "en": "peace and wink",
-      "desc": "playful double peace signs, one eye winking, tongue slightly out"
+      "desc": "playful double peace signs, one eye winking, tongue slightly out",
+      "zh": "剪刀手眨眼"
     },
     {
       "en": "greeting bow",
-      "desc": "polite little bow with hands together, friendly smile"
+      "desc": "polite little bow with hands together, friendly smile",
+      "zh": "鞠躬问好"
     },
     {
       "en": "high five offer",
-      "desc": "running toward viewer with palm out, excited grin"
+      "desc": "running toward viewer with palm out, excited grin",
+      "zh": "击个掌"
     },
     {
       "en": "hugging tightly",
-      "desc": "arms wide open wrapping into a warm hug, eyes closed happily"
+      "desc": "arms wide open wrapping into a warm hug, eyes closed happily",
+      "zh": "紧紧抱住"
     },
     {
       "en": "sneaky peeking",
-      "desc": "only eyes and fingertips showing over a wall, curious big eyes"
+      "desc": "only eyes and fingertips showing over a wall, curious big eyes",
+      "zh": "偷偷看"
     },
     {
       "en": "spaced out",
-      "desc": "eyes staring into distance, mouth slightly open, tiny stars orbiting head"
+      "desc": "eyes staring into distance, mouth slightly open, tiny stars orbiting head",
+      "zh": "发呆放空"
     },
     {
       "en": "plotting",
-      "desc": "steepled fingers, sinister little giggle, shadow over eyes"
+      "desc": "steepled fingers, sinister little giggle, shadow over eyes",
+      "zh": "憋着坏主意"
     },
     {
       "en": "panic sprint",
-      "desc": "cartoon running with dust cloud, panic-stricken eyes, arms windmilling"
+      "desc": "cartoon running with dust cloud, panic-stricken eyes, arms windmilling",
+      "zh": "狂奔逃命"
     },
     {
       "en": "celebrating win",
-      "desc": "fist pumped high, jumping with joy, starburst effects"
+      "desc": "fist pumped high, jumping with joy, starburst effects",
+      "zh": "庆祝胜利"
     },
     {
       "en": "whatever face",
-      "desc": "lazy shrug, flat mouth, one brow slightly up"
+      "desc": "lazy shrug, flat mouth, one brow slightly up",
+      "zh": "无所谓脸"
     },
     {
       "en": "hopeful sparkle",
-      "desc": "hands clasped under chin, big shimmering begging eyes"
+      "desc": "hands clasped under chin, big shimmering begging eyes",
+      "zh": "满眼期待"
     },
     {
       "en": "hello wave",

@@ -64,6 +64,12 @@ class GenerationMode(enum.Enum):
     KEYWORD_COMBO = "keyword_combo"
 
 
+# 主题抽取的跨单记忆：连续两单不选同一主题（400 单量产时的主题去重意识）。
+# stage 每单都会新建实例（api.run 每次 _build），实例字段不跨单存活，
+# 故挂在类属性上——同进程内批量连跑时生效；单测里用 seed 前先重置。
+_LAST_THEME_KEY = None
+
+
 class GenerateStage:
     """S1：三模式分派 → 拼 prompt → 调 codex → 捞图。"""
 
@@ -367,29 +373,25 @@ class GenerateStage:
         每格 = 情绪画面 + 动作 + 概率点缀道具，输出带编号的场景列表——
         比旧版 "happy + smiling" 抽象词拼接的良品率高得多。
         兼容旧格式（纯字符串数组）。
+
+        2026-09 升级（400 单量产多样性）：keywords.json 新增 themes 主题池
+        （{"主题名": [词条…]}）。有 themes 时走主题抽取——每单锁定 1 个主题
+        抽约 70%（16 格中 10-12 个）+ 其他主题随机补足（4-6 个），单内主题
+        连贯 + 跨主题新鲜感；连续两单不选同一主题（类级记忆）。读不到
+        themes 时退回 emotions 均匀抽（旧结构兼容）。
         """
         kws = self.keywords or {}
-        raw_emotions = kws.get("emotions") or ["happy"]
         actions = kws.get("actions") or ["smiling"]
         props = kws.get("props") or []
 
-        # 归一化：str → {en, desc}（旧格式兼容，desc 用 en 兜底）
-        emotions = []
-        for item in raw_emotions:
-            if isinstance(item, dict):
-                emotions.append({"en": str(item.get("en", "")),
-                                 "desc": str(item.get("desc") or item.get("en", ""))})
-            else:
-                emotions.append({"en": str(item), "desc": str(item)})
-
-        # 情绪去重抽取 n 个（池小于 n 时重新装填）
-        picked = []
-        pool = list(emotions)
-        for _ in range(n):
-            if not pool:
-                pool = list(emotions)
-            e = pool.pop(self.rng.randrange(len(pool)))
-            picked.append(e)
+        themes = self._normalize_themes(kws.get("themes"))
+        if themes:
+            picked, main_key, main_n = self._pick_themed_entries(themes, n)
+            self._emit(ctx, f"本单主题：「{main_key}」——主题内抽 {min(main_n, len(themes[main_key]))} 格"
+                            f" + 跨主题点缀 {n - main_n} 格（词条库 {len(themes)} 个主题）")
+        else:
+            emotions = self._normalize_entries(kws.get("emotions") or ["happy"])
+            picked = self._draw_without_repeat(emotions, n)
 
         lines = []
         for i, e in enumerate(picked, 1):
@@ -406,3 +408,60 @@ class GenerateStage:
                              "sticker height, almost all head with tiny body")
             lines.append(" — ".join(parts))
         return "\n".join(lines)
+
+    @staticmethod
+    def _normalize_entries(raw) -> list:
+        """词条归一化：str → {en, desc}（旧格式兼容，desc 用 en 兜底）。"""
+        out = []
+        for item in raw or []:
+            if isinstance(item, dict):
+                out.append({"en": str(item.get("en", "")),
+                            "desc": str(item.get("desc") or item.get("en", ""))})
+            else:
+                out.append({"en": str(item), "desc": str(item)})
+        return out
+
+    @classmethod
+    def _normalize_themes(cls, raw_themes) -> dict:
+        """themes 归一化：{主题名: [词条…]}，跳过空主题（坏数据防御）。"""
+        themes = {}
+        for key, entries in (raw_themes or {}).items():
+            norm = cls._normalize_entries(entries)
+            if norm:
+                themes[str(key)] = norm
+        return themes
+
+    def _draw_without_repeat(self, pool: list, n: int) -> list:
+        """无重复抽取 n 个（池小于 n 时重新装填，允许跨装填重复）。"""
+        picked, bag = [], list(pool)
+        for _ in range(n):
+            if not bag:
+                bag = list(pool)
+            picked.append(bag.pop(self.rng.randrange(len(bag))))
+        return picked
+
+    def _pick_themed_entries(self, themes: dict, n: int):
+        """主题抽取：主主题抽 ~70% + 其他主题补足，返回 (词条列表, 主题名, 主题内个数)。
+
+        - 主主题随机选；若与上一单相同且有得换则避开（连续两单不同主题）
+        - 16 格 → 主题内 11 格（10-12 区间）+ 跨主题 5 格（4-6 区间）
+        - 其他主题为空（只有 1 个主题）时退回主主题装填，保证凑满 n 格
+        """
+        global _LAST_THEME_KEY
+        keys = list(themes.keys())
+        main_key = keys[self.rng.randrange(len(keys))]
+        if len(keys) > 1 and main_key == _LAST_THEME_KEY:
+            others = [k for k in keys if k != _LAST_THEME_KEY]
+            main_key = others[self.rng.randrange(len(others))]
+        _LAST_THEME_KEY = main_key
+
+        main_n = max(1, min(int(round(n * 0.7)), n))
+        picked = self._draw_without_repeat(themes[main_key], main_n)
+        # 跨主题点缀：其余主题的词条合并抽（已按 en 全库去重，无重复风险）
+        rest_pool = [e for k in keys if k != main_key for e in themes[k]]
+        if not rest_pool:
+            rest_pool = themes[main_key]
+        if n > len(picked):
+            picked += self._draw_without_repeat(rest_pool, n - len(picked))
+        self.rng.shuffle(picked)
+        return picked, main_key, main_n

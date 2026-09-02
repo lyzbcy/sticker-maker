@@ -80,6 +80,9 @@ class PipelineContext:
     stickers: list = field(default_factory=list)
     meaning_map: dict = field(default_factory=dict)
     assets: object = None
+    # S3 图标降级信号：AI 大头照生成失败、退回复用封面（曾致平台驳回的形态）。
+    # 批量自动发布路径据此跳过该单（cli.cmd_run_batch）；单次手动生成不阻断。
+    icon_fallback: bool = False
     # S1 进度注入：runner 在每个 stage 执行前设置（签名 (message: str) -> None），
     # stage 内部用它发细粒度进度（做什么 / 输入 / 输出 / 在等什么），stage 外为 None。
     stage_progress: Optional[Callable] = None

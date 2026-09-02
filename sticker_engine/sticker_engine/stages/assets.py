@@ -64,6 +64,9 @@ class AssetsStage:
         else:
             icon_src = cover_src
             why = getattr(self, "_icon_last_error", "") or "未知原因"
+            # 降级信号外传（2026-09-01 批量发布风险）：fallback 产物（格子缩放/
+            # 封面缩放形态）曾被平台驳回，run_batch 的自动发布路径据此跳过本单
+            ctx.icon_fallback = True
             ctx.log(LogEntry(stage="S3", status="WARN",
                              message=f"图标：AI 生成失败（{why[:120]}），本次退回复用封面"))
         self._resize_save(icon_src, icon_dir / "图标.png", _ICON_SIZE, _ICON_SIZE)

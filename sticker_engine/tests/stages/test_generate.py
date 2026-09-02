@@ -115,3 +115,99 @@ def test_combo_panels_contain_cute_guard(tmp_path):
     prompt = apply_set("keyword_combo", builtin_set())
     assert "CUTE and lovable" in prompt
     assert "ghostly" in prompt
+
+
+# ---------------- 2026-09 主题抽取（400 单量产多样性） ----------------
+
+def _theme_kws(n_per=12, n_themes=3):
+    """构造 themes 结构的 keywords：n_themes 个主题各 n_per 条，en 带主题前缀便于归属统计。"""
+    themes = {}
+    for t in range(n_themes):
+        themes[f"主题{t}"] = [
+            {"en": f"e{t}-{i}", "desc": f"desc e{t}-{i}", "zh": f"词{t}-{i}"}
+            for i in range(n_per)]
+    return {"themes": themes, "actions": ["waving"], "props": []}
+
+
+def _reset_last_theme(monkeypatch):
+    import sticker_engine.stages.generate as G
+    monkeypatch.setattr(G, "_LAST_THEME_KEY", None)
+
+
+def test_themed_combo_locks_one_theme(tmp_path, monkeypatch):
+    """主题抽取：16 格中主主题占 10-12 格（~70%），其余跨主题点缀。"""
+    _reset_last_theme(monkeypatch)
+    from collections import Counter
+    stage = GenerateStage(codex=MagicMock(), keywords=_theme_kws(), seed=7)
+    ctx = _ctx(tmp_path)
+    msgs = []
+    ctx.stage_progress = msgs.append
+    text = stage._random_combo_panels(ctx, 16)
+    lines = text.strip().splitlines()
+    assert len(lines) == 16
+    counts = Counter()
+    for ln in lines:   # 行首 "1. E0-3: desc e0-3"，en 前缀标识主题归属
+        for t in range(3):
+            if f". E{t}-" in ln:
+                counts[t] += 1
+    assert sum(counts.values()) == 16
+    main_count = counts.most_common(1)[0][1]
+    assert 10 <= main_count <= 12, counts
+    assert any("本单主题" in m for m in msgs)
+
+
+def test_themed_combo_avoids_repeating_theme_between_runs(tmp_path, monkeypatch):
+    """连续两单不选同一主题（跨单类级记忆）。"""
+    _reset_last_theme(monkeypatch)
+    stage = GenerateStage(codex=MagicMock(), keywords=_theme_kws(), seed=11)
+    ctx = _ctx(tmp_path)
+    picked = []
+    for _ in range(2):
+        msgs = []
+        ctx.stage_progress = msgs.append
+        stage._random_combo_panels(ctx, 16)
+        m = next(x for x in msgs if "本单主题" in x)
+        picked.append(m.split("「")[1].split("」")[0])
+    assert picked[0] != picked[1]
+
+
+def test_old_keywords_structure_without_themes_still_works(tmp_path, monkeypatch):
+    """旧结构兼容：读不到 themes 时退回 emotions 均匀抽（str/dict 混合）。"""
+    _reset_last_theme(monkeypatch)
+    kws = {"emotions": ["happy", {"en": "sad", "desc": "droopy ears and wobbly lips"}],
+           "actions": []}
+    stage = GenerateStage(codex=MagicMock(), keywords=kws, seed=3)
+    ctx = _ctx(tmp_path)
+    text = stage._random_combo_panels(ctx, 5)
+    lines = text.strip().splitlines()
+    assert len(lines) == 5
+    assert any(". Happy:" in ln for ln in lines)
+    assert any(". Sad: droopy ears" in ln for ln in lines)
+
+
+def test_small_theme_pool_refills_to_fill_n(tmp_path, monkeypatch):
+    """主题池小于需求时重新装填，保证凑满 n 格（不崩、不缺格）。"""
+    _reset_last_theme(monkeypatch)
+    themes = {
+        "小池": [{"en": f"a{i}", "desc": f"small pool {i}", "zh": f"甲{i}"} for i in range(3)],
+        "大池": [{"en": f"b{i}", "desc": f"big pool {i}", "zh": f"乙{i}"} for i in range(12)],
+    }
+    stage = GenerateStage(codex=MagicMock(), keywords={"themes": themes}, seed=5)
+    text = stage._random_combo_panels(_ctx(tmp_path), 9)
+    assert len(text.strip().splitlines()) == 9
+
+
+def test_keywords_resource_has_themes_and_zh():
+    """资源锁：keywords.json 升级为 themes 结构，主题 15+、主题词条 200+、全带 zh。"""
+    import json
+    import sticker_engine as se
+    kw = json.loads((se.resources_path() / "keywords.json").read_text(encoding="utf-8"))
+    themes = kw["themes"]
+    assert len(themes) >= 15
+    total = sum(len(v) for v in themes.values())
+    assert total >= 200, f"主题词条仅 {total} 条"
+    assert len(kw["emotions"]) >= 78   # 通用池保留（旧结构兼容的退路）
+    for name, entries in themes.items():
+        assert len(entries) >= 10, f"主题 {name} 词条过少：{len(entries)}"
+        for e in entries:
+            assert e.get("en") and e.get("desc") and e.get("zh"), f"{name}: {e}"

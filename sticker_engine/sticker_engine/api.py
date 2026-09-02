@@ -29,6 +29,8 @@ class Episode:
     success: bool = True
     errors: list = field(default_factory=list)   # list[GateError]，关卡失败记录
     aborted_reason: str = ""   # 非空表示被取消/异常中止的原因
+    # S3 图标降级（AI 大头照失败退回复用封面）：批量自动发布路径据此跳过该单
+    icon_fallback: bool = False
 
 
 class _FailingCodex:
@@ -179,7 +181,8 @@ class StickerEngine:
         ep = Episode(
             episode_dir=ctx.episode_dir, stickers=ctx.stickers,
             meaning_map=ctx.meaning_map, assets=ctx.assets,
-            success=success, errors=list(ctx.errors), aborted_reason=aborted_reason)
+            success=success, errors=list(ctx.errors), aborted_reason=aborted_reason,
+            icon_fallback=bool(getattr(ctx, "icon_fallback", False)))
         ep.production_log = list(ctx.production_log)
         return ep
 

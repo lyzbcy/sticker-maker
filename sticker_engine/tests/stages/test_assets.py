@@ -79,3 +79,29 @@ def test_icon_is_50x50(tmp_path):
     stage.run(ctx)
     w, h = Image.open(ctx.episode_dir/"图标"/"图标.png").size
     assert (w, h) == (50, 50)
+
+
+# ---------------- 2026-09 图标降级信号（批量发布风险） ----------------
+
+def test_icon_fallback_sets_ctx_flag(tmp_path):
+    """AI 图标失败退回复用封面时，ctx.icon_fallback 置 True（run_batch 据此跳过自动发布）。"""
+    ctx = _ctx_with_stickers(tmp_path)
+    vision = MagicMock()   # codex.generate 返回 MagicMock → 路径不存在 → 走降级
+    stage = AssetsStage(vision=vision)
+    stage.run(ctx)
+    assert ctx.icon_fallback is True
+    warns = [e for e in ctx.production_log
+             if e.stage == "S3" and e.status == "WARN" and "退回复用封面" in e.message]
+    assert warns
+
+
+def test_icon_success_keeps_fallback_flag_false(tmp_path):
+    """AI 图标成功时 ctx.icon_fallback 保持 False（不误伤正常单）。"""
+    ctx = _ctx_with_stickers(tmp_path)
+    stage = AssetsStage(vision=MagicMock())
+    icon_raw = ctx.episode_dir / "图标" / "_icon_raw.png"
+    icon_raw.parent.mkdir(exist_ok=True)
+    Image.new("RGBA", (240, 240), (255, 255, 255, 255)).save(icon_raw)
+    stage._make_ai_icon = lambda ctx, paths: icon_raw
+    stage.run(ctx)
+    assert ctx.icon_fallback is False

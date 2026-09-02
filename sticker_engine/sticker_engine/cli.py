@@ -461,34 +461,43 @@ def cmd_run_batch(req_id, args):
                 continue
             if auto_publish and episode.episode_dir:
                 ep_dir = Path(episode.episode_dir)
-                # 2026-09-02 修复：engine.run() 成功后已按默认系列自动命名
-                # （api.py assign_to_series）——这里绝不能再取号（曾致每组
-                # 跳一个号：71,73,75…）；直接读 meta 里的正式名
-                from .config.series import load_meta as _lm
-                name = (_lm(ep_dir).album_name or "").strip()
-                if not name or name.startswith("episode_"):
+                # 2026-09-01 图标降级风险：AI 大头照生成失败时 S3 静默退回复用
+                # 封面（缩放形态曾被平台驳回）→ 该单跳过自动发布，详情页
+                # 「重生成素材」补 AI 图标后手动提交。单次手动生成不阻断。
+                if getattr(episode, "icon_fallback", False):
                     item["published"] = False
-                    item["publish_skip"] = "作品未正式命名（无默认系列？），跳过自动发布（设置→系列与命名→默认系列）"
-                    _say(item["publish_skip"])
+                    item["publish_skip"] = "图标生成失败，未发布（详情页重生成素材后手动提交）"
+                    _say(f"第 {i} 组图标生成失败（已退回复用封面，平台易驳回），"
+                         f"跳过自动发布——详情页重生成素材后手动提交")
                 else:
-                    _say(f"第 {i} 组命名「{name}」，正在自动提交平台…")
-                    r = _publish_episode(
-                        ep_dir,
-                        lambda stage, message, percent: _emit({
-                            "id": req_id, "type": "progress", "stage": "publish",
-                            "phase": stage, "message": message,
-                            "percent": percent, "eta_seconds": None}))
-                    item["published"] = bool(r.get("success"))
-                    if r.get("success"):
-                        from .config.series import mark_published
-                        try:
-                            mark_published(ep_dir)
-                        except Exception:   # noqa: BLE001
-                            pass
-                        _say(f"✓ 第 {i} 组「{name}」已提交审核")
+                    # 2026-09-02 修复：engine.run() 成功后已按默认系列自动命名
+                    # （api.py assign_to_series）——这里绝不能再取号（曾致每组
+                    # 跳一个号：71,73,75…）；直接读 meta 里的正式名
+                    from .config.series import load_meta as _lm
+                    name = (_lm(ep_dir).album_name or "").strip()
+                    if not name or name.startswith("episode_"):
+                        item["published"] = False
+                        item["publish_skip"] = "作品未正式命名（无默认系列？），跳过自动发布（设置→系列与命名→默认系列）"
+                        _say(item["publish_skip"])
                     else:
-                        item["publish_error"] = (r.get("error") or "")[:150]
-                        _say(f"✗ 第 {i} 组提交未完成：{item['publish_error'][:80]}")
+                        _say(f"第 {i} 组命名「{name}」，正在自动提交平台…")
+                        r = _publish_episode(
+                            ep_dir,
+                            lambda stage, message, percent: _emit({
+                                "id": req_id, "type": "progress", "stage": "publish",
+                                "phase": stage, "message": message,
+                                "percent": percent, "eta_seconds": None}))
+                        item["published"] = bool(r.get("success"))
+                        if r.get("success"):
+                            from .config.series import mark_published
+                            try:
+                                mark_published(ep_dir)
+                            except Exception:   # noqa: BLE001
+                                pass
+                            _say(f"✓ 第 {i} 组「{name}」已提交审核")
+                        else:
+                            item["publish_error"] = (r.get("error") or "")[:150]
+                            _say(f"✗ 第 {i} 组提交未完成：{item['publish_error'][:80]}")
             results.append(item)
             _say(f"—— 第 {i}/{count} 组完成 ——")
         ok = sum(1 for x in results if x.get("success"))
