@@ -153,7 +153,22 @@ class StickerEngine:
                 sid = getattr(self.config.prefs, "default_series_id", None)
                 target = find_series(sid) if sid else None
                 if target is not None:
-                    assign_to_series(ctx.episode_dir, target)
+                    # 跳过已占号（历史偶数空缺自动补齐；occupied=本地全部
+                    # 已用编号。批量双重取号事故的补救能力）
+                    _occupied = set()
+                    try:
+                        _root = self.config.paths.output_root
+                        from pathlib import Path as _P
+                        from .config.series import load_meta as _lm0
+                        for _d in _P(_root).iterdir() if _P(_root).exists() else []:
+                            if _d.is_dir() and _d.name.startswith("episode"):
+                                _m = _lm0(_d)
+                                if _m.number:
+                                    _occupied.add(_m.number)
+                    except Exception:
+                        _occupied = set()
+                    assign_to_series(ctx.episode_dir, target,
+                                     occupied=_occupied)
                     all_series = load_series()
                     for s in all_series:
                         if s.id == target.id:

@@ -461,10 +461,14 @@ def cmd_run_batch(req_id, args):
                 continue
             if auto_publish and episode.episode_dir:
                 ep_dir = Path(episode.episode_dir)
-                name = _auto_assign_series_name(ep_dir, engine)
-                if not name:
+                # 2026-09-02 修复：engine.run() 成功后已按默认系列自动命名
+                # （api.py assign_to_series）——这里绝不能再取号（曾致每组
+                # 跳一个号：71,73,75…）；直接读 meta 里的正式名
+                from .config.series import load_meta as _lm
+                name = (_lm(ep_dir).album_name or "").strip()
+                if not name or name.startswith("episode_"):
                     item["published"] = False
-                    item["publish_skip"] = "未设置默认系列，跳过自动发布（设置→系列与命名→默认系列）"
+                    item["publish_skip"] = "作品未正式命名（无默认系列？），跳过自动发布（设置→系列与命名→默认系列）"
                     _say(item["publish_skip"])
                 else:
                     _say(f"第 {i} 组命名「{name}」，正在自动提交平台…")

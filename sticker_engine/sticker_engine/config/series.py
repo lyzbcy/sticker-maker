@@ -59,9 +59,17 @@ class Series:
         """查看下一个编号（不动状态）。"""
         return self.next_number or self.start_number
 
-    def take_number(self) -> int:
-        """取走下一个编号（next_number 前进，需随后 save）。"""
+    def take_number(self, occupied: set = None) -> int:
+        """取走下一个编号（next_number 前进，需随后 save）。
+
+        occupied：已占用的编号集合（可选）。提供时从 next_number 起找
+        第一个未占用的号（2026-09-02 批量双重取号事故后补齐用——
+        偶数号空缺时新单自动补上，不再留洞）。
+        """
         n = self.peek_next_number()
+        if occupied:
+            while n in occupied:
+                n += 1
         self.next_number = n + 1
         return n
 
@@ -196,7 +204,7 @@ def save_meta(episode_dir: Path, meta: EpisodeMeta) -> None:
         json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def assign_to_series(episode_dir: Path, series: Series) -> EpisodeMeta:
+def assign_to_series(episode_dir: Path, series: Series, occupied: set = None) -> EpisodeMeta:
     """把作品编入系列：取号 + 生成专辑名 + 写 meta。
 
     调用方负责随后 save_series（推进编号）。
@@ -204,7 +212,7 @@ def assign_to_series(episode_dir: Path, series: Series) -> EpisodeMeta:
     meta = load_meta(episode_dir)
     meta.series_id = series.id
     meta.series_name = series.name
-    meta.number = series.take_number()
+    meta.number = series.take_number(occupied=occupied)
     meta.album_name = series.album_name(meta.number)
     save_meta(episode_dir, meta)
     return meta
