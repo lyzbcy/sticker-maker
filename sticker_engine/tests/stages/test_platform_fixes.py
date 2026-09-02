@@ -232,3 +232,53 @@ def test_f1_regen_keeps_ai_icon(tmp_path):
     icon = Image.open(ep / "图标" / "图标.png").convert("RGB")
     assert icon.getpixel((25, 25)) == (120, 200, 120)   # 沿用 AI 大头照，非封面色
     assert any("AI" in w for w in warnings)
+
+
+# ---------------- 迭代抠边（2026-09-01，72 驳回：封闭品红细框） ----------------
+
+def test_remove_edge_background_enclosed_magenta_ring():
+    """72 形态：外圈已透明 + 白描边外侧残留封闭品红环 → 环被清、角色无损。"""
+    from sticker_engine.stages.postprocess import remove_edge_background
+    im = Image.new("RGBA", (100, 100), (0, 0, 0, 0))                       # 外圈已透明
+    ring = Image.new("RGBA", (78, 78), (255, 0, 255, 255))                 # 封闭品红环
+    im.paste(ring, (11, 11))
+    im.paste(Image.new("RGBA", (60, 60), (250, 220, 200, 255)), (20, 20))  # 角色（环内）
+    out = remove_edge_background(im)
+    assert out.getpixel((12, 50))[3] == 0          # 环（左缘）被清
+    assert out.getpixel((50, 12))[3] == 0          # 环（上缘）被清
+    assert out.getpixel((50, 50))[3] == 255        # 角色保留
+
+
+def test_remove_edge_background_iterative_after_first_round():
+    """迭代轮（72 真实形态）：外圈纯品红（第一轮抠）与白描边之间的
+    抗锯齿混色带（色距超 thresh、hue 仍在洋红族）由内层洋红清理接管。"""
+    from sticker_engine.stages.postprocess import remove_edge_background
+    im = Image.new("RGBA", (100, 100), (255, 0, 255, 255))                 # 外圈品红底
+    im.paste(Image.new("RGBA", (74, 74), (248, 106, 186, 255)), (13, 13))  # 混色带（hue≈326°）
+    im.paste(Image.new("RGBA", (66, 66), (255, 255, 255, 255)), (17, 17))  # 白描边
+    im.paste(Image.new("RGBA", (50, 50), (250, 220, 200, 255)), (25, 25))  # 角色
+    out = remove_edge_background(im)
+    assert out.getpixel((3, 3))[3] == 0            # 外圈纯品红被抠（第一轮 flood）
+    assert out.getpixel((14, 50))[3] == 0          # 混色带被内层洋红清理抠掉
+    assert out.getpixel((20, 50))[3] == 255        # 白描边保留（锚点不被侵蚀）
+    assert out.getpixel((50, 50))[3] == 255        # 角色保留
+
+
+def test_remove_edge_background_magenta_fringe_freed():
+    """白描边外侧混色粉紫（hue≈326°，25° 容差外）也在族内被清。"""
+    from sticker_engine.stages.postprocess import remove_edge_background
+    im = Image.new("RGBA", (80, 80), (0, 0, 0, 0))
+    im.paste(Image.new("RGBA", (60, 60), (248, 106, 186, 255)), (10, 10))  # 粉紫环
+    im.paste(Image.new("RGBA", (44, 44), (250, 220, 200, 255)), (18, 18))  # 角色
+    out = remove_edge_background(im)
+    assert out.getpixel((12, 40))[3] == 0
+    assert out.getpixel((40, 40))[3] == 255
+
+
+def test_normal_transparent_sticker_untouched_by_inner_round():
+    """正常成品（透明留白+非洋红角色）内层轮不折腾（回归 72 修复不误伤）。"""
+    from sticker_engine.stages.postprocess import remove_edge_background
+    im = Image.new("RGBA", (80, 80), (0, 0, 0, 0))
+    im.paste(Image.new("RGBA", (40, 40), (200, 100, 100, 255)), (20, 20))
+    out = remove_edge_background(im)
+    assert out.getpixel((30, 30))[3] == 255        # 角色原样

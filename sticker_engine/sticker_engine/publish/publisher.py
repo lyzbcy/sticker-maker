@@ -615,17 +615,98 @@ class Publisher:
             word = m.get(str(i + 1), "")
             if not word:
                 continue
-            page.evaluate(
-                """([i, w]) => {
-                  const ins = [...document.querySelectorAll(
-                    'input[placeholder="输入含义词"]')];
-                  const inp = ins[i - 1];
-                  if (!inp) return;
-                  inp.value = w;
-                  inp.dispatchEvent(new Event('input', {bubbles: true}));
-                  inp.dispatchEvent(new Event('change', {bubbles: true}));
-                }""", [i, word])
-            page.wait_for_timeout(120)
+            self._set_meaning_value(page, i + 1, word)
+        # 平台硬规则（56/58 驳回）：含义词不得重复。codex 可能不守
+        # "每个词恰好一次"的约定 → 读回全部格子查重，对重复格（保留
+        # 首个）用语气词/标点变体重填——不用 XX1/XX2 数字后缀（平台
+        # 明文拒绝该形式）。
+        values = self._read_meanings(page, n)
+        dup_cells = []
+        seen = set()
+        for i, v in enumerate(values, start=1):
+            v = (v or "").strip()
+            if v and v in seen:
+                dup_cells.append(i)
+            seen.add(v)
+        if dup_cells:
+            self._warn(f"含义词识图重填后仍有重复（第 {dup_cells} 格），换变体词")
+            used = [v.strip() for v in values if (v or "").strip()]
+            for i in dup_cells:
+                base_word = (values[i - 1] or "").strip()
+                variant = self._meaning_variant(base_word, used)
+                self._set_meaning_value(page, i, variant)
+                used.append(variant)
+            final = self._read_meanings(page, n)
+            filled = [v.strip() for v in final if (v or "").strip()]
+            if len(filled) != len(set(filled)):
+                self._warn("含义词变体替换后仍存在重复，需人工检查")
+
+    @staticmethod
+    def _meaning_variant(word: str, used: list) -> str:
+        """给重复词生成不重复的变体（中文语气词优先，非数字后缀——
+        平台可能过滤标点/特殊符号，汉字后缀最稳）。"""
+        for suffix in ("呀", "呢", "哦", "啦", "哟", "嘛", "哈"):
+            cand = f"{word}{suffix}"
+            if cand not in used and len(cand) <= 8:
+                return cand
+        for k in range(2, 50):
+            cand = f"{word}{'呐' * k}"[:8]
+            if cand not in used:
+                return cand
+        return f"{word}x"
+
+    def _read_meanings(self, page, n: int) -> list:
+        """读回编辑器全部含义词输入框的当前值。"""
+        try:
+            vals = page.evaluate(
+                """(sel) => [...document.querySelectorAll(sel)]
+                       .map(i => i.value || '')""",
+                'input[placeholder="输入含义词"]')
+            return list(vals) if isinstance(vals, list) else []
+        except Exception:   # noqa: BLE001
+            return []
+
+    def _set_meaning_value(self, page, idx: int, word: str) -> None:
+        """直设第 idx 格含义词并**读回验证**（56/58 重提实测：平台表单是
+        React 受控组件，`inp.value=w` 会被下次渲染重置回旧值——必须用
+        nativeInputValueSetter 绕过 valueTracker；仍不行再 fill 真实键入）。"""
+        js = """([i, w]) => {
+          const ins = [...document.querySelectorAll(
+            'input[placeholder="输入含义词"]')];
+          const inp = ins[i - 1];
+          if (!inp) return 'noInput';
+          const setter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype, 'value').set;
+          setter.call(inp, w);
+          inp.dispatchEvent(new Event('input', {bubbles: true}));
+          inp.dispatchEvent(new Event('change', {bubbles: true}));
+          return inp.value;
+        }"""
+        for attempt in range(2):
+            try:
+                got = str(page.evaluate(js, [idx, word]) or "")
+            except Exception:   # noqa: BLE001
+                got = ""
+            if got == word:
+                return
+            # native setter 也未生效 → fill 走真实输入路径（focus+键盘）
+            try:
+                box = page.get_by_placeholder("输入含义词").nth(idx - 1)
+                box.fill(word, timeout=4000)
+                page.wait_for_timeout(150)
+            except Exception:   # noqa: BLE001
+                pass
+            try:
+                got = str(page.evaluate(
+                    """(i) => {
+                      const ins = [...document.querySelectorAll(
+                        'input[placeholder="输入含义词"]')];
+                      return ins[i - 1] ? ins[i - 1].value : '';
+                    }""", idx) or "")
+            except Exception:   # noqa: BLE001
+                got = ""
+            if got == word:
+                return
 
     def _step_replace_stickers(self, page, assets: EpisodeAssets) -> None:
         """编辑模式：清空已有贴纸 → 重传修好的 16 张 → 填含义词。

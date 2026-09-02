@@ -739,3 +739,73 @@ def test_step_upload_assets_second_attempt_succeeds(tmp_path):
 
     assert not any("均未确认缩略图" in w for w in publisher.warnings)
     assert any("第 1 次" in w for w in publisher.warnings)
+
+
+# ---------------------------------------------------------------------------
+# 含义词查重 + 变体词（2026-09-01，56/58 驳回：含义词重复）
+# ---------------------------------------------------------------------------
+
+
+def test_meaning_variant_not_numeric_suffix():
+    """变体词用语气词/标点，不用平台明令禁止的 XX1/XX2 数字后缀。"""
+    p = Publisher(MagicMock(), MagicMock())
+    used = ["来啦"]
+    v = p._meaning_variant("来啦", used)
+    assert v not in used
+    assert v.startswith("来啦")
+    assert not v[-1].isdigit()
+
+
+def test_meaning_variant_skips_existing_words():
+    """已有词撞车时逐个后缀往后找，直到不重复。"""
+    p = Publisher(MagicMock(), MagicMock())
+    used = ["哼", "哼~", "哼！", "哼呢"]
+    assert p._meaning_variant("哼", used) not in used
+
+
+def _make_editor_page(values):
+    """mock 编辑器 page：evaluate 直读/直写含义词输入框（模拟 DOM input）。"""
+    page = MagicMock()
+
+    def evaluate(script, arg=None):
+        if isinstance(arg, list):   # 写格 [idx, word]
+            idx, word = arg
+            while len(values) < idx:
+                values.append("")
+            values[idx - 1] = word
+            return None
+        if isinstance(arg, str):    # 读全部
+            return list(values)
+        return None
+
+    page.evaluate.side_effect = evaluate
+    page.wait_for_timeout = MagicMock()
+    return page
+
+
+def test_fix_meanings_dedupes_after_fill():
+    """识图重填后读回查重：重复格自动换变体词，最终全部唯一。"""
+    p = Publisher(MagicMock(), MagicMock())
+    values = ["来啦", "开心", "来啦", "", "开心"]
+    page = _make_editor_page(values)
+    # 绕过识图：直接测 _step_fix_meanings_by_vision 的填格+查重段不现实，
+    # 这里按同款流程手动驱动 publisher 的公共原语
+    for i in range(1, 6):
+        p._set_meaning_value(page, i, values[i - 1])
+    read = p._read_meanings(page, 5)
+    assert read == ["来啦", "开心", "来啦", "", "开心"]
+    # 查重（与 _step_fix_meanings_by_vision 内联逻辑同款）
+    seen, dup = set(), []
+    for i, v in enumerate(read, start=1):
+        v = (v or "").strip()
+        if v and v in seen:
+            dup.append(i)
+        seen.add(v)
+    used = [v.strip() for v in read if (v or "").strip()]
+    for i in dup:
+        variant = p._meaning_variant(read[i - 1].strip(), used)
+        p._set_meaning_value(page, i, variant)
+        used.append(variant)
+    final = [v for v in p._read_meanings(page, 5) if v.strip()]
+    assert len(final) == len(set(final))            # 无重复
+    assert values[2] != "来啦" and values[2].startswith("来啦")

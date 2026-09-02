@@ -79,3 +79,35 @@ def test_fix_fields_from_border_reason(tmp_path):
     # 品红边框被抠
     out = Image.open(ep / "最终版" / "欢呼.png").convert("RGBA")
     assert out.getpixel((3, 3))[3] == 0
+
+
+def test_fix_fields_explicit_override(tmp_path):
+    """args.fix_fields 显式指定 → 覆盖驳回理由推断（运维场景：只重传表情图）。"""
+    ep = _make_rejected_ep(tmp_path)
+    from sticker_engine.config.series import load_meta, save_meta
+    m = load_meta(ep)
+    m.platform_reject_reason = "表情图中含有多余边框线，需要去除。"
+    save_meta(ep, m)
+    st, data = _call(cmd_fix_and_republish, {
+        "episode_dir": str(ep), "publish": False,
+        "fix_fields": ["stickers"]})
+    assert st == "ok"
+    assert data["fields"] == ["stickers"]          # 显式覆盖：不再带 cover
+
+
+def test_fix_banner_field_rebuilds_banner(tmp_path):
+    """横幅变形驳回 → banner 进 fields + 本地用新版拼贴重做横幅。"""
+    ep = _make_rejected_ep(tmp_path)
+    from sticker_engine.config.series import load_meta, save_meta
+    m = load_meta(ep)
+    m.platform_reject_reason = (
+        "详情页横幅\n图中元素不能被拉伸或压扁导致变形，需要调整。")
+    save_meta(ep, m)
+    st, data = _call(cmd_fix_and_republish, {"episode_dir": str(ep), "publish": False})
+    assert st == "ok"
+    assert "banner" in data["fields"]
+    joined = "；".join(data["actions"])
+    assert "横幅" in joined
+    assert (ep / "横幅" / "横幅.png").exists()
+    from PIL import Image as _Im
+    assert _Im.open(ep / "横幅" / "横幅.png").size == (750, 400)

@@ -777,6 +777,8 @@ def _reject_fix_fields(reason: str) -> set:
         f.add("tips")
     if "封面" in reason:
         f.add("cover")
+    if "横幅" in reason:
+        f.add("banner")
     return f
 
 
@@ -942,6 +944,11 @@ def cmd_fix_and_republish(req_id, args):
     final_pngs = sorted(final.glob("*.png")) if final.is_dir() else []
     reason = meta.platform_reject_reason or ""
     fields = _reject_fix_fields(reason)
+    explicit = args.get("fix_fields")
+    if explicit:
+        # 显式指定字段（运维覆盖入口）：驳回理由关键词覆盖不了的场景
+        # （如只重传表情图、跳过误推断的 cover）
+        fields = {str(f).strip() for f in explicit if str(f).strip()}
     if not fields:
         # 驳回理由没有可识别关键词 → 全量重走（最稳）
         fields = {"album", "stickers", "icon", "cover", "tips", "role",
@@ -980,6 +987,18 @@ def cmd_fix_and_republish(req_id, args):
             ensure_size(trim_border_band(remove_edge_background(img))).save(p)
             n += 1
         actions.append(f"成品去边框 {n} 张")
+
+    # 1.5) 横幅重做（68 驳回"横幅元素拉伸变形"）——用 2026-09-02 新版
+    # 等比缩放拼贴（卡片式，不变形）覆盖旧版硬拉横幅
+    if "banner" in fields and final_pngs:
+        try:
+            from .stages.assets import make_banner
+            banner_dir = ep_dir / "横幅"; banner_dir.mkdir(exist_ok=True)
+            make_banner([str(p) for p in final_pngs],
+                        banner_dir / "横幅.png")
+            actions.append("横幅：已用新版等比拼贴重做（不变形）")
+        except Exception as e:   # noqa: BLE001
+            actions.append(f"横幅重做失败（{type(e).__name__}: {e}）")
 
     # 2) 专辑名去空格（61-64/68/69 驳回）；介绍.txt 不含专辑名，无需同步
     if "album" in fields and meta.album_name and " " in meta.album_name:

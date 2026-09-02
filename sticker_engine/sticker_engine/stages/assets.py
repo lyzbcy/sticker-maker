@@ -138,7 +138,9 @@ class AssetsStage:
             return canvas.convert("RGB")
 
         _compose((939, 701), "喜欢的话，请赏一杯奶茶吧～").save(guide_out)
-        _compose((939, 939), "谢谢你的赞赏，比心 ❤").save(thanks_out)
+        # 2026-09-01：❤ 在 msyh 无字形渲染成"豆腐块"（58 赞赏图实测），
+        # 平台上就是乱码方块 → 换用字体保证有的全角符号
+        _compose((939, 939), "谢谢你的赞赏，比心～").save(thanks_out)
 
     def _make_banner(self, src_paths: list, out: Path) -> None:
         make_banner(src_paths, out)
