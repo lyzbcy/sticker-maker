@@ -6,6 +6,7 @@
     <Wizard v-else-if="store.phase === 'wizard'" class="page-fade" />
     <MainScreen v-else-if="store.phase === 'main'" class="page-fade" />
     <EpisodesPanel v-else-if="store.phase === 'episodes'" class="page-fade" />
+    <AllStickersPanel v-else-if="store.phase === 'allStickers'" class="page-fade" />
     <EpisodeDetailPanel v-else-if="store.phase === 'episodeDetail'" class="page-fade" />
     <SettingsPanel v-else-if="store.phase === 'settings'" class="page-fade" />
     <ToolsPanel v-else-if="store.phase === 'tools'" class="page-fade" />
@@ -22,6 +23,7 @@ import { useEngineStore } from './store/engine'
 import Wizard from './components/Wizard.vue'
 import MainScreen from './components/MainScreen.vue'
 import EpisodesPanel from './components/EpisodesPanel.vue'
+import AllStickersPanel from './components/AllStickersPanel.vue'
 import EpisodeDetailPanel from './components/EpisodeDetailPanel.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import ToolsPanel from './components/ToolsPanel.vue'

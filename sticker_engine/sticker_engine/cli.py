@@ -1487,6 +1487,97 @@ def cmd_build_reject_review_prompt(req_id, args):
     _result(req_id, "ok", data={"text": text})
 
 
+
+def cmd_list_all_stickers(req_id, args):
+    """全部表情视图：跨作品列出每张贴纸（图/含义/所属/现有打分）。"""
+    import json as _json
+    engine = _ensure_engine()
+    root = Path(engine.config.paths.output_root)
+    from .config.series import load_meta
+    groups = []
+    for ep_dir in sorted(root.iterdir(), reverse=True) if root.exists() else []:
+        if not (ep_dir.is_dir() and ep_dir.name.startswith("episode")):
+            continue
+        meta = load_meta(ep_dir)
+        stickers = _episode_stickers(ep_dir)
+        if not stickers:
+            continue
+        rating = {}
+        rf = ep_dir / "rating.json"
+        if rf.exists():
+            try:
+                rating = _json.loads(rf.read_text(encoding="utf-8")).get("ratings") or {}
+            except Exception:   # noqa: BLE001
+                rating = {}
+        groups.append({
+            "episode_dir": str(ep_dir),
+            "album_name": meta.album_name or ep_dir.name,
+            "stickers": stickers,
+            "ratings": rating,
+            "overall": (rf.exists() and _json.loads(rf.read_text(encoding="utf-8")).get("overall")) or None,
+        })
+    _result(req_id, "ok", data={"groups": groups,
+                                "total": sum(len(g["stickers"]) for g in groups)})
+
+
+def cmd_build_all_ratings_prompt(req_id, args):
+    """一键复制全部打分信息与 Prompt（路径引用式：不内联打分明细，
+    只给 rating.json / prompt.txt 等数据库文件路径，AI 自行读取）。"""
+    import json as _json
+    engine = _ensure_engine()
+    root = Path(engine.config.paths.output_root)
+    from .config.series import load_meta
+    blocks = []
+    for ep_dir in sorted(root.iterdir(), reverse=True) if root.exists() else []:
+        if not (ep_dir.is_dir() and ep_dir.name.startswith("episode")):
+            continue
+        rf = ep_dir / "rating.json"
+        if not rf.exists():
+            continue
+        try:
+            rating = _json.loads(rf.read_text(encoding="utf-8"))
+        except Exception:   # noqa: BLE001
+            continue
+        n_rated = len(rating.get("ratings") or {})
+        if not n_rated and not rating.get("overall"):
+            continue   # 完全没打分的单不占篇幅
+        meta = load_meta(ep_dir)
+        album = meta.album_name or ep_dir.name
+        nl = chr(10)
+        blocks.append(
+            f"### 《{album}》（{n_rated} 张已打分）" + nl +
+            f"- 打分数据库：{rf}" + nl +
+            f"- 当次生图 prompt：{ep_dir / '原图' / 'prompt.txt'}" + nl +
+            f"- 含义映射：{ep_dir / 'meaning_map.json'}" + nl +
+            f"- 表情成品目录：{ep_dir / '最终版'}" + nl +
+            f"- 素材目录：横幅 {ep_dir / '横幅' / '横幅.png'} | "
+            f"封面 {ep_dir / '封面' / '封面.png'} | "
+            f"图标 {ep_dir / '图标' / '图标.png'}")
+    if not blocks:
+        _result(req_id, "fail", errors=[{"message": "还没有任何打分记录：先打分再来复制。"}])
+        return
+    reflib = Path(engine.config.paths.reference_lib)
+    text = f"""你是「表情包一键制作」的批量优化助手。以下是 {len(blocks)} 个已打分作品的**数据库文件路径**（打分明细不内联，请用文件工具逐个读取 rating.json——含每张表情的 1-5 分与用户备注）。
+
+## 评分语义（重要）
+- 有分数 = 用户有明确感受：高分（4-5）= 亮点，低分（1-2）= 有问题（配合备注看）。
+- 没打分 ≠ 差：可能没来得及打，也可能平平常常。有问题的用户一般都会打分。
+- 备注是用户原话，指出具体问题（如"脸歪了""边框线""不萌"），是最高优先级信号。
+
+## 你的任务（跨作品全局优化，不是逐单流水账）
+1. **通读全部 rating.json**，聚类共性问题（同类备注跨作品重复出现 = 系统性问题）。
+2. **优化方向（用户指定，按需扩展）**：
+   a. 参考图库（{reflib}，生成表情的素材仓库）：哪些参考图产出的单普遍低分？建议淘汰/补充什么风格的参考图？
+   b. 横幅/封面美观度：横幅是 4 张拼贴（750x400），用户觉得不好看——分析低分单的横幅共性，给出新的横幅生成方案（构图/底色/间距/是否用 AI 整图生成）。
+   c. 生图 prompt（各单 prompt.txt）：低分集中的指令模式是什么？
+3. 产出可执行修改清单：能改参考图库的列具体文件操作；能改管线的指出代码/方案；能改 prompt 的给出修改后的文本。
+4. 如果你在用户本机运行（ZCode 等代理）：可直接读取上述路径的文件、修改参考图库与 %APPDATA%/StickerEngine/prompts/*.json 方案文件。
+
+## 已打分作品清单（{len(blocks)} 个）
+""" + chr(10).join(blocks)
+    _result(req_id, "ok", data={"text": text, "count": len(blocks)})
+
+
 def cmd_save_rating(req_id, args):
     """保存打分到 episode/rating.json（自动嵌入当次 prompt/模式 = AI 反哺原料）。"""
     import json as _json
@@ -1951,7 +2042,9 @@ HANDLERS = {
     "list_characters": cmd_list_characters, "generate_base": cmd_generate_base,
     "add_base": cmd_add_base,
     "run": cmd_run,
-    "run_batch": cmd_run_batch, "stop": cmd_stop,
+    "run_batch": cmd_run_batch,
+    "list_all_stickers": cmd_list_all_stickers,
+    "build_all_ratings_prompt": cmd_build_all_ratings_prompt, "stop": cmd_stop,
     "list_episodes": cmd_list_episodes, "open_in_finder": cmd_open_in_finder,
     "list_series": cmd_list_series, "save_series": cmd_save_series,
     "sync_platform_status": cmd_sync_platform_status,

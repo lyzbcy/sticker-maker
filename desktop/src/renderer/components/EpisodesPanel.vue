@@ -4,6 +4,8 @@
       <button class="back" @click="store.phase = 'main'">← 返回</button>
       <h2>全部作品</h2>
       <span class="count">{{ filtered.length }} 个</span>
+      <button class="all-stickers-btn" @click="store.phase = 'allStickers'"
+              title="跨所有作品的表情总览，直接打分+备注">🖼️ 全部表情打分</button>
       <button class="sync-btn" :disabled="syncing" @click="doSync">
         <span v-if="syncing" class="spin">◌</span>
         {{ syncing ? '同步中…' : '一键更新' }}
@@ -325,6 +327,10 @@ h2 { margin: 0; font-family: var(--font-head); font-size: 22px; font-weight: 700
 .sortable { cursor: pointer; user-select: none; white-space: nowrap; }
 .sortable:hover { color: var(--forest); }
 .sort-arrow { margin-left: 3px; font-size: 9px; }
+.all-stickers-btn { border: 1px solid rgba(46,74,52,.3); background: white;
+  color: var(--forest); border-radius: 999px; padding: 8px 14px; font-size: 12px;
+  font-weight: 700; cursor: pointer; }
+.all-stickers-btn:hover { background: rgba(46,74,52,.06); }
 .sync-btn {
   padding: 9px 20px; border-radius: var(--r-pill); border: none; cursor: pointer;
   background: var(--forest); color: var(--white); font-weight: 700; font-size: 13px;
