@@ -101,6 +101,147 @@ def cmd_check_codex(req_id, args):
                   "image_ready": status.image_ready, "guidance_msg": status.guidance_msg})
 
 
+# ---------------- Codex 额度查询 ----------------
+# 社区已验证的 ChatGPT 后端只读端点（codex CLI 登录态同源）：
+# https://github.com/lhl/pi-codex-status（MIT）即调它；返回 5 小时窗 + 周窗
+# 的 used_percent / reset_at。仅 GET，不写任何状态。
+_CODEX_USAGE_ENDPOINT = "https://chatgpt.com/backend-api/wham/usage"
+_CODEX_PLAN_NAMES = {"plus": "ChatGPT Plus", "pro": "ChatGPT Pro", "team": "ChatGPT Team",
+                     "business": "ChatGPT Business", "free": "Free", "edu": "ChatGPT Edu"}
+
+
+def _read_codex_auth():
+    """读 ~/.codex/auth.json 的 ChatGPT 登录态。
+
+    返回 {"access_token":…, "account_id":…} 或 None（未登录/文件损坏/非 chatgpt 模式）。
+    token 只用于构造请求头，绝不写入日志/命令结果（_scrub_log_value 双保险）。
+    """
+    auth_file = Path.home() / ".codex" / "auth.json"
+    if not auth_file.exists():
+        return None
+    try:
+        data = json.loads(auth_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    tokens = data.get("tokens") or {}
+    access = tokens.get("access_token")
+    if not access:
+        return None
+    return {"access_token": access, "account_id": tokens.get("account_id") or ""}
+
+
+def _fetch_codex_remote_usage(auth, timeout=15):
+    """GET wham/usage（只读）。返回原始 dict；网络/HTTP 错误抛异常。"""
+    import urllib.request
+    req = urllib.request.Request(_CODEX_USAGE_ENDPOINT, method="GET")
+    req.add_header("authorization", "Bearer " + auth["access_token"])
+    req.add_header("accept", "application/json")
+    req.add_header("user-agent", f"sticker-engine-cli/{VERSION}")
+    if auth.get("account_id"):
+        req.add_header("chatgpt-account-id", auth["account_id"])
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8", "replace"))
+
+
+def _norm_codex_window(w):
+    """归一化一个限额窗口（primary=5 小时 / secondary=周）。"""
+    if not isinstance(w, dict):
+        return None
+    reset_at = w.get("reset_at")
+    return {
+        "used_percent": w.get("used_percent"),
+        "left_percent": (100 - w["used_percent"]) if isinstance(w.get("used_percent"), (int, float)) else None,
+        "window_hours": round((w.get("limit_window_seconds") or 0) / 3600, 1),
+        "reset_at": datetime.fromtimestamp(reset_at).isoformat(timespec="minutes") if reset_at else None,
+        "reset_in_minutes": round((w.get("reset_after_seconds") or 0) / 60),
+    }
+
+
+def _normalize_codex_usage(raw):
+    """压缩服务端响应为前端/日志友好结构（丢弃 email/user_id 等账户明细）。"""
+    rl = raw.get("rate_limit") or {}
+    credits = raw.get("credits") or {}
+    plan = raw.get("plan_type")
+    return {
+        "plan": plan,
+        "plan_display": _CODEX_PLAN_NAMES.get(plan, plan),
+        "limit_reached": bool(rl.get("limit_reached")),
+        "primary_window": _norm_codex_window(rl.get("primary_window")),
+        "secondary_window": _norm_codex_window(rl.get("secondary_window")),
+        "credits_balance": credits.get("balance"),
+    }
+
+
+def _count_local_codex_images(output_dir):
+    """本地兜底：统计 ~/.codex/generated_images 的生图张数（近 7 天逐日 + 今日）。
+
+    不依赖网络/登录态；按文件 mtime 归日（UTC 拆天足够近似）。
+    """
+    from collections import Counter
+    root = Path(output_dir)
+    days, total = Counter(), 0
+    if root.is_dir():
+        from datetime import timedelta
+        cutoff = datetime.now() - timedelta(days=7)
+        for p in root.rglob("*"):
+            if p.suffix.lower() not in (".png", ".jpg", ".jpeg") or not p.is_file():
+                continue
+            try:
+                mtime = datetime.fromtimestamp(p.stat().st_mtime)
+            except OSError:
+                continue
+            total += 1
+            if mtime >= cutoff:
+                days[mtime.strftime("%Y-%m-%d")] += 1
+    return {
+        "today": days.get(datetime.now().strftime("%Y-%m-%d"), 0),
+        "last_7_days": dict(sorted(days.items())),
+        "total_images": total,
+    }
+
+
+def cmd_codex_usage(req_id, args):
+    """查询 codex（ChatGPT 账号）生图/使用额度。
+
+    优先远程（wham/usage 只读 GET，复用 codex CLI 登录态）；失败降级本地
+    generated_images 逐日统计。返回 data.available 标识是否拿到远程真实额度。
+    """
+    engine = _ensure_engine()
+    local = _count_local_codex_images(engine.config.paths.codex_output_dir)
+    remote, error = None, None
+    auth = _read_codex_auth()
+    if auth is None:
+        error = "未找到 ~/.codex/auth.json 登录态（或非 ChatGPT 模式）"
+    else:
+        try:
+            remote = _normalize_codex_usage(_fetch_codex_remote_usage(auth))
+        except Exception as e:   # noqa: BLE001
+            error = f"{type(e).__name__}: {e}"
+    if remote is not None:
+        _log("info", "codex 额度查询成功（远程端点）", command_id=req_id)
+        _result(req_id, "ok", data={
+            "available": True,
+            "method": "chatgpt_backend_api",
+            "endpoint": _CODEX_USAGE_ENDPOINT,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "usage": remote,
+            "local_images": local,
+        })
+        return
+    # 远程不可用 → 本地统计兜底（数据一定拿得到，只是近似）
+    _log("warn", f"codex 额度远程查询失败，降级本地统计：{error}", command_id=req_id)
+    _result(req_id, "ok", data={
+        "available": False,
+        "method": "local_images_fallback",
+        "error": error,
+        "fetched_at": datetime.now().isoformat(timespec="seconds"),
+        "local_images": local,
+        "suggestion": "远程额度需 codex 已登录 ChatGPT 账号且能访问 chatgpt.com；"
+                      "可在终端运行 codex login 后重试。下方 local_images 为本机"
+                      "生图张数统计（近似额度消耗）。",
+    })
+
+
 def _login_shell_env():
     """通过 login interactive shell 拿到用户真实 PATH（含 nvm/homebrew）。
 
@@ -2074,6 +2215,7 @@ def _dict_to_prefs(d):
 
 HANDLERS = {
     "check_codex": cmd_check_codex, "install_codex": cmd_install_codex,
+    "codex_usage": cmd_codex_usage,
     "get_version": cmd_get_version,
     "load_prefs": cmd_load_prefs, "save_prefs": cmd_save_prefs,
     "list_characters": cmd_list_characters, "generate_base": cmd_generate_base,

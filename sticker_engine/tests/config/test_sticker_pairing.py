@@ -61,13 +61,16 @@ def test_no_map_falls_back_to_sorted_stems(tmp_path):
     assert [s["meaning"] for s in stickers] == ["傲娇", "欢呼"]
 
 
-def test_get_episode_uses_name_locked_pairing(tmp_path):
+def test_get_episode_uses_name_locked_pairing(tmp_path, monkeypatch):
     """cmd_get_episode 端到端：贴纸 meaning 必须与文件同名（用户看到的就是对的）。"""
     import sticker_engine.cli as cli
     from sticker_engine.cli import cmd_get_episode
     results = []
-    cli._result = lambda req_id, status, data=None, **kw: results.append(
-        (status, data if data is not None else kw))
+    # monkeypatch 保证测试后恢复，避免污染后续用例的 _result/_emit 链
+    monkeypatch.setattr(
+        cli, "_result",
+        lambda req_id, status, data=None, **kw: results.append(
+            (status, data if data is not None else kw)))
     ep = _make_episode(
         tmp_path,
         ["傲娇", "欢呼", "生气", "融化", "震惊"],
