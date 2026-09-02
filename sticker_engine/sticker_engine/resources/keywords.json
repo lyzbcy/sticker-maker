@@ -163,6 +163,191 @@
     {
       "en": "hopeful sparkle",
       "desc": "hands clasped under chin, big shimmering begging eyes"
+    },
+    {
+      "en": "hello wave",
+      "desc": "one paw waving high above head, big welcoming smile, small motion arcs around paw",
+      "zh": "你好呀"
+    },
+    {
+      "en": "good morning sunshine",
+      "desc": "bright cheerful wave beside a smiling sun doodle, eyes curved happy, little light rays",
+      "zh": "早安"
+    },
+    {
+      "en": "good night moon",
+      "desc": "sleepy sweet wave beside a crescent moon and tiny stars, half-closed smiling eyes",
+      "zh": "晚安"
+    },
+    {
+      "en": "salute received",
+      "desc": "standing at attention with a crisp paw salute, confident smile, one tiny sparkle",
+      "zh": "收到"
+    },
+    {
+      "en": "a-ok wink",
+      "desc": "paw forming a big OK sign held up, one eye winking, cheerful open smile",
+      "zh": "OK没问题"
+    },
+    {
+      "en": "big thumbs up",
+      "desc": "thrusting a big thumbs-up toward viewer, other paw on hip, wide proud grin",
+      "zh": "点赞"
+    },
+    {
+      "en": "applause praise",
+      "desc": "clapping little paws rapidly with motion lines, eyes squeezed into proud happy arcs, small sparkles",
+      "zh": "干得好"
+    },
+    {
+      "en": "thank-you gift",
+      "desc": "holding out a tiny ribbon-wrapped gift box with both paws, warm grateful smile, tiny hearts",
+      "zh": "谢谢你"
+    },
+    {
+      "en": "sorry bow",
+      "desc": "deep apologetic bow with ears drooping, fingertips pressed together, tiny apologetic sweat drop",
+      "zh": "对不起"
+    },
+    {
+      "en": "on my way",
+      "desc": "jogging forward with a tiny backpack, sunny open-mouth smile, small motion lines behind",
+      "zh": "马上来啦"
+    },
+    {
+      "en": "brb wave",
+      "desc": "half-turned to dash away while waving back, winking, tiny dust puffs at feet",
+      "zh": "稍等哦马上回"
+    },
+    {
+      "en": "charging ahead",
+      "desc": "leaning forward in a determined dash with a tiny headband, speed lines, open-mouth fired-up grin",
+      "zh": "冲鸭"
+    },
+    {
+      "en": "pom-pom cheer",
+      "desc": "shaking two fluffy pom-poms, bouncing on toes, shouting encouragement with sparkling eyes",
+      "zh": "加油加油"
+    },
+    {
+      "en": "slacking off",
+      "desc": "peeking over a laptop while secretly sipping a juice box, sneaky satisfied smirk",
+      "zh": "摸鱼中"
+    },
+    {
+      "en": "off-work toss",
+      "desc": "jumping with joy while tossing a tiny satchel into the air, huge relieved grin, confetti bits",
+      "zh": "下班啦"
+    },
+    {
+      "en": "rice bowl ready",
+      "desc": "holding a rice bowl high with chopsticks raised like a tiny sword, fired-up shining eyes",
+      "zh": "干饭啦"
+    },
+    {
+      "en": "munching cookie",
+      "desc": "happily nibbling a cookie with round puffed cheeks, eyes folded into content arcs",
+      "zh": "嚼嚼真好吃"
+    },
+    {
+      "en": "sharing snack",
+      "desc": "offering half a cookie toward viewer with both paws, sweet sincere smile, tiny sparkle",
+      "zh": "分你一半"
+    },
+    {
+      "en": "juice toast",
+      "desc": "raising a tiny juice cup high in toast, one eye winking, little clink sparkles",
+      "zh": "干杯"
+    },
+    {
+      "en": "melon watcher",
+      "desc": "holding a watermelon slice up to munch while staring wide-eyed like watching drama unfold",
+      "zh": "吃瓜"
+    },
+    {
+      "en": "calm tea sip",
+      "desc": "serenely sipping from a tiny teacup, half-lidded calm eyes, tiny steam curl from cup",
+      "zh": "淡定喝茶"
+    },
+    {
+      "en": "gossip whisper",
+      "desc": "cupping one paw beside mouth leaning in to whisper, giggling crescent eyes, tiny gossip sparkles",
+      "zh": "跟你说个悄悄话"
+    },
+    {
+      "en": "head pat",
+      "desc": "being patted by a floating soft paw, eyes closed in bliss, soft content smile",
+      "zh": "摸摸头"
+    },
+    {
+      "en": "nuzzle cuddle",
+      "desc": "rubbing cheek affectionately against viewer side, eyes closed happy, tiny floating hearts",
+      "zh": "贴贴"
+    },
+    {
+      "en": "heart hands",
+      "desc": "forming a big heart with both paws above head, sweet smile, small hearts popping around",
+      "zh": "比心给你"
+    },
+    {
+      "en": "squat and wait",
+      "desc": "sitting back on heels with chin resting on paws, big eager waiting eyes, tiny clock doodle",
+      "zh": "蹲一个"
+    },
+    {
+      "en": "eager nod",
+      "desc": "nodding head with bobbing motion lines, eyes squeezed into agreeing arcs, upright little paws",
+      "zh": "嗯嗯对对对"
+    },
+    {
+      "en": "huh face",
+      "desc": "head tilted far to one side, one brow up, big round questioning eyes, floating question doodles",
+      "zh": "啥？"
+    },
+    {
+      "en": "aww so cute",
+      "desc": "clutching chest with both paws, watery sparkling eyes, wobbly overcome smile, tiny hearts",
+      "zh": "被萌到了"
+    },
+    {
+      "en": "rainy mood",
+      "desc": "hugging a soft cushion under a small personal rain cloud, gentle pout, tiny drizzle lines",
+      "zh": "emo了想静静"
+    },
+    {
+      "en": "awkward grin",
+      "desc": "stiff oversized smile with one sweat drop, eyes darting sideways, rigid little shoulders",
+      "zh": "尴尬而不失礼貌的微笑"
+    },
+    {
+      "en": "no no refusal",
+      "desc": "crossing both paws into a firm X, shaking head with motion arcs, determined pout",
+      "zh": "不要不要"
+    },
+    {
+      "en": "envious pout",
+      "desc": "pouting while side-eyeing someone else's snack, paws clutched to chest, tiny envious swirl",
+      "zh": "羡慕了"
+    },
+    {
+      "en": "achoo sneeze",
+      "desc": "mid-sneeze with a tissue held to nose, eyes squeezed shut, tiny puff burst around head",
+      "zh": "阿嚏"
+    },
+    {
+      "en": "shh secret",
+      "desc": "finger pressed to lips with a wink and sneaky smile, tiny hush doodle floating",
+      "zh": "嘘，别说出去"
+    },
+    {
+      "en": "chasing own tail",
+      "desc": "joyfully spinning in a circle chasing own fluffy tail, happy open mouth, motion swirl",
+      "zh": "追尾巴玩"
+    },
+    {
+      "en": "rapid texting",
+      "desc": "tongue peeking out in focus while thumbs fly over phone, concentrated brows, tiny typing sparkles",
+      "zh": "回消息中"
     }
   ],
   "props": [
