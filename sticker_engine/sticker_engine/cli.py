@@ -219,12 +219,28 @@ def cmd_codex_usage(req_id, args):
             error = f"{type(e).__name__}: {e}"
     if remote is not None:
         _log("info", "codex 额度查询成功（远程端点）", command_id=req_id)
+        # 可生张数估算（首页额度卡用）：每张消耗 ≈ 周窗口已用% / 本机累计
+        # 生图张数（粗估——窗口内可能混有文本消耗，标注为估算值）
+        est = {}
+        total_imgs = int(local.get("total_images") or 0)
+        sec = remote.get("secondary_window") or {}
+        used_pct = float(sec.get("used_percent") or 0)
+        per_image = (used_pct / total_imgs) if total_imgs and used_pct > 0 else 0
+        for wk, w in (("primary_window", remote.get("primary_window") or {}),
+                      ("secondary_window", sec)):
+            left = float(w.get("left_percent") or 0)
+            est[wk] = {
+                "images_left_est": int(left / per_image) if per_image > 0 else None,
+                "hours_left": round(float(w.get("reset_in_minutes") or 0) / 60, 1),
+                "reset_hhmm": str(w.get("reset_at") or "")[-5:],
+            }
         _result(req_id, "ok", data={
             "available": True,
             "method": "chatgpt_backend_api",
             "endpoint": _CODEX_USAGE_ENDPOINT,
             "fetched_at": datetime.now().isoformat(timespec="seconds"),
             "usage": remote,
+            "estimate": est,
             "local_images": local,
         })
         return

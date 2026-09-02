@@ -69,7 +69,17 @@ export const useEngineStore = defineStore('engine', () => {
   const publishProgress = ref(null)
   const publishResult = ref(null)
   const logs = ref([])
-  const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: null })
+  // codex 生图额度（首页卡片）：窗口剩余%/可生张数估算/重置时间
+const codexUsage = ref(null)
+async function loadCodexUsage() {
+  if (!api) return
+  try {
+    const res = await api.send('codex_usage', {})
+    if (res?.status === 'ok' && res.data) codexUsage.value = res.data
+  } catch { /* 额度拉取失败不阻塞首页 */ }
+}
+
+const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: null })
   const agentPrompt = ref('')
   // 作品库 / 详情
   const seriesList = ref([])
@@ -87,6 +97,7 @@ export const useEngineStore = defineStore('engine', () => {
   } : null
 
   async function init() {
+  loadCodexUsage()
     if (!api) { phase.value = 'wizard'; return }
     // 超时兜底：cli 冷启动可能慢，但 15 秒还没响应就降级进向导
     const timeout = new Promise(resolve => setTimeout(() => resolve({__timeout: true}), 15000))
@@ -541,7 +552,7 @@ export const useEngineStore = defineStore('engine', () => {
     running, progress, lastEpisode, lastError, runStartedAt, activity,
     installing, installLog,
     publishing, publishProgress, publishResult, logs, agentStatus, agentPrompt,
-    seriesList, selectedEpisode,
+    seriesList, selectedEpisode, codexUsage, loadCodexUsage,
     reviewAskVisible, shouldAskForReview, dismissReviewAsk,
     init, checkCodex, installCodex, loadCharacters, ensureProbabilityDefaults,
     savePrefs, runGenerate, runBatch, batchInfo, stopRun, loadEpisodes, clearResult, pushActivity,

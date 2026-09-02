@@ -50,6 +50,28 @@
             </span>
           </div>
 
+          <!-- Codex 生图额度卡（5h 窗口 + 周窗口） -->
+          <div v-if="store.codexUsage?.available" class="quota-card">
+            <div class="quota-head">
+              <span class="quota-title">🔋 生图额度</span>
+              <span class="quota-plan">{{ store.codexUsage.usage?.plan_display || '' }}</span>
+              <button class="quota-refresh" title="刷新额度" @click="refreshQuota">↻</button>
+            </div>
+            <div class="quota-windows">
+              <div v-for="w in quotaWindows" :key="w.key" class="quota-win">
+                <div class="qw-name">{{ w.name }}</div>
+                <div class="qw-bar"><div class="qw-fill" :style="{ width: w.left + '%' }"></div></div>
+                <div class="qw-line">
+                  <b>剩 {{ w.left }}%</b>
+                  <span v-if="w.est != null">≈ 还能生 {{ w.est }} 张</span>
+                </div>
+                <div class="qw-reset">
+                  {{ w.hours }} 小时后刷新（{{ w.hhmm }}）
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="cta-row">
             <button class="start-btn" @click="store.runGenerate">
               <span class="start-emoji">🎨</span>开始生图
@@ -171,6 +193,23 @@ const store = useEngineStore()
 // 批量生成（组数 + 完成后自动发布）
 const batchCount = ref(5)
 const batchAutoPublish = ref(true)
+const quotaWindows = computed(() => {
+  const cu = store.codexUsage
+  if (!cu?.usage) return []
+  const est = cu.estimate || {}
+  return [
+    { key: 'p5', name: '5 小时窗口', left: cu.usage.primary_window?.left_percent ?? 0,
+      est: est.primary_window?.images_left_est ?? null,
+      hours: est.primary_window?.hours_left ?? 0, hhmm: est.primary_window?.reset_hhmm || '--:--' },
+    { key: 'wk', name: '周窗口', left: cu.usage.secondary_window?.left_percent ?? 0,
+      est: est.secondary_window?.images_left_est ?? null,
+      hours: est.secondary_window?.hours_left ?? 0, hhmm: est.secondary_window?.reset_hhmm || '--:--' },
+  ]
+})
+async function refreshQuota() {
+  await store.loadCodexUsage()
+}
+
 function startBatch() {
   if (store.running) return
   store.runBatch(batchCount.value, batchAutoPublish.value)
@@ -381,6 +420,23 @@ onMounted(() => {
 
 /* 主按钮（大热区胶囊） */
 .cta-row { margin-top: 20px; }
+.quota-card { margin-top: 14px; padding: 12px 14px; border-radius: 14px;
+  background: white; box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+.quota-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.quota-title { font-weight: 800; font-size: 13px; color: var(--forest, #2e4a34); }
+.quota-plan { font-size: 11px; color: var(--muted, #888); }
+.quota-refresh { margin-left: auto; border: 0; background: none; cursor: pointer;
+  font-size: 15px; color: var(--muted, #888); }
+.quota-windows { display: flex; gap: 18px; flex-wrap: wrap; }
+.quota-win { flex: 1; min-width: 180px; }
+.qw-name { font-size: 11px; color: var(--muted, #888); margin-bottom: 4px; }
+.qw-bar { height: 8px; border-radius: 999px; background: #eee; overflow: hidden; }
+.qw-fill { height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, #6aa875, #2e4a34); transition: width .4s; }
+.qw-line { display: flex; justify-content: space-between; font-size: 12.5px; margin-top: 4px; }
+.qw-line b { color: var(--forest, #2e4a34); }
+.qw-line span { color: var(--muted, #888); }
+.qw-reset { font-size: 11px; color: var(--muted, #999); margin-top: 2px; }
 .batch-box { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .batch-label { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
 .batch-select { border: 1px solid #ddd; border-radius: 8px; padding: 6px 8px; font-size: 13px; }
