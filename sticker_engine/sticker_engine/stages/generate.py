@@ -419,6 +419,7 @@ class GenerateStage:
         except AttributeError:
             pass
         lines = []
+        big_head_used = 0   # 每单 BIG-HEAD 硬上限（打分反哺 2026-09-04）
         for i, e in enumerate(picked, 1):
             action = self.rng.choice(actions)
             parts = [f"{i}. {e['en'].capitalize()}: {e['desc']}"]
@@ -426,9 +427,12 @@ class GenerateStage:
                 parts.append(f"action: {action}")
             if props and self.rng.random() < 0.4:
                 parts.append(f"with {self.rng.choice(props)}")
-            # 大头变奏（2026-08-27 调研落地）：约 30% 的格子切"超大头"比例——
-            # 头身比是萌感基础盘，混排两档比例让一套里萌点密度更高
-            if self.rng.random() < 0.3:
+            # 大头变奏（2026-08-27 调研落地）：混排两档比例让一套里萌点
+            # 密度更高。2026-09-04 打分反哺降配：用户 4 条"头太大了"备注
+            # （156/148/129/125），概率 30%→20% 且每单硬上限 4 格（此前
+            # 独立 30% 方差大，157 单曾抽到 8 格全是大头）
+            if big_head_used < 4 and self.rng.random() < 0.2:
+                big_head_used += 1
                 parts.append("BIG-HEAD MODE: head fills two-thirds of the "
                              "sticker height, almost all head with tiny body")
             lines.append(" — ".join(parts))
@@ -463,33 +467,67 @@ class GenerateStage:
         return themes
 
     def _draw_without_repeat(self, pool: list, n: int) -> list:
-        """无重复抽取 n 个（池小于 n 时重新装填，允许跨装填重复）。"""
-        picked, bag = [], list(pool)
+        """无重复抽取 n 个（按 en 去重；同词条多次出现=权重累加，
+        2026-09-04 打分反哺的高频词加权靠这个生效）。池不足 n 时重新
+        装填，允许跨装填重复。"""
+        def _en(e):
+            return e.get("en") if isinstance(e, dict) else str(e)
+        uniq, wmap = [], {}
+        for e in pool or []:
+            en = _en(e)
+            if en not in wmap:
+                wmap[en] = 0.0
+                uniq.append(e)
+            wmap[en] += 1.0
+        picked = []
+        bag, ws = list(uniq), [wmap[_en(e)] for e in uniq]
         for _ in range(n):
             if not bag:
-                bag = list(pool)
-            picked.append(bag.pop(self.rng.randrange(len(bag))))
+                bag, ws = list(uniq), [wmap[_en(e)] for e in uniq]
+            i = self.rng.choices(range(len(bag)), weights=ws, k=1)[0]
+            picked.append(bag.pop(i))
+            ws.pop(i)
         return picked
+
+    # 高频聊天主题（2026-09-04 打分反哺：57 单 28 条"使用场景太少"备注
+    # 全部来自冷门叙事主题的词条——挂袜/烘焙/量尺寸/太空漫游/修网络这类
+    # "看图讲故事"场景在聊天里几乎用不上。高频主题主抽+点缀权重加倍，
+    # 冷门主题仍会出现（多样性保留）但占比下降）
+    _CHAT_FIRST_THEMES = {
+        "日常寒暄", "打工人", "干饭", "睡觉休息", "恋爱贴贴", "友谊互动",
+    }
 
     def _pick_themed_entries(self, themes: dict, n: int):
         """主题抽取：主主题抽 ~70% + 其他主题补足，返回 (词条列表, 主题名, 主题内个数)。
 
-        - 主主题随机选；若与上一单相同且有得换则避开（连续两单不同主题）
+        - 主主题加权随机（高频聊天主题 ×3 权重）；若与上一单相同且有得换则避开
         - 16 格 → 主题内 11 格（10-12 区间）+ 跨主题 5 格（4-6 区间）
+        - 跨主题点缀池同样向高频主题倾斜（词条 ×2）
         - 其他主题为空（只有 1 个主题）时退回主主题装填，保证凑满 n 格
         """
         global _LAST_THEME_KEY
         keys = list(themes.keys())
-        main_key = keys[self.rng.randrange(len(keys))]
+        # 加权抽主主题（打分反哺 2026-09-04）
+        weights = [3 if k in self._CHAT_FIRST_THEMES else 1 for k in keys]
+        main_key = self.rng.choices(keys, weights=weights, k=1)[0]
         if len(keys) > 1 and main_key == _LAST_THEME_KEY:
             others = [k for k in keys if k != _LAST_THEME_KEY]
-            main_key = others[self.rng.randrange(len(others))]
+            w2 = [3 if k in self._CHAT_FIRST_THEMES else 1 for k in others]
+            main_key = self.rng.choices(others, weights=w2, k=1)[0]
         _LAST_THEME_KEY = main_key
 
         main_n = max(1, min(int(round(n * 0.7)), n))
         picked = self._draw_without_repeat(themes[main_key], main_n)
-        # 跨主题点缀：其余主题的词条合并抽（已按 en 全库去重，无重复风险）
-        rest_pool = [e for k in keys if k != main_key for e in themes[k]]
+        # 跨主题点缀：其余主题的词条合并抽（已按 en 全库去重，无重复风险）；
+        # 高频主题词条出现两次（权重×2）
+        rest_pool = []
+        for k in keys:
+            if k == main_key:
+                continue
+            for e in themes[k]:
+                rest_pool.append(e)
+                if k in self._CHAT_FIRST_THEMES:
+                    rest_pool.append(e)
         if not rest_pool:
             rest_pool = themes[main_key]
         if n > len(picked):
