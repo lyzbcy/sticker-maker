@@ -231,7 +231,7 @@ class Publisher:
 
     # ---- 主流程 ----
 
-    def publish(self, episode_dir, headless: bool = False, edit: bool = False,
+    def publish(self, episode_dir, headless: Optional[bool] = None, edit: bool = False,
                 fix_fields=None) -> dict:
         """发布一弹。edit=True 走「编辑已驳回作品」入口（修改后重新提交审核）。
 

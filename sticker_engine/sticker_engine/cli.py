@@ -1006,7 +1006,7 @@ def cmd_shelf_passed(req_id, args):
     published, failed = [], []
     with sync_playwright() as pw:
         session = BrowserSession(PublishConfig(), playwright=pw)
-        page = session.start(headless=False)
+        page = session.start()
         try:
             if not session.ensure_login(page, on_status=_say):
                 _result(req_id, "fail",
@@ -1276,7 +1276,7 @@ def cmd_fix_and_republish(req_id, args):
                     raise RuntimeError('codex 不可用，无法识图重填含义词')
                 vision = _VP(_c)
             publisher = Publisher(PublishConfig(), session, vision=vision)
-            _r = publisher.publish(ep_dir, headless=False, edit=True,
+            _r = publisher.publish(ep_dir, edit=True,
                                    fix_fields=fields)
             result["publish"] = _r
             result["published"] = bool(_r.get("success"))
@@ -1978,7 +1978,7 @@ def _publish_episode(episode_dir, progress):
     config = PublishConfig.from_env()
     publisher = Publisher(config, BrowserSession(config), progress=progress)
     progress("browser", "正在打开微信表情开放平台…", 0.15)
-    result = publisher.publish(episode_dir, headless=False)
+    result = publisher.publish(episode_dir)
     screenshot = episode_dir / "_publish_error.png"
     if screenshot.exists():
         result["screenshot"] = str(screenshot)
@@ -2105,7 +2105,7 @@ def _run_scheduled_action(action, args):
             BatchPublisher(PublishConfig.from_env(), engine.config.paths.output_root).run(
                 start=args.get("start"), end=args.get("end"),
                 only=args.get("only"), resume=args.get("resume", False),
-                retry=args.get("retry", 2), headless=args.get("headless", False),
+                retry=args.get("retry", 2), headless=args.get("headless"),
             )
         elif action == "shelf":
             from .publish.browser import BrowserSession
@@ -2115,7 +2115,7 @@ def _run_scheduled_action(action, args):
             Shelf(config, BrowserSession(config)).shelve_all(
                 max_pages=args.get("max_pages", 5), limit=args.get("limit"),
                 dry_run=args.get("dry_run", False),
-                headless=args.get("headless", False),
+                headless=args.get("headless"),
             )
         else:
             raise ValueError(f"不支持的定时动作：{action}")
@@ -2221,6 +2221,9 @@ def _prefs_to_dict(prefs):
             "grid_size": prefs.grid_size, "transparent_default": prefs.transparent_default,
             "ref_lib_priority": prefs.ref_lib_priority, "story_mode": prefs.story_mode,
             "reference_lib_path": prefs.reference_lib_path,
+            "prompt_set_id": prefs.prompt_set_id,
+            "vision_calls": prefs.vision_calls,
+            "browser_headless": prefs.browser_headless,
             "default_series_id": prefs.default_series_id}
 
 
@@ -2236,7 +2239,9 @@ def _dict_to_prefs(d):
         story_mode=d.get("story_mode", True),
         reference_lib_path=d.get("reference_lib_path"),
         default_series_id=d.get("default_series_id"),
-        prompt_set_id=d.get("prompt_set_id"))
+        prompt_set_id=d.get("prompt_set_id"),
+        vision_calls=d.get("vision_calls", False),
+        browser_headless=d.get("browser_headless", False))
 
 
 HANDLERS = {

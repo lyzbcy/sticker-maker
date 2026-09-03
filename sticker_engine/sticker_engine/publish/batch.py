@@ -63,7 +63,7 @@ class BatchPublisher:
     def run(self, start: Optional[int] = None, end: Optional[int] = None,
             only: Optional[list] = None, resume: bool = False,
             batch_size: int = BATCH_SIZE, retry: int = 2,
-            gap_seconds: int = 8, headless: bool = False) -> dict:
+            gap_seconds: int = 8, headless: Optional[bool] = None) -> dict:
         """批量发布。返回 {summary, results}。"""
         # 确定要发布的弹次
         if only:

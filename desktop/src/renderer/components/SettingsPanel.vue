@@ -136,12 +136,30 @@
           <p v-if="credSaved" class="cred-saved">✓ 已保存，之后发布将自动登录</p>
         </div>
       </div>
+
+      <!-- 浏览器模式 -->
+      <div class="section">
+        <h3 class="section-title">浏览器模式</h3>
+        <div class="bm-opts">
+          <label class="bm-opt" :class="{ active: !browserHeadless }">
+            <input type="radio" :value="false" v-model="browserHeadless" />
+            <span class="bm-name">🖥️ 有头浏览器（默认）</span>
+            <span class="bm-desc">提交/同步时弹出浏览器窗口，能亲眼看到软件在平台上做的每一步</span>
+          </label>
+          <label class="bm-opt" :class="{ active: browserHeadless }">
+            <input type="radio" :value="true" v-model="browserHeadless" />
+            <span class="bm-name">👻 无头浏览器</span>
+            <span class="bm-desc">后台静默运行不弹窗，已实测平台可用；遇到异常再切回有头</span>
+          </label>
+        </div>
+        <p v-if="bmSaved" class="cred-saved">✓ 已保存</p>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useEngineStore } from '../store/engine'
 import WizardStepBase from './WizardStepBase.vue'
 import WizardStepMode from './WizardStepMode.vue'
@@ -169,6 +187,22 @@ async function switchPublish() {
     if (res && res.status === 'ok') credStatus.value = res.data
   } catch { /* 状态加载失败不阻塞 */ }
 }
+
+// ---- 浏览器模式（有头=能看见软件操作 / 无头=后台静默）----
+const browserHeadless = ref(false)
+const bmSaved = ref(false)
+onMounted(() => {
+  if (store.prefs) browserHeadless.value = !!store.prefs.browser_headless
+})
+watch(browserHeadless, async (v) => {
+  if (!store.prefs || store.prefs.browser_headless === v) return
+  store.prefs.browser_headless = v
+  try {
+    await store.savePrefs(store.prefs)
+    bmSaved.value = true
+    setTimeout(() => (bmSaved.value = false), 2000)
+  } catch { /* 保存失败不打断界面 */ }
+})
 
 // ---- Prompt 方案管理 ----
 const promptSets = ref([])
@@ -445,4 +479,17 @@ h2 {
 .btn-reset:hover:not(:disabled) { background: var(--paper); color: var(--ink); }
 .cred-error { color: var(--brick); font-size: 12.5px; margin: 8px 0 0; }
 .cred-saved { color: var(--correct); font-size: 12.5px; margin: 8px 0 0; font-weight: 600; }
+
+/* 浏览器模式选项 */
+.bm-opts { display: flex; flex-direction: column; gap: 10px; }
+.bm-opt {
+  display: grid; grid-template-columns: auto auto 1fr; align-items: baseline;
+  gap: 8px; padding: 10px 12px; border: 1.5px solid var(--line);
+  border-radius: 10px; cursor: pointer; transition: border-color .15s, background .15s;
+}
+.bm-opt:hover { border-color: var(--forest); }
+.bm-opt.active { border-color: var(--forest); background: rgba(76, 140, 43, .07); }
+.bm-opt input { margin: 0; }
+.bm-name { font-size: 13.5px; font-weight: 600; }
+.bm-desc { font-size: 12px; color: var(--muted); }
 </style>

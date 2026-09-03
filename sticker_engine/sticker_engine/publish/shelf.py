@@ -30,7 +30,7 @@ class Shelf:
         self.session = session
 
     def shelve_all(self, max_pages: int = 5, limit: Optional[int] = None,
-                   dry_run: bool = False, headless: bool = False) -> dict:
+                   dry_run: bool = False, headless: Optional[bool] = None) -> dict:
         """扫描审核通过的专辑并预约上架。
 
         - max_pages: 最大翻页数（从 min(max_pages, 总页数) 往前到第 1 页）

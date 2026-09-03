@@ -300,7 +300,7 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
     pages = 0
     with sync_playwright() as p:
         b = BrowserSession(cfg, playwright=p)
-        page = b.start(headless=False)
+        page = b.start()
         try:
             if not b.ensure_login(page, on_status=say):
                 return {"error": f"登录失败：{b.last_login_error or '未知原因'}",

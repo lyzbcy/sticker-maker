@@ -49,6 +49,10 @@ class Prefs:
     # 模型，token 巨大曾把周额度吃光强制卡停）。False=0 token 模式：
     # 含义词直接用生成时选定的词条、门禁跳过、介绍用本地模板。
     vision_calls: bool = False
+    # 浏览器模式（2026-09-03 用户需求）：False=有头（默认，能看见软件在
+    # 平台上做的每一步），True=无头（后台静默不打扰）。已 A/B/C 实测
+    # 微信平台不拦无头浏览器；BrowserSession 仍做 UA 伪装防御未来审查。
+    browser_headless: bool = False
 
     def __post_init__(self):
         s = self.mode_probs.single + self.mode_probs.duo + self.mode_probs.trio + self.mode_probs.quad

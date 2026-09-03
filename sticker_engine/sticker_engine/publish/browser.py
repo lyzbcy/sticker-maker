@@ -16,6 +16,21 @@ from . import selectors as S
 from .config import PublishConfig
 
 
+def pref_headless() -> bool:
+    """读用户设置：浏览器模式（设置 → 发布账号 → 浏览器模式）。
+
+    默认 False=有头（能看见软件在平台上做的每一步）；True=无头后台静默。
+    读不到设置文件时保守回落有头。
+    """
+    try:
+        from ..config.paths import resolve_paths, current_platform
+        from ..config.loader import load_prefs_from_file
+        prefs = load_prefs_from_file(resolve_paths(current_platform()).prefs_file)
+        return bool(getattr(prefs, "browser_headless", False)) if prefs else False
+    except Exception:   # noqa: BLE001
+        return False
+
+
 class BrowserSession:
     """playwright 浏览器会话：管理登录态 + 通用页面动作。"""
 
@@ -27,13 +42,16 @@ class BrowserSession:
         self._owns_playwright = False   # 是否由本类启动 playwright（影响清理）
         self.last_login_error = ""      # 登录失败原因（人类可读，供上层展示）
 
-    def start(self, headless: bool = False):
-        """启动浏览器。headless=False 便于调试（默认有头）。
+    def start(self, headless: Optional[bool] = None):
+        """启动浏览器。headless=None（默认）跟随用户设置（见 pref_headless）；
+        显式传 True/False 以调用方为准。
 
         --remote-debugging-port：开 CDP 监测口（prompt「网页回归测试」——
         发布期间允许监测 Agent（kimi bridge / CDP）连上浏览器实时盯每一步
         表单填写，出调试报告）。不占用常见端口，仅本机可连。
         """
+        if headless is None:
+            headless = pref_headless()
         if self._playwright is None:
             from playwright.sync_api import sync_playwright
             self._playwright = sync_playwright().start()
@@ -43,10 +61,18 @@ class BrowserSession:
             headless=headless, args=launch_args)
         # 复用 storage_state（若存在）——仅作加速缓存，失效自动转密码登录
         storage = self.config.storage_state
-        if storage.exists():
-            self._context = self._browser.new_context(storage_state=str(storage))
-        else:
-            self._context = self._browser.new_context()
+        ctx_kwargs = {"storage_state": str(storage)} if storage.exists() else {}
+        if headless:
+            # 2026-09-03 A/B/C 实测（扫码续登录态后同 state 对照）：微信平台
+            # **没有**拦无头浏览器——裸 headless shell（UA 含 HeadlessChrome）
+            # 照样有效读列表。此处的 UA 伪装只是防御性措施（防未来加审查），
+            # probe 默认 UA 去掉 Headless 标记。
+            probe_ctx = self._browser.new_context()
+            probe = probe_ctx.new_page()
+            ctx_kwargs["user_agent"] = probe.evaluate(
+                "navigator.userAgent").replace("Headless", "")
+            probe_ctx.close()
+        self._context = self._browser.new_context(**ctx_kwargs)
         self._context.set_default_timeout(self.config.action_timeout_ms)
         return self._context.new_page()
 
