@@ -33,6 +33,10 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
       contextIsolation: true, nodeIntegration: false,
+      // 仅 dev 关 webSecurity：dev 页面是 http://localhost:5173，默认策略
+      // 拦截 http 页面加载 file:// 缩略图 → 全部作品/详情破图（"Not allowed
+      // to load local resource"）。生产 loadFile 本身就是 file:// 同源，不受影响。
+      webSecurity: !process.env.VITE_DEV_SERVER_URL,
     },
   })
   if (process.env.VITE_DEV_SERVER_URL) {
