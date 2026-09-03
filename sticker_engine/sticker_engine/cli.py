@@ -589,6 +589,8 @@ def cmd_run_batch(req_id, args):
     stop = threading.Event()
     _stop_events[req_id] = stop
     results = []
+    consecutive_fails = 0   # 熔断计数（2026-09-03 事故：额度撞墙时 15 秒一个
+    # 空壳目录连刷 66 个——连续失败说明环境坏了，继续跑只会产垃圾）
 
     def _say(msg):
         _emit({"id": req_id, "type": "progress", "stage": "batch",
@@ -615,9 +617,15 @@ def cmd_run_batch(req_id, args):
                 item["error"] = errs or episode.aborted_reason or "生成未完成"
                 _say(f"第 {i} 组未完成：{item['error'][:80]}")
                 results.append(item)
+                consecutive_fails += 1
+                if consecutive_fails >= 3:
+                    _say(f"连续 {consecutive_fails} 组失败——疑似额度耗尽或 codex 异常，"
+                         f"批量自动中止（已完成 {len(results)} 组）。请查首页额度卡或稍后重跑。")
+                    break
                 if stop.is_set():
                     break
                 continue
+            consecutive_fails = 0
             if auto_publish and episode.episode_dir:
                 ep_dir = Path(episode.episode_dir)
                 # 2026-09-01 图标降级风险：AI 大头照生成失败时 S3 静默退回复用

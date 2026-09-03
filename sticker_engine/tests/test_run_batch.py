@@ -111,3 +111,12 @@ def test_auto_publish_normal_episode_not_blocked_by_icon_flag(tmp_path):
     _, data = results[0]
     publish.assert_called_once()
     assert data["results"][0].get("published") is True
+
+
+def test_batch_circuit_breaker_after_3_fails(tmp_path):
+    """熔断：连续 3 组失败自动中止（额度耗尽时空壳刷屏事故）。"""
+    st, data = _call({"count": 10, "auto_publish": False},
+                     runs=[_Ep(False)] * 10)
+    assert st == "ok"
+    assert len(data["results"]) == 3   # 第 3 次失败后熔断，不开第 4 组
+    assert all(not r["success"] for r in data["results"])
