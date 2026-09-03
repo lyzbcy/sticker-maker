@@ -7,6 +7,13 @@ let bridge
 let mainWindow
 
 // 单实例锁：防止多开（Agent 端口 7432 会冲突，双开还会重复跑引擎）
+// 开发模式用独立 userData（2026-09-03 事故：用户同时开着安装版「表情包一键制作.exe」，
+// 两者同 app 名——单实例锁跨安装版/开发版生效 + 共享 user-data 目录被锁，
+// 开发版启动即静默退出且无任何报错。独立目录后互不干扰。）
+if (!app.isPackaged) {
+  app.setPath('userData', app.getPath('userData') + '-dev')
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
