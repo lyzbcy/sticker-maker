@@ -1692,13 +1692,32 @@ def cmd_build_reject_review_prompt(req_id, args):
 
 
 
+def _album_series_number(meta, ep_dir):
+    """从 meta/专辑名解析 (系列名, 编号)。专辑名形如「周三涵做表情157」，
+    系列名=去掉尾部数字；编号优先 meta.number，兜底专辑名尾数字。"""
+    import re
+    album = meta.album_name or ep_dir.name
+    m = re.match(r"^(.*?)(\d+)$", album.strip())
+    series = m.group(1).strip() if m else album.strip()
+    number = None
+    if getattr(meta, "number", None):
+        number = int(meta.number)
+    elif m:
+        number = int(m.group(2))
+    return series, number
+
+
 def cmd_list_all_stickers(req_id, args):
-    """全部表情视图：跨作品列出每张贴纸（图/含义/所属/现有打分）。"""
+    """全部表情视图：跨作品列出每张贴纸（图/含义/所属/现有打分）。
+
+    group 带 series_name/number（前端按系列筛选 + 编号降序）；
+    响应带 series 列表与 default_series（设置里的默认系列）。
+    """
     import json as _json
     engine = _ensure_engine()
     root = Path(engine.config.paths.output_root)
     from .config.series import load_meta
-    groups = []
+    groups, series_seen = [], []
     for ep_dir in sorted(root.iterdir(), reverse=True) if root.exists() else []:
         if not (ep_dir.is_dir() and ep_dir.name.startswith("episode")):
             continue
@@ -1713,27 +1732,68 @@ def cmd_list_all_stickers(req_id, args):
                 rating = _json.loads(rf.read_text(encoding="utf-8")).get("ratings") or {}
             except Exception:   # noqa: BLE001
                 rating = {}
+        series_name, number = _album_series_number(meta, ep_dir)
+        if series_name and series_name not in series_seen:
+            series_seen.append(series_name)
         groups.append({
             "episode_dir": str(ep_dir),
             "album_name": meta.album_name or ep_dir.name,
+            "series_name": series_name,
+            "number": number,
             "stickers": stickers,
             "ratings": rating,
             "overall": (rf.exists() and _json.loads(rf.read_text(encoding="utf-8")).get("overall")) or None,
         })
+    # 默认系列（用户在设置里指定的），回落到作品数最多的系列
+    default_series = ""
+    sid = getattr(engine.config.prefs, "default_series_id", None)
+    if sid:
+        from .config.series import find_series
+        s = find_series(sid)
+        default_series = s.name if s else ""
+    if not default_series and series_seen:
+        cnt = {}
+        for g in groups:
+            if g["series_name"]:
+                cnt[g["series_name"]] = cnt.get(g["series_name"], 0) + 1
+        default_series = max(cnt, key=cnt.get) if cnt else ""
     _result(req_id, "ok", data={"groups": groups,
-                                "total": sum(len(g["stickers"]) for g in groups)})
+                                "total": sum(len(g["stickers"]) for g in groups),
+                                "series": series_seen,
+                                "default_series": default_series})
 
 
 def cmd_build_all_ratings_prompt(req_id, args):
     """一键复制全部打分信息与 Prompt（路径引用式：不内联打分明细，
-    只给 rating.json / prompt.txt 等数据库文件路径，AI 自行读取）。"""
+    只给 rating.json / prompt.txt 等数据库文件路径，AI 自行读取）。
+
+    支持 series（系列名）/ from_no / to_no（第几弹范围）过滤——
+    用户只想让 AI 分析某系列、或最近某一段作品时不再全量导出。
+    """
     import json as _json
     engine = _ensure_engine()
     root = Path(engine.config.paths.output_root)
     from .config.series import load_meta
+    series_filter = str(args.get("series") or "").strip()
+    try:
+        from_no = int(args["from_no"]) if args.get("from_no") else None
+        to_no = int(args["to_no"]) if args.get("to_no") else None
+    except (TypeError, ValueError):
+        from_no = to_no = None
+    skipped = 0
     blocks = []
     for ep_dir in sorted(root.iterdir(), reverse=True) if root.exists() else []:
         if not (ep_dir.is_dir() and ep_dir.name.startswith("episode")):
+            continue
+        meta = load_meta(ep_dir)
+        series_name, number = _album_series_number(meta, ep_dir)
+        if series_filter and series_name != series_filter:
+            continue
+        if from_no is not None and (number is None or number < from_no):
+            skipped += 1
+            continue
+        if to_no is not None and (number is None or number > to_no):
+            skipped += 1
             continue
         rf = ep_dir / "rating.json"
         if not rf.exists():
@@ -1745,7 +1805,6 @@ def cmd_build_all_ratings_prompt(req_id, args):
         n_rated = len(rating.get("ratings") or {})
         if not n_rated and not rating.get("overall"):
             continue   # 完全没打分的单不占篇幅
-        meta = load_meta(ep_dir)
         album = meta.album_name or ep_dir.name
         nl = chr(10)
         blocks.append(
@@ -1758,10 +1817,18 @@ def cmd_build_all_ratings_prompt(req_id, args):
             f"封面 {ep_dir / '封面' / '封面.png'} | "
             f"图标 {ep_dir / '图标' / '图标.png'}")
     if not blocks:
-        _result(req_id, "fail", errors=[{"message": "还没有任何打分记录：先打分再来复制。"}])
+        _result(req_id, "fail", errors=[{"message":
+            "范围内没有已打分的作品：调整系列/弹数范围，或先去打分。"}])
         return
     reflib = Path(engine.config.paths.reference_lib)
-    text = f"""你是「表情包一键制作」的批量优化助手。以下是 {len(blocks)} 个已打分作品的**数据库文件路径**（打分明细不内联，请用文件工具逐个读取 rating.json——含每张表情的 1-5 分与用户备注）。
+    scope = ""
+    if series_filter:
+        scope += f"「{series_filter}」系列 "
+    if from_no is not None or to_no is not None:
+        scope += f"第 {from_no or '…'}–{to_no or '…'} 弹 "
+    if skipped:
+        scope += f"（{skipped} 单在范围外/无编号被跳过）"
+    text = f"""你是「表情包一键制作」的批量优化助手。以下是{(" " + scope) if scope else ""}共 {len(blocks)} 个已打分作品的**数据库文件路径**（打分明细不内联，请用文件工具逐个读取 rating.json——含每张表情的 1-5 分与用户备注）。
 
 ## 评分语义（重要）
 - 有分数 = 用户有明确感受：高分（4-5）= 亮点，低分（1-2）= 有问题（配合备注看）。
