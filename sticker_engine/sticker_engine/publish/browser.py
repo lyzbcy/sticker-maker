@@ -16,6 +16,17 @@ from . import selectors as S
 from .config import PublishConfig
 
 
+def pref_sticker_price() -> int:
+    """读用户设置：表情价格（0=免费，10=10 微信豆）。读不到回落免费。"""
+    try:
+        from ..config.paths import resolve_paths, current_platform
+        from ..config.loader import load_prefs_from_file
+        prefs = load_prefs_from_file(resolve_paths(current_platform()).prefs_file)
+        return int(getattr(prefs, "sticker_price", 0) or 0) if prefs else 0
+    except Exception:   # noqa: BLE001
+        return 0
+
+
 def pref_headless() -> bool:
     """读用户设置：浏览器模式（设置 → 发布账号 → 浏览器模式）。
 

@@ -137,7 +137,7 @@
         </div>
       </div>
 
-      <!-- 浏览器模式 -->
+      <!-- 浏览器模式 / 表情价格 -->
       <div class="section">
         <h3 class="section-title">浏览器模式</h3>
         <div class="bm-opts">
@@ -150,6 +150,20 @@
             <input type="radio" :value="true" v-model="browserHeadless" />
             <span class="bm-name">👻 无头浏览器</span>
             <span class="bm-desc">后台静默运行不弹窗，已实测平台可用；遇到异常再切回有头</span>
+          </label>
+        </div>
+
+        <h3 class="section-title" style="margin-top:18px;">表情价格</h3>
+        <div class="bm-opts">
+          <label class="bm-opt" :class="{ active: stickerPrice === 0 }">
+            <input type="radio" :value="0" v-model.number="stickerPrice" />
+            <span class="bm-name">🆓 免费（默认）</span>
+            <span class="bm-desc">提交作品时表情价格选「免费」</span>
+          </label>
+          <label class="bm-opt" :class="{ active: stickerPrice === 10 }">
+            <input type="radio" :value="10" v-model.number="stickerPrice" />
+            <span class="bm-name">💰 10 微信豆</span>
+            <span class="bm-desc">提交作品时表情价格选「10 微信豆」——之后生成的表情都会按此价格提交</span>
           </label>
         </div>
         <p v-if="bmSaved" class="cred-saved">✓ 已保存</p>
@@ -188,20 +202,32 @@ async function switchPublish() {
   } catch { /* 状态加载失败不阻塞 */ }
 }
 
-// ---- 浏览器模式（有头=能看见软件操作 / 无头=后台静默）----
+// ---- 浏览器模式（有头=能看见软件操作 / 无头=后台静默）+ 表情价格 ----
 const browserHeadless = ref(false)
+const stickerPrice = ref(0)
 const bmSaved = ref(false)
 onMounted(() => {
-  if (store.prefs) browserHeadless.value = !!store.prefs.browser_headless
+  if (store.prefs) {
+    browserHeadless.value = !!store.prefs.browser_headless
+    stickerPrice.value = Number(store.prefs.sticker_price) || 0
+  }
 })
-watch(browserHeadless, async (v) => {
-  if (!store.prefs || store.prefs.browser_headless === v) return
-  store.prefs.browser_headless = v
+async function savePrefsNow() {
   try {
     await store.savePrefs(store.prefs)
     bmSaved.value = true
     setTimeout(() => (bmSaved.value = false), 2000)
   } catch { /* 保存失败不打断界面 */ }
+}
+watch(browserHeadless, async (v) => {
+  if (!store.prefs || store.prefs.browser_headless === v) return
+  store.prefs.browser_headless = v
+  savePrefsNow()
+})
+watch(stickerPrice, async (v) => {
+  if (!store.prefs || Number(store.prefs.sticker_price) === v) return
+  store.prefs.sticker_price = v
+  savePrefsNow()
 })
 
 // ---- Prompt 方案管理 ----

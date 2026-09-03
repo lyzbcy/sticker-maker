@@ -2291,6 +2291,7 @@ def _prefs_to_dict(prefs):
             "prompt_set_id": prefs.prompt_set_id,
             "vision_calls": prefs.vision_calls,
             "browser_headless": prefs.browser_headless,
+            "sticker_price": prefs.sticker_price,
             "default_series_id": prefs.default_series_id}
 
 
@@ -2308,7 +2309,8 @@ def _dict_to_prefs(d):
         default_series_id=d.get("default_series_id"),
         prompt_set_id=d.get("prompt_set_id"),
         vision_calls=d.get("vision_calls", False),
-        browser_headless=d.get("browser_headless", False))
+        browser_headless=d.get("browser_headless", False),
+        sticker_price=int(d.get("sticker_price", 0) or 0))
 
 
 HANDLERS = {

@@ -53,6 +53,9 @@ class Prefs:
     # 平台上做的每一步），True=无头（后台静默不打扰）。已 A/B/C 实测
     # 微信平台不拦无头浏览器；BrowserSession 仍做 UA 伪装防御未来审查。
     browser_headless: bool = False
+    # 表情价格（2026-09-04 用户需求）：0=免费（默认），10=10 微信豆。
+    # 提交作品时 _step_select_price 据此选择价格档。
+    sticker_price: int = 0
 
     def __post_init__(self):
         s = self.mode_probs.single + self.mode_probs.duo + self.mode_probs.trio + self.mode_probs.quad
