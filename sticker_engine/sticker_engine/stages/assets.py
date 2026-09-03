@@ -54,14 +54,21 @@ class AssetsStage:
         cover_src = self._pick_best_face(paths)
         self._resize_save(cover_src, cover_dir / "封面.png", _COVER_SIZE, _COVER_SIZE)
 
-        # 图标：AI 生成纯头部正面照（P1：平台要求"只含形象头部的正面图像"），
-        # codex 失败 fallback 选张（素材永不缺失）
+        # 图标（2026-09-03 降本：用户洞察——成品贴纸本身是大头照风格，
+        # 从成品**裁头部**即满足平台"只含形象头部的正面图像"，零生图
+        # 消耗——此前 AI 生成每单多烧 1 次生图调用，占单耗 50%。
+        # 裁剪失败 → AI 生成兜底 → 再失败 → 封面缩放（降级信号外传））
         icon_dir = ctx.episode_dir / "图标"; icon_dir.mkdir(exist_ok=True)
-        icon_src = self._make_ai_icon(ctx, paths)
+        icon_src = self._crop_head_icon(paths, icon_dir / "_icon_raw.png")
         if icon_src is not None:
             ctx.log(LogEntry(stage="S3", status="OK",
-                             message="图标：AI 生成纯头部正面照（50×50）"))
-        else:
+                             message="图标：成品裁头部（50×50，零生图消耗）"))
+        if icon_src is None:
+            icon_src = self._make_ai_icon(ctx, paths)
+            if icon_src is not None:
+                ctx.log(LogEntry(stage="S3", status="OK",
+                                 message="图标：AI 生成纯头部正面照（裁剪失败兜底）"))
+        if icon_src is None:
             icon_src = cover_src
             why = getattr(self, "_icon_last_error", "") or "未知原因"
             # 降级信号外传（2026-09-01 批量发布风险）：fallback 产物（格子缩放/
@@ -147,6 +154,47 @@ class AssetsStage:
 
     def _make_banner(self, src_paths: list, out: Path) -> None:
         make_banner(src_paths, out)
+
+    def _crop_head_icon(self, sticker_paths: list, out: Path):
+        """从成品贴纸裁头部做图标（2026-09-03 用户降本洞察：成品本身是
+        大头照风格，裁头部即满足平台"只含形象头部的正面图像"，零生图消耗）。
+
+        选片：偏好"正面安静脸"含义词（看/呆/乖/笑/安/静/ok/嗨/萌），
+        fallback 第 1 张。裁法：透明底 alpha 找主体 bbox，取上部 ~72%
+        （两头身头占 2/3 强，留余量），居中裁方缩 50x50。
+        失败（非透明底/读图异常）返回 None 走 AI 兜底。
+        """
+        try:
+            import numpy as np
+            pref = ("看", "望", "呆", "乖", "笑", "安", "静", "哈", "ok",
+                    "嗨", "你", "萌", "好")
+            src = None
+            for p in sorted(sticker_paths):
+                if any(k in Path(p).stem.lower() for k in pref):
+                    src = Path(p)
+                    break
+            src = src or (Path(sticker_paths[0]) if sticker_paths else None)
+            if src is None or not src.exists():
+                return None
+            im = Image.open(src).convert("RGBA")
+            a = np.asarray(im)[:, :, 3]
+            ys, xs = np.where(a > 8)
+            # 透明区 <5% 视为无透明底（ref 库保留背景模式的成品：RGB 转
+            # RGBA 后 alpha 恒 255，必须有透明区才能做主体分割）
+            if not len(ys) or (a < 8).sum() < im.width * im.height * 0.05:
+                return None
+            y0, y1 = int(ys.min()), int(ys.max())
+            x0, x1 = int(xs.min()), int(xs.max())
+            head_h = max(1, int((y1 - y0) * 0.72))
+            crop = im.crop((x0, y0, x1 + 1, min(y0 + head_h, y1 + 1)))
+            w, h = crop.size
+            side = max(w, h)
+            canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+            canvas.paste(crop, ((side - w) // 2, (side - h) // 2), crop)
+            canvas.resize((50, 50), Image.LANCZOS).save(out)
+            return out
+        except Exception:
+            return None
 
     def _make_ai_icon(self, ctx: PipelineContext, fallback_paths: list):
         """AI 生成图标专属"纯头部正面照"，返回成品路径；失败返回 None。

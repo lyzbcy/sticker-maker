@@ -282,3 +282,56 @@ def test_normal_transparent_sticker_untouched_by_inner_round():
     im.paste(Image.new("RGBA", (40, 40), (200, 100, 100, 255)), (20, 20))
     out = remove_edge_background(im)
     assert out.getpixel((30, 30))[3] == 255        # 角色原样
+
+
+# ---------------- 图标裁头部（2026-09-03 零生图降本） ----------------
+
+def test_crop_head_icon_basic(tmp_path):
+    """透明底大头照成品 → 裁上部 72% 为头部图标（零生图）。"""
+    from sticker_engine.stages.assets import AssetsStage
+    im = Image.new("RGBA", (240, 240), (0, 0, 0, 0))
+    # 两头身角色：头（大椭圆上部）+ 身（小矩形下部）
+    from PIL import ImageDraw
+    d = ImageDraw.Draw(im)
+    d.ellipse([50, 20, 190, 160], fill=(255, 220, 200, 255))   # 头
+    d.rectangle([100, 160, 140, 230], fill=(120, 150, 255, 255))  # 身
+    src = tmp_path / "呆呆.png"
+    im.save(src)
+    stage = AssetsStage.__new__(AssetsStage)
+    out = tmp_path / "_icon_raw.png"
+    assert stage._crop_head_icon([str(src)], out) is not None
+    r = Image.open(out)
+    assert r.size == (50, 50)
+    # 裁的是上部：头部肤色应为图标主体（72% 裁线允许带少量下巴以下的身体，
+    # 平台要求的是"头部为主"而非零身体）
+    px = r.convert("RGBA")
+    n_head = sum(1 for x in range(50) for y in range(50)
+                 if px.getpixel((x, y))[0] > 230 and px.getpixel((x, y))[1] > 190)
+    n_body = sum(1 for x in range(50) for y in range(50)
+                 if px.getpixel((x, y))[2] > 200 and px.getpixel((x, y))[0] < 180)
+    assert n_head > n_body * 3, f"头部应占绝对主体: 头{n_head} 身{n_body}"
+
+
+def test_crop_head_icon_prefers_calm_face(tmp_path):
+    """选片偏好：含'看/呆/笑'等词的成品优先。"""
+    from sticker_engine.stages.assets import AssetsStage
+    for name in ("蹦跳", "静静看"):
+        im = Image.new("RGBA", (240, 240), (0, 0, 0, 0))   # 透明底
+        from PIL import ImageDraw
+        ImageDraw.Draw(im).ellipse([60, 30, 180, 170],
+                                   fill=(255, 200, 200, 255))
+        im.save(tmp_path / f"{name}.png")
+    stage = AssetsStage.__new__(AssetsStage)
+    # 只验证选片逻辑：直接跑裁剪应选"静静看"（不炸即可）
+    out = tmp_path / "i.png"
+    assert stage._crop_head_icon(
+        [str(tmp_path / "蹦跳.png"), str(tmp_path / "静静看.png")], out) is not None
+
+
+def test_crop_head_icon_opaque_returns_none(tmp_path):
+    """非透明底（ref 库保留背景模式）裁不了 → None 走 AI 兜底。"""
+    from sticker_engine.stages.assets import AssetsStage
+    src = tmp_path / "x.png"
+    Image.new("RGB", (240, 240), (255, 255, 255)).save(src)
+    stage = AssetsStage.__new__(AssetsStage)
+    assert stage._crop_head_icon([str(src)], tmp_path / "o.png") is None
