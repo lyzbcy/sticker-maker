@@ -1,17 +1,17 @@
 {
-  "version": "0.4.0",
-  "downloadUrl": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.4.0/sticker-maker-mac-v0.4.0.zip",
-  "sha256": "36f10ffede095e8e26672c4e672586bbcff002fd71c650c1206f1d049e56dd80",
+  "version": "0.5.0",
+  "downloadUrl": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.5.0/sticker-maker-mac-v0.5.0.zip",
+  "sha256": "fc60651e13f69406961768b3e586fb4b3222f7f6f8f4c64aac49b3b4807086a8",
   "platforms": {
     "mac": {
-      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.4.0/sticker-maker-mac-v0.4.0.zip",
-      "sha256": "36f10ffede095e8e26672c4e672586bbcff002fd71c650c1206f1d049e56dd80"
+      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.5.0/sticker-maker-mac-v0.5.0.zip",
+      "sha256": "fc60651e13f69406961768b3e586fb4b3222f7f6f8f4c64aac49b3b4807086a8"
     },
     "win": {
-      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.4.0/sticker-maker-win-v0.4.0-setup.exe",
-      "sha256": "82323521f08f10a78620dfc0ccfe8092d3e11f8b6fa1256634de3b3493fe8ba9"
+      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.5.0/sticker-maker-win-v0.5.0-setup.exe",
+      "sha256": "84c8f0195b3222adce299ec8ba8e203fac10931d7f25720b07305a07b331e680"
     }
   },
-  "releaseNotes": "v0.4.0：作品库全新表格视图＋一键更新上架状态＋物理删除；逐张打分与备注、一键复制反哺提示词；多套生图方案可切换（内置萌系大头/标准版）；参考图用完自动归档防雷同；修复详情页表情与含义词错位。",
-  "lastUpdated": "2026-08-28"
+  "releaseNotes": "v0.5.0：批量生成+自动发布；词条库300词条17主题体系；审核驳回全自动闭环（一键更新抓理由→修改完毕重提→清空重传→一键上架）；全部表情跨单打分+路径引用式反哺；首页生图额度卡（剩余%/可生张数/刷新时间）；新横幅方案+AI头部图标+迭代抠边；四类评审问题修复（横幅/BIG-HEAD/不雅/越界）",
+  "lastUpdated": "2026-09-03"
 }
