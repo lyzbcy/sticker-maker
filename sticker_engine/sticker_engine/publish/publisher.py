@@ -501,22 +501,34 @@ class Publisher:
         # 没有「编辑」按钮（此前被当成"审核中锁定"），正确路径是先
         # 「撤回编辑」→确认→状态变「已保存」→再「编辑」。撤回-重提交
         # 正是"修改后重新送审"的平台语义。
-        edit_btn = page.locator("button:has-text('编辑')")
-        if not edit_btn.count():
+        # 2026-09-03 修复（9单重提全卡死根因）：has-text('编辑') 会模糊
+        # 匹配「撤回编辑」→ 误判"已有编辑按钮"跳过撤回 → 直接点到的
+        # 是「撤回编辑」→ 确认弹框无人处理 → 永远开不了编辑器。
+        # 必须 text-is 精确匹配。
+        def _strict_edit():
+            return page.locator('button:text-is("编辑"), a:text-is("编辑")')
+
+        if not _strict_edit().count():
             withdraw = page.locator(
                 "button:has-text('撤回编辑'), a:has-text('撤回编辑')")
             if withdraw.count():
                 withdraw.first.click()
                 page.wait_for_timeout(1500)
                 try:
+                    # 2026-09-03 侦察：撤回确认框是 weui-desktop-popover
+                    # （非 dialog），旧选择器匹配 0 个 → 确认框永远挂着
                     page.locator(
-                        '.weui-desktop-dialog:visible '
-                        'button:has-text("确定")').first.click(timeout=4000)
+                        '.weui-desktop-dialog:visible button:has-text("确定"), '
+                        '.weui-desktop-popover:visible button:has-text("确定"), '
+                        'button:visible:has-text("确定")'
+                    ).first.click(timeout=4000)
                 except Exception:   # noqa: BLE001
                     pass
                 page.wait_for_timeout(3000)
+        if not _strict_edit().count():
+            raise RuntimeError("详情页既无「编辑」也无「撤回编辑」入口")
         before = set(id(pg) for pg in page.context.pages)
-        page.locator("button:has-text('编辑')").first.click()
+        _strict_edit().first.click()
         page.wait_for_timeout(6000)
         newpage = next((pg for pg in page.context.pages if id(pg) not in before), None)
         if newpage is None:
