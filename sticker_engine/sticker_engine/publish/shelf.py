@@ -60,8 +60,10 @@ class Shelf:
                                                    remaining=(limit - processed) if limit is not None else None)
                 results.extend(page_results)
                 processed += len(page_results)
-                # 自我审查：刷新本页确认无残留
-                self._refresh_and_recheck(page, p, dry_run=dry_run)
+                # 自我审查：刷新本页确认无残留（仅本页有处理结果时——
+                # 空页复查纯属再翻一遍页面，2026-09-03 提速砍掉）
+                if page_results:
+                    self._refresh_and_recheck(page, p, dry_run=dry_run)
             summary = self._summarize(results)
             return {"summary": summary, "results": results}
         except Exception as e:
@@ -92,7 +94,12 @@ class Shelf:
         try:
             page.fill(S.SHELF_PAGINATION_INPUT, str(n))
             page.press(S.SHELF_PAGINATION_INPUT, "Enter")
-            page.wait_for_load_state("networkidle")
+            # networkidle 在 SPA 常态 3-5s——domcontentloaded+固定等待够用
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=8000)
+            except Exception:   # noqa: BLE001
+                pass
+            time.sleep(0.8)
         except Exception:
             # 回退：用「上一页」按钮
             try:

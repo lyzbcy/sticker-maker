@@ -97,7 +97,7 @@ def _fetch_reject_reason_for_row(page, row: "PlatformRow") -> str:
                 nb.first.click(timeout=3000)
             except Exception:   # noqa: BLE001
                 return False
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(1200)
         return False
 
     try:
@@ -313,7 +313,7 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
             last_sig = ""   # 上一页整页签名（防"点击翻页没前进"的死循环）
             stall_pages = 0  # 连续相同签名页数（连续 2 次才判卡页）
             for page_no in range(1, MAX_PAGES + 1):
-                page.wait_for_timeout(1200)
+                page.wait_for_timeout(700)
                 rows = parse_rows_from_text(page.inner_text("body"))
                 # 过滤幻影行（2026-09-01 回归发现：页头按钮"创建形象"被当成
                 # 行名，混进 unmatched 列表显示为不存在的作品）
@@ -351,9 +351,32 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
                         # 不恢复的话：本页后面的行定位全失败、翻页从第 1 页
                         # 重来还被卡页检测误杀）。每次抓取前都确认在本页——
                         # 上一次 go_back 一样会丢位置）
+                        # 2026-09-03 提速：从"逐页点下一页快进"（最坏 12×1.8s）
+                        # 改为**页码输入框直达**（shelf 同款控件，~1.5s）；
+                        # 输入框跳页失败再退回逐页快进兜底。
                         page_sig_before = "|".join(r.name for r in rows[2:5])
 
                         def _restore_page_pos():
+                            # 快路：页码输入框直达当前页
+                            try:
+                                inp = page.locator(
+                                    ".weui-desktop-pagination__input")
+                                if inp.count():
+                                    inp.first.fill(str(page_no), timeout=3000)
+                                    inp.first.press("Enter", timeout=3000)
+                                    page.wait_for_timeout(1000)
+                                    try:
+                                        cur = "|".join(
+                                            r.name for r in
+                                            parse_rows_from_text(
+                                                page.inner_text("body"))[2:5])
+                                    except Exception:   # noqa: BLE001
+                                        cur = None
+                                    if cur == page_sig_before:
+                                        return True
+                            except Exception:   # noqa: BLE001
+                                pass
+                            # 慢路兜底：逐页快进直到签名匹配
                             for _ in range(12):
                                 try:
                                     cur = "|".join(
@@ -371,7 +394,7 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
                                     nb.first.click(timeout=3000)
                                 except Exception:   # noqa: BLE001
                                     return False
-                                page.wait_for_timeout(1800)
+                                page.wait_for_timeout(1000)
                             return False
 
                         for r in rejects:
@@ -384,7 +407,7 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
                                 why = (r.reject_stage or "列表定位失败(已重试)" if not r.reject_stage else r.reject_stage)
                                 say(f"  （{r.name} 未取到驳回理由：{why}）")
                         _restore_page_pos()   # 供后续翻页/卡页检测
-                        page.wait_for_timeout(800)
+                        page.wait_for_timeout(400)
                     # 全量策略：不再 stall 停页（数据全量带回）
                 # 翻页（2026-09-01 引入重试；2026-09-03 事故：抓完驳回
                 # 理由恢复位置后翻页点击全部落空——16 页只扫 6 页漏 100 条。
@@ -411,11 +434,11 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
                 clicked = False
                 for _ in range(5):
                     if _click_next():
-                        page.wait_for_timeout(2200)
+                        page.wait_for_timeout(1200)
                         if _cur_sig() not in ("", last_sig):
                             clicked = True
                             break
-                    page.wait_for_timeout(1500)
+                    page.wait_for_timeout(900)
                 if not clicked:
                     # 兜底：重置回第 1 页快进到 page_no+1
                     try:

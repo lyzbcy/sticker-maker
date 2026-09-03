@@ -26,9 +26,13 @@ def load_prefs_from_file(prefs_path: Path) -> Optional[Prefs]:
         grid_size=data.get("grid_size", 4),
         transparent_default=data.get("transparent_default", True),
         ref_lib_priority=data.get("ref_lib_priority", True),
+        ref_consume=data.get("ref_consume", True),
         story_mode=data.get("story_mode", True),
         reference_lib_path=data.get("reference_lib_path"),
         default_series_id=data.get("default_series_id"),
+        prompt_set_id=data.get("prompt_set_id"),
+        vision_calls=data.get("vision_calls", False),
+        browser_headless=data.get("browser_headless", False),
     )
 
 
@@ -42,9 +46,13 @@ def save_prefs(prefs: Prefs, prefs_path: Path) -> None:
         "grid_size": prefs.grid_size,
         "transparent_default": prefs.transparent_default,
         "ref_lib_priority": prefs.ref_lib_priority,
+        "ref_consume": prefs.ref_consume,
         "story_mode": prefs.story_mode,
         "reference_lib_path": prefs.reference_lib_path,
         "default_series_id": prefs.default_series_id,
+        "prompt_set_id": prefs.prompt_set_id,
+        "vision_calls": prefs.vision_calls,
+        "browser_headless": prefs.browser_headless,
     }
     if yaml is None:
         raise RuntimeError("PyYAML 未安装")
