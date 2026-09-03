@@ -64,10 +64,9 @@ class AssetsStage:
             ctx.log(LogEntry(stage="S3", status="OK",
                              message="图标：成品裁头部（50×50，零生图消耗）"))
         if icon_src is None:
-            icon_src = self._make_ai_icon(ctx, paths)
-            if icon_src is not None:
-                ctx.log(LogEntry(stage="S3", status="OK",
-                                 message="图标：AI 生成纯头部正面照（裁剪失败兜底）"))
+            # 用户纪律（2026-09-03）：绝不为单位图标花生图机会——裁不了
+            # 就直接用封面缩放，先上传再说
+            pass
         if icon_src is None:
             icon_src = cover_src
             why = getattr(self, "_icon_last_error", "") or "未知原因"
@@ -164,13 +163,14 @@ class AssetsStage:
         make_banner(src_paths, out)
 
     def _crop_head_icon(self, sticker_paths: list, out: Path):
-        """从成品贴纸裁头部做图标（2026-09-03 用户降本洞察：成品本身是
-        大头照风格，裁头部即满足平台"只含形象头部的正面图像"，零生图消耗）。
+        """从成品贴纸裁头部做图标（2026-09-03 用户降本：绝不为此花生图机会）。
 
         选片：偏好"正面安静脸"含义词（看/呆/乖/笑/安/静/ok/嗨/萌），
-        fallback 第 1 张。裁法：透明底 alpha 找主体 bbox，取上部 ~72%
-        （两头身头占 2/3 强，留余量），居中裁方缩 50x50。
-        失败（非透明底/读图异常）返回 None 走 AI 兜底。
+        fallback 第 1 张。主体定位两路：
+        - 透明底：alpha>8 找主体 bbox
+        - 非透明底（ref 库保留背景）：四边采样背景中位色，色差>60 为主体
+        裁法（用户口径）：头约占全身 50%——取主体上部 50% 裁方缩 50x50，
+        先上传再说。任何失败返回 None 走封面缩放（绝不触发生图）。
         """
         try:
             import numpy as np
@@ -185,15 +185,24 @@ class AssetsStage:
             if src is None or not src.exists():
                 return None
             im = Image.open(src).convert("RGBA")
-            a = np.asarray(im)[:, :, 3]
-            ys, xs = np.where(a > 8)
-            # 透明区 <5% 视为无透明底（ref 库保留背景模式的成品：RGB 转
-            # RGBA 后 alpha 恒 255，必须有透明区才能做主体分割）
-            if not len(ys) or (a < 8).sum() < im.width * im.height * 0.05:
+            arr = np.asarray(im)
+            a = arr[:, :, 3]
+            ys = xs = None
+            if (a < 8).sum() >= im.width * im.height * 0.05:
+                # 透明底：alpha 主体
+                ys, xs = np.where(a > 8)
+            else:
+                # 非透明底：边缘采样背景中位色，色差主体
+                edge = np.concatenate([arr[0, :, :3], arr[-1, :, :3],
+                                       arr[:, 0, :3], arr[:, -1, :3]]).astype(int)
+                bg = np.median(edge, axis=0)
+                dist = np.abs(arr[:, :, :3].astype(int) - bg).sum(axis=2)
+                ys, xs = np.where(dist > 60)
+            if not len(ys):
                 return None
             y0, y1 = int(ys.min()), int(ys.max())
             x0, x1 = int(xs.min()), int(xs.max())
-            head_h = max(1, int((y1 - y0) * 0.72))
+            head_h = max(1, int((y1 - y0) * 0.5))   # 头约占全身 50%（用户口径）
             crop = im.crop((x0, y0, x1 + 1, min(y0 + head_h, y1 + 1)))
             w, h = crop.size
             side = max(w, h)

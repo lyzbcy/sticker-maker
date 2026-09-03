@@ -102,6 +102,6 @@ def test_icon_success_keeps_fallback_flag_false(tmp_path):
     icon_raw = ctx.episode_dir / "图标" / "_icon_raw.png"
     icon_raw.parent.mkdir(exist_ok=True)
     Image.new("RGBA", (240, 240), (255, 255, 255, 255)).save(icon_raw)
-    stage._make_ai_icon = lambda ctx, paths: icon_raw
+    stage._crop_head_icon = lambda paths, out: icon_raw   # 裁剪路径成功
     stage.run(ctx)
     assert ctx.icon_fallback is False

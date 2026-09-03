@@ -329,13 +329,26 @@ def test_crop_head_icon_prefers_calm_face(tmp_path):
         [str(tmp_path / "蹦跳.png"), str(tmp_path / "静静看.png")], out) is not None
 
 
-def test_crop_head_icon_opaque_returns_none(tmp_path):
-    """非透明底（ref 库保留背景模式）裁不了 → None 走 AI 兜底。"""
+def test_crop_head_icon_opaque_bg_separates_subject(tmp_path):
+    """非透明底（ref 库保留背景）：背景色差定位主体 → 同样能裁（用户指令：
+    绝不为此花生图机会，先上传再说）。"""
     from sticker_engine.stages.assets import AssetsStage
+    im = Image.new("RGB", (240, 240), (255, 0, 255))       # 品红底
+    from PIL import ImageDraw
+    d = ImageDraw.Draw(im)
+    d.ellipse([60, 30, 180, 170], fill=(255, 220, 200))    # 头
+    d.rectangle([100, 170, 140, 235], fill=(120, 150, 255))  # 身
     src = tmp_path / "x.png"
-    Image.new("RGB", (240, 240), (255, 255, 255)).save(src)
+    im.save(src)
     stage = AssetsStage.__new__(AssetsStage)
-    assert stage._crop_head_icon([str(src)], tmp_path / "o.png") is None
+    out = tmp_path / "o.png"
+    assert stage._crop_head_icon([str(src)], out) is not None
+    r = Image.open(out).convert("RGB")
+    assert r.size == (50, 50)
+    # 50% 裁线：头部肤色为主体
+    n_head = sum(1 for x in range(50) for y in range(50)
+                 if r.getpixel((x, y))[0] > 230 and r.getpixel((x, y))[1] > 180)
+    assert n_head > 400
 
 
 # ---------------- 0 token 模式（2026-09-03：文本调用把周额度吃光事故） ----------------
