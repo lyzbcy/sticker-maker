@@ -96,10 +96,7 @@ class AssetsStage:
         if bool(getattr(ctx.config.prefs, "vision_calls", False)):
             intro = str(self.vision.write_intro(meanings, episode_name=ctx.episode_dir.name))
         else:
-            names = [m for m in (meanings or []) if m][:4]
-            base = (f"《{ctx.episode_dir.name}》：{'、'.join(names)}，"
-                    "软萌日常表情。") if names else f"《{ctx.episode_dir.name}》软萌日常表情包。"
-            intro = base[:80]
+            intro = make_local_intro(ctx.episode_dir.name, meanings)
         intro = intro[:_INTRO_MAX]
         (ctx.episode_dir / "介绍.txt").write_text(intro, encoding="utf-8")
 
@@ -371,3 +368,29 @@ def make_banner(src_paths: list, out: Path) -> None:
 
 def resize_save(src: Path, out: Path, w: int, h: int) -> None:
     Image.open(src).convert("RGBA").resize((w, h), Image.LANCZOS).save(out)
+
+
+def make_local_intro(album_name: str, meanings: list) -> str:
+    """0 token 本地介绍模板（2026-09-04 抽出可复用：S3 先用目录名占位，
+    系列编号命名后用最终专辑名重写——此前介绍里的《》是 episode 目录名，
+    156-160 五单全部带《episode_20260903_xxx》上平台）。"""
+    names = [m for m in (meanings or []) if m][:4]
+    base = (f"《{album_name}》：{'、'.join(names)}，软萌日常表情。"
+            if names else f"《{album_name}》软萌日常表情包。")
+    return base[:_INTRO_MAX]
+
+
+def rewrite_intro_with_album(episode_dir: Path, album_name: str) -> str:
+    """系列命名后重写介绍（cmd_run/engine.run 成功路径调用）。"""
+    mm = episode_dir / "meaning_map.json"
+    meanings = []
+    if mm.exists():
+        try:
+            import json
+            data = json.loads(mm.read_text(encoding="utf-8"))
+            meanings = [str(v) for _, v in sorted(data.items(), key=lambda kv: int(kv[0]))]
+        except Exception:   # noqa: BLE001
+            meanings = []
+    intro = make_local_intro(album_name, meanings)
+    (episode_dir / "介绍.txt").write_text(intro, encoding="utf-8")
+    return intro

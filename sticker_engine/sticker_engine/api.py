@@ -178,6 +178,18 @@ class StickerEngine:
                     save_series(all_series)
             except Exception:
                 pass   # 命名失败不影响作品产出
+            # 命名后重写介绍（2026-09-04：S3 生成介绍在命名之前，《》里
+            # 只能写目录名——156-160 五单带着《episode_20260903_xxx》简介
+            # 上了平台。这里用最终专辑名重写本地介绍.txt）
+            if success and ctx.episode_dir is not None:
+                try:
+                    from .config.series import load_meta as _lm
+                    from .stages.assets import rewrite_intro_with_album
+                    _album = _lm(ctx.episode_dir).album_name
+                    if _album and not _album.startswith("episode_"):
+                        rewrite_intro_with_album(ctx.episode_dir, _album)
+                except Exception:
+                    pass
         ep = Episode(
             episode_dir=ctx.episode_dir, stickers=ctx.stickers,
             meaning_map=ctx.meaning_map, assets=ctx.assets,
