@@ -45,6 +45,10 @@ class Prefs:
     reference_lib_path: Optional[str] = None   # I2：用户可改参考图库位置（None=默认）
     default_series_id: Optional[str] = None    # 默认系列：run 成功后自动编号命名（None=不自动）
     prompt_set_id: Optional[str] = None        # 默认 Prompt 方案（None=内置萌系大头）
+    # 文本调用开关（2026-09-03 用户指令：识图/门禁/文案的文本调用喂图给最强
+    # 模型，token 巨大曾把周额度吃光强制卡停）。False=0 token 模式：
+    # 含义词直接用生成时选定的词条、门禁跳过、介绍用本地模板。
+    vision_calls: bool = False
 
     def __post_init__(self):
         s = self.mode_probs.single + self.mode_probs.duo + self.mode_probs.trio + self.mode_probs.quad

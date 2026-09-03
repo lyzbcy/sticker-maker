@@ -216,6 +216,13 @@ class GenerateStage:
                 why = "生成的网格图异常（全黑/纯色废图），疑似 codex 生成失败"
                 self._emit(ctx, f"{why}，尝试重试…")
                 continue
+            # 0 token 模式（2026-09-03）：门禁识图每单喂 2 张大图给最强
+            # 模型，token 巨大；前置三重防线（prompt 拍平/ASCII 暂存/
+            # CRITICAL 前缀）已根治丢图事故，门禁默认跳过（prefs 可开）
+            if not bool(getattr(ctx.config.prefs, "vision_calls", False)):
+                self._emit(ctx, "IP 校验：0 token 模式已跳过（省额度；前置"
+                                "防线仍在，可在设置中开启）")
+                return grid
             ok, note = self._check_identity(ctx, grid, bases)
             if ok:
                 self._emit(ctx, f"IP 校验：{note}")
@@ -393,6 +400,24 @@ class GenerateStage:
             emotions = self._normalize_entries(kws.get("emotions") or ["happy"])
             picked = self._draw_without_repeat(emotions, n)
 
+        # 0 token 模式（2026-09-03）：把选定词条的中文含义随 prompt 一起
+        # 记到 ctx——S2 无需识图命名（切图格序 = prompt 格序，直传即可）
+        zh_words = []
+        for e in picked:
+            w = str(e.get("zh") or e.get("en") or "").strip() or "表情"
+            zh_words.append(w)
+        seen = {}
+        deduped = []
+        suffixes = ["", "呀", "哦", "～"]
+        for w in zh_words:
+            cnt = seen.get(w, 0)
+            suf = suffixes[min(cnt, len(suffixes) - 1)]
+            deduped.append(w + (suf if cnt else ""))
+            seen[w] = cnt + 1
+        try:
+            ctx.preset_meanings = deduped
+        except AttributeError:
+            pass
         lines = []
         for i, e in enumerate(picked, 1):
             action = self.rng.choice(actions)
@@ -411,12 +436,18 @@ class GenerateStage:
 
     @staticmethod
     def _normalize_entries(raw) -> list:
-        """词条归一化：str → {en, desc}（旧格式兼容，desc 用 en 兜底）。"""
+        """词条归一化：str → {en, desc}（旧格式兼容，desc 用 en 兜底）。
+
+        zh 字段透传（0 token 模式的预置含义词来源——丢了会退化成英文词）。
+        """
         out = []
         for item in raw or []:
             if isinstance(item, dict):
-                out.append({"en": str(item.get("en", "")),
-                            "desc": str(item.get("desc") or item.get("en", ""))})
+                e = {"en": str(item.get("en", "")),
+                     "desc": str(item.get("desc") or item.get("en", ""))}
+                if item.get("zh"):
+                    e["zh"] = str(item.get("zh"))
+                out.append(e)
             else:
                 out.append({"en": str(item), "desc": str(item)})
         return out

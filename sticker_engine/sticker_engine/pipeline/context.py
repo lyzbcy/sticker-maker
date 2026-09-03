@@ -91,6 +91,8 @@ class PipelineContext:
     # stage 主动中止（如 IP 校验连续不过）：runner 见到即停，不再跑后续 Gate
     # （否则会出现"S1 已明确中止 → Gate1 又报'生图产物缺失'"的迷惑链）
     aborted: bool = False
+    # S1 预置含义词（0 token 模式：词条选取时已知，S2 免识图）
+    preset_meanings: Optional[list] = None
 
     @property
     def production_log(self) -> list:

@@ -298,9 +298,19 @@ class PostprocessStage:
                 ctx.log(LogEntry(stage="S2", status="OK", message=f"切图：{note}"))
         else:
             panels = [ctx.grid_image]
-        # 2) 含义预检
-        if len(panels) > 1:
+        # 2) 含义预检（0 token 模式：S1 已把选定词条预置到 ctx，直接用
+        # ——切图格序 = prompt 格序；曾靠识图命名，每单喂 1 张大图给
+        # 最强模型，token 开销把周额度吃光强制卡停）
+        preset = getattr(ctx, "preset_meanings", None)
+        use_vision = bool(getattr(ctx.config.prefs, "vision_calls", False))
+        if preset and len(preset) == len(panels) and not use_vision:
+            meanings = {i + 1: w for i, w in enumerate(preset)}
+        elif len(panels) > 1 and use_vision:
             meanings = self.vision.interpret(panels)
+        elif len(panels) > 1 and not use_vision:
+            # 无预置（ref/story 等模式）且 0 token：退用文件名序（ref 模式
+            # 文件名即含义；不完美但不烧 token）
+            meanings = {i + 1: Path(p).stem for i, p in enumerate(panels)}
         else:
             meanings = {1: Path(panels[0]).stem}
         ctx.meaning_map = meanings

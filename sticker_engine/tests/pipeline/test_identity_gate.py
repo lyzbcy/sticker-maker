@@ -20,6 +20,7 @@ def _ctx(tmp_path):
     paths = Paths(user_data=tmp_path, output_root=tmp_path/"e", reference_lib=tmp_path/"ref",
                   prefs_file=tmp_path/"p.yaml", codex_exec="codex", codex_output_dir=tmp_path/"codex")
     config = Config.placeholder(); config.paths = paths
+    config.prefs.vision_calls = True   # 门禁测试：显式开启文本校验路径
     ctx = PipelineContext(config=config, episode=EpisodeSpec.placeholder())
     ctx.episode_dir = tmp_path / "e1"; ctx.episode_dir.mkdir()
     (ctx.episode_dir / "原图").mkdir()

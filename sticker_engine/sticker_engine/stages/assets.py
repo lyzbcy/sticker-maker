@@ -92,7 +92,15 @@ class AssetsStage:
         # 介绍：1-80 字，硬截断防超限（str() 兜底：write_intro 契约返回 str，
         # 防御 provider 异常返回非 str；真实 VisionProvider 返回 str 时为恒等）
         meanings = [Path(s.path).stem for s in stickers]
-        intro = str(self.vision.write_intro(meanings, episode_name=ctx.episode_dir.name))
+        # 0 token 模式（2026-09-03）：介绍文案纯文本调用也耗 token——
+        # 默认走本地模板（基于含义词），prefs.vision_calls=True 才用 AI
+        if bool(getattr(ctx.config.prefs, "vision_calls", False)):
+            intro = str(self.vision.write_intro(meanings, episode_name=ctx.episode_dir.name))
+        else:
+            names = [m for m in (meanings or []) if m][:4]
+            base = (f"《{ctx.episode_dir.name}》：{'、'.join(names)}，"
+                    "软萌日常表情。") if names else f"《{ctx.episode_dir.name}》软萌日常表情包。"
+            intro = base[:80]
         intro = intro[:_INTRO_MAX]
         (ctx.episode_dir / "介绍.txt").write_text(intro, encoding="utf-8")
 

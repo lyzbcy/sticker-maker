@@ -72,6 +72,7 @@ def _ctx(tmp_path):
     paths = Paths(user_data=tmp_path, output_root=tmp_path / "e", reference_lib=tmp_path / "ref",
                   prefs_file=tmp_path / "p.yaml", codex_exec="codex", codex_output_dir=tmp_path / "codex")
     config = Config.placeholder(); config.paths = paths
+    config.prefs.vision_calls = True
     ctx = PipelineContext(config=config, episode=EpisodeSpec.placeholder())
     ctx.episode_dir = tmp_path / "e1"; ctx.episode_dir.mkdir(parents=True)
     return ctx
@@ -335,3 +336,38 @@ def test_crop_head_icon_opaque_returns_none(tmp_path):
     Image.new("RGB", (240, 240), (255, 255, 255)).save(src)
     stage = AssetsStage.__new__(AssetsStage)
     assert stage._crop_head_icon([str(src)], tmp_path / "o.png") is None
+
+
+# ---------------- 0 token 模式（2026-09-03：文本调用把周额度吃光事故） ----------------
+
+def test_zero_token_mode_skips_gate_and_vision(tmp_path):
+    """默认（vision_calls=False）：门禁跳过、S2 用预置词条、介绍走模板。"""
+    from sticker_engine.stages.postprocess import PostprocessStage
+    ctx = _ctx(tmp_path)
+    ctx.config.prefs.vision_calls = False   # 0 token 模式
+    grid = tmp_path / "grid.png"
+    im = Image.new("RGBA", (80, 80), (200, 180, 90, 255))
+    im.paste(Image.new("RGBA", (40, 40), (250, 220, 200, 255)), (20, 20))
+    im.save(grid)
+    ctx.grid_image = grid
+    ctx.episode.grid_size = 2   # 2x2=4 格对齐预置 4 词
+    ctx.preset_meanings = ["开心", "难过", "生气", "委屈"]
+    vision = MagicMock()
+    ck = MagicMock()
+    ck.remove_key_auto.side_effect = lambda im: im   # 原图直通（专注测 0token 路径）
+    stage = PostprocessStage(vision, ck)
+    stage.run(ctx)
+    vision.interpret.assert_not_called()   # 零文本调用
+    assert ctx.meaning_map == {1: "开心", 2: "难过", 3: "生气", 4: "委屈"}
+
+
+def test_preset_meanings_dedup():
+    """S1 预置词条重名自动加语气变体（平台拒绝重复含义词）。"""
+    zh = ["开心", "开心", "开心"]
+    seen, out = {}, []
+    suf = ["", "呀", "哦"]
+    for w in zh:
+        c = seen.get(w, 0)
+        out.append(w + (suf[min(c, 2)] if c else ""))
+        seen[w] = c + 1
+    assert out == ["开心", "开心呀", "开心哦"]

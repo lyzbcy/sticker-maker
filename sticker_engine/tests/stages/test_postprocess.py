@@ -56,6 +56,7 @@ def test_postprocess_crops_4x4_to_16_and_writes_meanings(tmp_path):
     paths = Paths(user_data=tmp_path, output_root=tmp_path/"e", reference_lib=tmp_path/"ref",
                   prefs_file=tmp_path/"p.yaml", codex_exec="codex", codex_output_dir=tmp_path/"c")
     config = Config.placeholder(); config.paths = paths
+    config.prefs.vision_calls = True   # S2 识图路径测试（0token 模式走预置词条）
     ctx = PipelineContext(config=config, episode=EpisodeSpec.placeholder())
     ctx.episode_dir = tmp_path/"e1"; ctx.episode_dir.mkdir()
     ctx.grid_image = grid_path
@@ -76,6 +77,7 @@ def test_postprocess_skips_crop_for_grid_1(tmp_path):
     paths = Paths(user_data=tmp_path, output_root=tmp_path/"e", reference_lib=tmp_path/"ref",
                   prefs_file=tmp_path/"p.yaml", codex_exec="codex", codex_output_dir=tmp_path/"c")
     config = Config.placeholder(); config.paths = paths
+    config.prefs.vision_calls = True   # S2 识图路径测试（0token 模式走预置词条）
     ctx = PipelineContext(config=config, episode=EpisodeSpec(grid_size=1))
     ctx.episode_dir = tmp_path/"e1"; ctx.episode_dir.mkdir()
     ctx.grid_image = grid_path
