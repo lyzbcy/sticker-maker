@@ -32,6 +32,8 @@ _STYLE_BLOCK = (
     "edges of any panel\n"
     "- Outfits stay modest in every pose (falling, lying, tumbling): never "
     "show underwear or immodest exposure\n"
+    "- Exactly two arms and two legs per character — never draw extra "
+    "or duplicated limbs\n"
     "- Background: solid magenta (#ff00ff), completely flat — no shadows, "
     "no gradients, no scenery\n"
     "- Absolutely no text, letters, numbers or watermarks in any panel"

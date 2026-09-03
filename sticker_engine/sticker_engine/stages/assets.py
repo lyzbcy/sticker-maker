@@ -165,8 +165,10 @@ class AssetsStage:
     def _crop_head_icon(self, sticker_paths: list, out: Path):
         """从成品贴纸裁头部做图标（2026-09-03 用户降本：绝不为此花生图机会）。
 
-        选片：偏好"正面安静脸"含义词（看/呆/乖/笑/安/静/ok/嗨/萌），
-        fallback 第 1 张。主体定位两路：
+        选片（2026-09-03 驳回修正：曾偏好"看/呆/乖/笑"安静脸——所有专辑
+        都挑相似脸导致**跨专辑图标撞图**被平台驳回"不同专辑应使用不一样
+        的图片"。改为按 episode 目录名 hash 选格——每单固定但跨单差异化）。
+        主体定位两路：
         - 透明底：alpha>8 找主体 bbox
         - 非透明底（ref 库保留背景）：四边采样背景中位色，色差>60 为主体
         裁法（用户口径）：头约占全身 50%——取主体上部 50% 裁方缩 50x50，
@@ -174,14 +176,13 @@ class AssetsStage:
         """
         try:
             import numpy as np
-            pref = ("看", "望", "呆", "乖", "笑", "安", "静", "哈", "ok",
-                    "嗨", "你", "萌", "好")
-            src = None
-            for p in sorted(sticker_paths):
-                if any(k in Path(p).stem.lower() for k in pref):
-                    src = Path(p)
-                    break
-            src = src or (Path(sticker_paths[0]) if sticker_paths else None)
+            import hashlib
+            paths_sorted = sorted(sticker_paths)
+            if not paths_sorted:
+                return None
+            ep_name = Path(paths_sorted[0]).parent.parent.name  # episode 目录名
+            h = int(hashlib.md5(ep_name.encode("utf-8")).hexdigest(), 16)
+            src = Path(paths_sorted[h % len(paths_sorted)])
             if src is None or not src.exists():
                 return None
             im = Image.open(src).convert("RGBA")
