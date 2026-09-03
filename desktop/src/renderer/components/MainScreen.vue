@@ -79,9 +79,11 @@
             <div class="batch-box">
               <label class="batch-label">
                 批量
-                <select v-model="batchCount" class="batch-select">
-                  <option v-for="n in [2,3,5,10,20]" :key="n" :value="n">{{ n }} 组</option>
-                </select>
+                <input v-model.number="batchCount" type="number" min="1" max="200"
+                       class="batch-input" title="1-200 组自定义" />
+                <span class="batch-unit">组</span>
+                <button v-for="n in [5, 20, 50, 200]" :key="n" class="batch-quick"
+                        :class="{ on: batchCount === n }" @click="batchCount = n">{{ n }}</button>
               </label>
               <label class="batch-check">
                 <input type="checkbox" v-model="batchAutoPublish" />
@@ -212,7 +214,9 @@ async function refreshQuota() {
 
 function startBatch() {
   if (store.running) return
-  store.runBatch(batchCount.value, batchAutoPublish.value)
+  const n = Math.max(1, Math.min(200, Number(batchCount.value) || 1))
+  batchCount.value = n
+  store.runBatch(n, batchAutoPublish.value)
 }
 
 const gridSize = computed(() => Number(store.prefs?.grid_size) || 4)
@@ -439,7 +443,13 @@ onMounted(() => {
 .qw-reset { font-size: 11px; color: var(--muted, #999); margin-top: 2px; }
 .batch-box { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .batch-label { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
-.batch-select { border: 1px solid #ddd; border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+.batch-input { width: 64px; border: 1px solid #ddd; border-radius: 8px;
+  padding: 6px 8px; font-size: 13px; }
+.batch-unit { font-size: 12px; color: var(--muted, #888); }
+.batch-quick { border: 1px solid #ddd; background: white; border-radius: 999px;
+  padding: 4px 10px; font-size: 11.5px; cursor: pointer; color: var(--muted, #666); }
+.batch-quick.on { border-color: var(--forest, #2e4a34); color: var(--forest, #2e4a34);
+  font-weight: 700; }
 .batch-check { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .batch-btn { border: 0; background: var(--brick, #b5482a); color: white; border-radius: 999px;
   padding: 10px 18px; font-weight: 800; cursor: pointer; }

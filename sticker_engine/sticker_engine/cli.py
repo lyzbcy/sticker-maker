@@ -580,7 +580,9 @@ def cmd_run_batch(req_id, args):
     每组进度经原有 run 的 progress 通道透传；批量粒度进度用 stage="batch"。
     stop 可中断（中断前已完成的组保留结果）。
     """
-    count = max(1, min(50, int(args.get("count") or 1)))
+    # 上限 200（2026-09-03 用户需求：自定义大批量；每组 5-8 分钟串行，
+    # 200 组约 20-27 小时，支持随时 stop 中断、已完成组保留）
+    count = max(1, min(200, int(args.get("count") or 1)))
     auto_publish = bool(args.get("auto_publish"))
     engine = _ensure_engine()
     _sync_custom_bases(engine)
