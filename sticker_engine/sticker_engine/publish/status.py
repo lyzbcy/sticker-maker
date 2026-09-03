@@ -310,7 +310,8 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
             # 分页扫描（2026-09-01 二次调整）：**全量翻页**——下载/发送/
             # 赞赏数据只有已上架单才有，一键更新必须全量带回；本地脚本不花
             # token，页数成本可接受。卡页签名检测保留（防假数据累计）。
-            last_sig = ""   # 上一页内容签名（防"点击翻页没前进"的死循环）
+            last_sig = ""   # 上一页整页签名（防"点击翻页没前进"的死循环）
+            stall_pages = 0  # 连续相同签名页数（连续 2 次才判卡页）
             for page_no in range(1, MAX_PAGES + 1):
                 page.wait_for_timeout(1200)
                 rows = parse_rows_from_text(page.inner_text("body"))
@@ -318,13 +319,18 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
                 # 行名，混进 unmatched 列表显示为不存在的作品）
                 rows = [r for r in rows if r.name not in _UI_BUTTON_WORDS]
                 if rows:
-                    # 卡页检测（2026-09-01：后段点"下一页"偶发不前进，同内容
-                    # 反复累计 180+ 条假数据）。签名取第 3-5 行（前两行是每页
-                    # 固定的置顶作品，不能当签名）
-                    sig = "|".join(r.name for r in rows[2:5])
+                    # 卡页检测（2026-09-01 引入；2026-09-03 误杀事故：签名
+                    # 只取第 3-5 行，作品重提导致排序洗牌时连续两页前 3 行
+                    # 撞车被误判"未前进"，16 页只扫了 6 页漏掉 100 条。改为
+                    # **整页全签名 + 连续 2 次相同**才判卡页）
+                    sig = "|".join(r.name for r in rows)
                     if sig and sig == last_sig:
-                        say("翻页未前进（内容与上一页相同），停止扫描")
-                        break
+                        stall_pages += 1
+                        if stall_pages >= 2:
+                            say("连续两页内容完全相同（翻页失效），停止扫描")
+                            break
+                    else:
+                        stall_pages = 0
                     last_sig = sig
                     all_rows.extend(rows)
                     pages = page_no
@@ -380,22 +386,52 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
                         _restore_page_pos()   # 供后续翻页/卡页检测
                         page.wait_for_timeout(800)
                     # 全量策略：不再 stall 停页（数据全量带回）
-                # 翻页（2026-09-01 事故：抓完驳回理由 go_back 回列表后，
-                # "下一页"按钮 DOM 处于重绘窗口，count=0 误判"没有下一页"
-                # →只扫第 1 页，历史弹全部漏同步。重试点击，3 次全失败才停）
-                clicked = False
-                for _ in range(3):
+                # 翻页（2026-09-01 引入重试；2026-09-03 事故：抓完驳回
+                # 理由恢复位置后翻页点击全部落空——16 页只扫 6 页漏 100 条。
+                # 升级：点击后**验证页签名真的变了**才算成功；5 次都失败
+                # 则 goto 重置从头快进到下一页兜底）
+                def _cur_sig():
+                    try:
+                        return "|".join(
+                            r.name for r in
+                            parse_rows_from_text(page.inner_text("body")))
+                    except Exception:   # noqa: BLE001
+                        return ""
+
+                def _click_next():
                     nb = page.locator("a:has-text('下一页')")
-                    if nb.count():
-                        try:
-                            nb.first.click(timeout=3000)
+                    if not nb.count():
+                        return False
+                    try:
+                        nb.first.click(timeout=3000)
+                        return True
+                    except Exception:   # noqa: BLE001
+                        return False
+
+                clicked = False
+                for _ in range(5):
+                    if _click_next():
+                        page.wait_for_timeout(2200)
+                        if _cur_sig() not in ("", last_sig):
                             clicked = True
                             break
-                        except Exception:   # noqa: BLE001
-                            pass
-                    page.wait_for_timeout(1200)
+                    page.wait_for_timeout(1500)
                 if not clicked:
-                    break   # 真没有下一页（最后一页）或点不动
+                    # 兜底：重置回第 1 页快进到 page_no+1
+                    try:
+                        page.goto(HOME_URL, wait_until="domcontentloaded",
+                                  timeout=45000)
+                        page.wait_for_timeout(3500)
+                        for _ in range(page_no):
+                            if not _click_next():
+                                break
+                            page.wait_for_timeout(1800)
+                        if _cur_sig() not in ("", last_sig):
+                            clicked = True
+                    except Exception:   # noqa: BLE001
+                        pass
+                if not clicked:
+                    break   # 真到最后一页（无下一页）或彻底翻不动
         finally:
             b.close()
 
