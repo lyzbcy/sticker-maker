@@ -187,12 +187,14 @@ class BrowserSession:
             return False
 
         # 3) 勾「记住账号」（尽量延长登录态寿命）
+        # 2026-09-03 实测：页面第一个 input[type=checkbox] 可能是不可见
+        # 的隐藏元素（click 死等 30s 超时）——必须 :visible 过滤
         try:
-            remember = page.query_selector('input[type="checkbox"]')
-            if remember and not remember.is_checked():
-                remember.click()
-        except Exception:
-            pass
+            remember = page.locator('input[type="checkbox"]:visible')
+            if remember.count() and not remember.first.is_checked():
+                remember.first.click(timeout=8000)
+        except Exception:   # noqa: BLE001
+            pass   # 勾不上不阻塞登录
 
         # 4) 点「登录」（取文案恰为「登录」的可见按钮，避开「重新登录」）
         try:
@@ -205,7 +207,7 @@ class BrowserSession:
             }""")
             if not clicked:
                 page.click('button:has-text("登录")', timeout=5000)
-        except Exception:
+        except Exception:   # noqa: BLE001
             pass
         time.sleep(4)
 
@@ -213,4 +215,15 @@ class BrowserSession:
         if self._is_logged_in(page):
             self.save_state(page)
             return True
+        # 2026-09-03 实测：平台密码错误会明确报「账号或密码不正确」——
+        # 抓具体报错给用户，别让他猜"是哪环节挂了"
+        try:
+            body = page.inner_text("body", timeout=3000)
+        except Exception:   # noqa: BLE001
+            body = ""
+        for kw, msg in (("账号或密码不正确", "账号或密码不正确——请到 设置 → 发布账号 重存正确密码"),
+                        ("频繁", "操作频繁，请稍后再试"), ("冻结", "账号被冻结")):
+            if kw in body:
+                self.last_login_error = msg
+                break
         return False
