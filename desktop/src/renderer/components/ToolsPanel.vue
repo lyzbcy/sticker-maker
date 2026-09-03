@@ -42,12 +42,6 @@
       </details>
     </section>
 
-    <section class="publish-card">
-      <h3>微信表情开放平台</h3>
-      <p>生成完成后可在结果页或最近作品中点击「提交微信」。首次会打开浏览器，请按页面提示登录。</p>
-      <p class="notice">平台页面可能改版；若失败，日志会保留步骤，作品目录会保存现场截图。</p>
-    </section>
-
     <LogPanel />
   </div>
 </template>
@@ -69,10 +63,10 @@ header { display: flex; align-items: center; gap: 16px; }
 header h2 { margin: 0; font: 700 22px var(--font-head); color: var(--ink); }
 header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
 .back { padding: 8px 18px; border: 1.5px solid var(--paper); border-radius: var(--r-pill); background: var(--card); color: var(--forest); cursor: pointer; }
-.agent-card, .publish-card { padding: 24px; background: var(--card); border: 1.5px solid var(--paper); border-radius: var(--r-card); box-shadow: var(--shadow-card); }
+.agent-card { padding: 24px; background: var(--card); border: 1.5px solid var(--paper); border-radius: var(--r-card); box-shadow: var(--shadow-card); }
 .agent-copy { display: flex; align-items: center; gap: 12px; }
-.agent-copy h3, .publish-card h3 { margin: 0 0 5px; font: 700 16px var(--font-head); color: var(--forest); }
-.agent-copy p, .publish-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.agent-copy h3 { margin: 0 0 5px; font: 700 16px var(--font-head); color: var(--forest); }
+.agent-copy p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .status-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--line); box-shadow: 0 0 0 5px var(--paper); }
 .status-dot.on { background: var(--correct); box-shadow: 0 0 0 5px rgba(47,125,70,.14); }
 .agent-actions { margin-top: 18px; }
