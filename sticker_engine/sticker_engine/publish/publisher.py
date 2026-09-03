@@ -379,7 +379,10 @@ class Publisher:
                 self._report("verify", f"自检发现 {len(missing)} 项未填，正在重试补填…", 0.96)
                 # 自动补填一轮（地区/授权等可能渲染晚）
                 self._click_label_all_unchecked(page, "全球")
-                self._click_label(page, "免费", check=True)
+                # 价格跟随用户设置补填（2026-09-04 事故：此处曾硬编码点
+                # 「免费」——价格步骤已选 10 微信豆后被兜底补填切回免费，
+                # 158 单即此；_step_select_price 内部 check=True 防重复切换）
+                self._step_select_price(page)
                 self._click_label(page, "接受赞赏", check=True)
                 page.wait_for_timeout(1000)
                 missing = self._verify_form(page)
@@ -1100,7 +1103,10 @@ class Publisher:
                 .filter(l => { const i = l.querySelector('input'); return i && i.checked; }).length;
               if (globals.length && checkedGlobals < globals.length)
                 missing.push('上架/下载地区 仅选了 ' + checkedGlobals + '/' + globals.length + ' 组');
-              if (!labelChecked('免费')) missing.push('表情价格');
+              // 价格：免费或 10 微信豆任一选中即算填（2026-09-04：只认
+              // 免费 → 选 10 豆被误判未填 → 补填切回免费/提交失败）
+              if (!labelChecked('免费') && !labelChecked('10 微信豆'))
+                missing.push('表情价格');
               if (!labelChecked('接受赞赏')) missing.push('表情赞赏');
               const nameInput = document.querySelector('input[placeholder*="表情专辑名称"]');
               if (nameInput && !nameInput.value.trim()) missing.push('名称');
