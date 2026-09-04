@@ -557,6 +557,13 @@ class Publisher:
             raise RuntimeError("点击「编辑」未打开编辑器（无新标签）")
         newpage.wait_for_load_state("domcontentloaded", timeout=30000)
         newpage.wait_for_timeout(3000)
+        # 2026-09-04：编辑器 SPA 渲染慢，固定 3s 不够时表单全空（290 单
+        # verify 报全部必填缺失即此）——等含义词输入框出现才算就绪
+        try:
+            newpage.wait_for_selector('input[placeholder="输入含义词"]',
+                                      timeout=15000)
+        except Exception:   # noqa: BLE001
+            pass
         return newpage
 
     def _step_delete_cell(self, page, idx: int) -> None:
