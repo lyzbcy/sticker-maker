@@ -59,7 +59,7 @@ def _extract_reason(text: str) -> str:
     return seg.strip()[:500]
 
 
-def _fetch_reject_reason_for_row(page, row: "PlatformRow") -> str:
+def _fetch_reject_reason_for_row(page, row: "PlatformRow", page_no: int = None) -> str:
     """对一个「未通过审核」行抓驳回理由（SOP：详情→未通过审核→表情驳回理由）。
 
     流程（2026-08-29 实测）：管理页行内「详情」→ 详情页（慢，等 6s+）→
@@ -74,10 +74,36 @@ def _fetch_reject_reason_for_row(page, row: "PlatformRow") -> str:
     entered = False
     stage = "init"
 
+    def _jump_to_page(n) -> None:
+        """页码输入框直达（30 页大列表的恢复快路）。"""
+        try:
+            inp = page.locator(".weui-desktop-pagination__input")
+            if inp.count():
+                inp.first.fill(str(n), timeout=3000)
+                inp.first.press("Enter", timeout=3000)
+                page.wait_for_timeout(1200)
+        except Exception:   # noqa: BLE001
+            pass
+
     def _locate_and_click() -> bool:
-        """找目标行的「详情」并点入（翻页查找——2026-09-02：重提洗牌后
-        目标行可能不在当前页，60 的理由抓取失败即此因）。"""
-        for _pg in range(10):
+        """找目标行的「详情」并点入。2026-09-04：列表已 30 页（~330 行），
+        旧翻页上限 10 页→目标行在 20+ 页必失败（109/58/56/68 全挂即此）。
+        快路：页码直达目标所在页再就地找；兜底：逐页翻（上限 40）。"""
+        if page_no:
+            _jump_to_page(page_no)
+            links = page.locator("a:has-text('详情'), td:has-text('详情')")
+            for i in range(links.count()):
+                el = links.nth(i)
+                try:
+                    in_tr = el.evaluate("e=>e.closest('tr')!==null")
+                    row_txt = (el.locator("xpath=ancestor::tr[1]").inner_text(timeout=1500)
+                               if in_tr else el.inner_text(timeout=1500))
+                except Exception:   # noqa: BLE001
+                    continue
+                if target and target in normalize_name(row_txt):
+                    el.click()
+                    return True
+        for _pg in range(40):
             links = page.locator("a:has-text('详情'), td:has-text('详情')")
             for i in range(links.count()):
                 el = links.nth(i)
@@ -400,7 +426,7 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
                         for r in rejects:
                             _restore_page_pos()
                             say(f"正在读取「{r.name}」的驳回理由…")
-                            r.reject_reason = _fetch_reject_reason_for_row(page, r)
+                            r.reject_reason = _fetch_reject_reason_for_row(page, r, page_no=page_no)
                             if r.reject_reason:
                                 say(f"  驳回理由：{r.reject_reason[:60]}…")
                             else:

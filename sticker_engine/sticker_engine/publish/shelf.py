@@ -149,10 +149,16 @@ class Shelf:
             if not detail:
                 return ("SKIP", "无详情链接（可能已上架）")
             detail.click()
-            page.wait_for_load_state("networkidle")
-            time.sleep(2)
+            # 2026-09-04：networkidle 在详情页常态等不到（轮询请求）→默认
+            # 30s 超时，132/146/150 三单 33s 失败即此。domcontentloaded+固定等待
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=10000)
+            except Exception:   # noqa: BLE001
+                pass
+            time.sleep(2.5)
             # 步骤4：点「上架」按钮
-            shelf_btn = page.query_selector(f'div[data-v-e67065cd] button:has-text("{S.SHELF_BUTTON_TEXT}")')
+            # data-v-xxx 是构建期 hash，平台前端重编译即失效——先试通用定位
+            shelf_btn = page.query_selector(f'button:has-text("{S.SHELF_BUTTON_TEXT}")')
             if not shelf_btn:
                 # 回退：用文本定位
                 try:
@@ -170,8 +176,13 @@ class Shelf:
             # 步骤6：点「预约」
             try:
                 page.click(f'div.weui-desktop-dialog__ft button:has-text("{S.SHELF_CONFIRM_TEXT}")', timeout=3000)
-            except Exception:
-                return ("UNKNOWN", "未确认预约成功")
+            except Exception:   # noqa: BLE001
+                # 2026-09-04：平台弹层从 dialog 改 popover 过一次（撤回确认框
+                # 同款）——popover 结构兜底
+                try:
+                    page.click(f'button:visible:has-text("{S.SHELF_CONFIRM_TEXT}")', timeout=3000)
+                except Exception:
+                    return ("UNKNOWN", "未确认预约成功")
             time.sleep(2)
             # 步骤7：确认成功（弹窗消失 / 成功文案）
             if self._is_shelved_success(page):
