@@ -155,7 +155,14 @@ class Shelf:
                 page.wait_for_load_state("domcontentloaded", timeout=10000)
             except Exception:   # noqa: BLE001
                 pass
-            time.sleep(2.5)
+            # 详情页 SPA 渲染 6-10s：直接等「上架」按钮出现（盲等 2.5s 时
+            # 页面还在转圈 → 永远无按钮 → 65/64/92/148 四单 33s 失败即此）
+            try:
+                page.wait_for_selector(
+                    f'button:has-text("{S.SHELF_BUTTON_TEXT}")', timeout=15000)
+            except Exception:   # noqa: BLE001
+                pass
+            time.sleep(0.5)
             # 步骤4：点「上架」按钮
             # data-v-xxx 是构建期 hash，平台前端重编译即失效——先试通用定位
             shelf_btn = page.query_selector(f'button:has-text("{S.SHELF_BUTTON_TEXT}")')
@@ -194,8 +201,12 @@ class Shelf:
             # 返回列表页
             try:
                 page.go_back()
-                page.wait_for_load_state("networkidle")
-                time.sleep(1)
+                # networkidle 在此页同样常态超时（30s/单的另一半）
+                try:
+                    page.wait_for_load_state("domcontentloaded", timeout=10000)
+                except Exception:   # noqa: BLE001
+                    pass
+                time.sleep(1.5)
             except Exception:
                 page.goto(S.HOME_URL, timeout=self.config.navigation_timeout_ms)
 
