@@ -284,8 +284,11 @@ class Publisher:
                     self._step_replace_stickers(page, assets)
                 else:
                     self._report("upload", "表情图无需修改，跳过上传", 0.45)
-                if edit and need("meanings"):
-                    # 步骤7'：含义词与图不符类驳回——只重填词，不动图
+                if edit and need("meanings") and not need("stickers"):
+                    # 步骤7'：含义词与图不符类驳回——只重填词，不动图。
+                    # 2026-09-04：若 stickers 也重传过，_step_replace_stickers
+                    # 已按本地 meaning_map 顺序填好新词，此处不再识图重排
+                    # （识图路径喂平台截图给 codex，且 vision 未配置即崩）
                     self._report("meanings", "正在按图重填含义词…", 0.60)
                     self._step_fix_meanings_by_vision(
                         page, sorted({p.stem for p in assets.stickers}))
