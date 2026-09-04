@@ -467,17 +467,25 @@ class Publisher:
         # 定位目标行：当前页找不到则翻页继续找（2026-09-01：历史弹导入后
         # 作品 69 个占 8 页）。点击翻页后用页签名验证真的前进了——"下一页"
         # 点击偶发不生效（sync 同款问题），不验证会整轮空转。
+        # 2026-09-04：列表已 30 页 ~330 行，旧上限 12 页→68/109/56 全部
+        # "未找到作品行"。改页码输入框直达 + 上限 40 页。
         prev_sig = ""
         found = False
-        for _ in range(12):
+        for _pg in range(40):
             if _click_detail_row():
                 found = True
                 break
-            nb = page.locator("a:has-text('下一页')")
-            if not nb.count():
-                break   # 最后一页仍没有 → 真不存在
-            nb.first.click(timeout=3000)
-            page.wait_for_timeout(2500)
+            # 页码输入框直达下一页（SPA "下一页"点击不稳定，直达更稳）
+            try:
+                inp = page.locator(".weui-desktop-pagination__input")
+                if inp.count():
+                    inp.first.fill(str(_pg + 2), timeout=3000)
+                    inp.first.press("Enter", timeout=3000)
+                    page.wait_for_timeout(1500)
+                else:
+                    break
+            except Exception:   # noqa: BLE001
+                break
             try:
                 cur = "|".join(
                     r.name for r in
@@ -487,10 +495,18 @@ class Publisher:
             except Exception:   # noqa: BLE001
                 cur = ""
             if cur and cur == prev_sig:
-                # 没前进：等更久再点一次（SPA 渲染窗口）
-                page.wait_for_timeout(2000)
-                nb.first.click(timeout=3000)
-                page.wait_for_timeout(2500)
+                # 没前进（可能已是最后一页）：再试一轮确认后放弃
+                page.wait_for_timeout(1500)
+                try:
+                    cur2 = "|".join(
+                        r.name for r in
+                        __import__("sticker_engine.publish.status", fromlist=[
+                            "parse_rows_from_text"])
+                        .parse_rows_from_text(page.inner_text("body"))[2:5])
+                except Exception:   # noqa: BLE001
+                    cur2 = ""
+                if cur2 == prev_sig:
+                    break   # 真到尾页了
             prev_sig = cur
         if not found:
             raise RuntimeError(f"管理页未找到作品行：{assets.album_name}")
