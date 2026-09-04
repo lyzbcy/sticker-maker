@@ -402,6 +402,32 @@ class GenerateStage:
 
         # 0 token 模式（2026-09-03）：把选定词条的中文含义随 prompt 一起
         # 记到 ctx——S2 无需识图命名（切图格序 = prompt 格序，直传即可）
+        # 2026-09-04 平台限制反哺：含义词字段只存 8 字节（4 个中文字），
+        # 超长词在平台被硬截断（"回消息晚了对不起"→"回消息晚了"）；且
+        # "呀/哦"后缀去重被审核点名（121 两次驳回警告限制投稿）。双兜底：
+        # ①超 4 字或 zh 重复的词条从全库备池换掉 ②换无可换才退回后缀
+        themes_all = self._normalize_themes(kws.get("themes"))
+        used_en = {e.get("en") for e in picked}
+        used_zh, spares = set(), []
+        for es in themes_all.values():
+            for e in es:
+                zh = str(e.get("zh") or "").strip()
+                if not zh or len(zh) > 4 or zh in used_zh or e.get("en") in used_en:
+                    continue
+                spares.append(e)
+        replaced, new_picked = [], []
+        for e in picked:
+            zh = str(e.get("zh") or e.get("en") or "").strip() or "表情"
+            if (len(zh) > 4 or zh in used_zh) and spares:
+                replaced.append(f"{zh}->{spares[0].get('zh')}")
+                e = spares.pop(0)
+                zh = str(e.get("zh") or e.get("en") or "").strip() or "表情"
+            used_zh.add(zh)
+            new_picked.append(e)
+        picked = new_picked
+        if replaced:
+            self._emit(ctx, f"含义词修正 {len(replaced)} 条（超长/重复换词条）："
+                            + "、".join(replaced[:5]) + ("…" if len(replaced) > 5 else ""))
         zh_words = []
         for e in picked:
             w = str(e.get("zh") or e.get("en") or "").strip() or "表情"
