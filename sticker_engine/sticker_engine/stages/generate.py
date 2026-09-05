@@ -428,10 +428,30 @@ class GenerateStage:
         if replaced:
             self._emit(ctx, f"含义词修正 {len(replaced)} 条（超长/重复换词条）："
                             + "、".join(replaced[:5]) + ("…" if len(replaced) > 5 else ""))
+        # 2026-09-05 图标驳回根修（48 单全军覆没：贴纸自带 doodle 装饰，
+        # 从任何场景格裁图标都被判"含文字/装饰图案"）——每单固定格 13-16
+        # 为头部特写格（HEAD SHOT：头肩占画面 ≥60%，纯情绪脸，无道具无
+        # 装饰），图标只从这 4 格裁（零 token）。用户口径：头部画幅
+        # 占比超 60% 即安全，纯情绪大头是聊天表情经典形态。
+        HEADER_SLOTS = (13, 14, 15, 16)
+        HEADER_EMOS = [
+            ("laughing hard", "eyes squeezed shut, mouth wide open in a big happy laugh", "笑死"),
+            ("teary upset", "big watery eyes and a wobbly pout, about to cry", "呜呜呜"),
+            ("sulky pout", "puffing cheeks with a grumpy little pout", "生气气"),
+            ("lovestruck", "sparkling heart-shaped eyes, blushing hard", "心动了"),
+            ("sleepy", "heavy droopy eyes and a tiny yawn", "困死了"),
+            ("shocked", "jaw dropped and both paws on cheeks", "惊了"),
+            ("shy", "hiding half of the face behind paws, blushing", "害羞"),
+            ("smug", "smug little smirk with one brow raised", "得意"),
+        ]
+        header_emos = self.rng.sample(HEADER_EMOS, 4)
+        picked = picked[: n - 4]   # 场景格 12 个，尾部 4 格留给头部特写
+
         zh_words = []
         for e in picked:
             w = str(e.get("zh") or e.get("en") or "").strip() or "表情"
             zh_words.append(w)
+        zh_words += [emo[2] for emo in header_emos]
         seen = {}
         deduped = []
         suffixes = ["", "呀", "哦", "～"]
@@ -462,6 +482,13 @@ class GenerateStage:
                 parts.append("BIG-HEAD MODE: head fills two-thirds of the "
                              "sticker height, almost all head with tiny body")
             lines.append(" — ".join(parts))
+        # 格 13-16：头部特写格（图标专用源，见 HEADER_SLOTS 注释）
+        for slot, emo in zip(HEADER_SLOTS, header_emos):
+            en, desc, _zh = emo
+            lines.append(
+                f"{slot}. HEADER SHOT ({en}): {desc}; head and shoulders fill "
+                "at least 60% of the frame — no props, no accessories, no "
+                "decorations, no background elements, plain magenta only")
         return "\n".join(lines)
 
     @staticmethod

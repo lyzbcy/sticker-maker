@@ -159,12 +159,14 @@ class AssetsStage:
     def _make_banner(self, src_paths: list, out: Path) -> None:
         make_banner(src_paths, out)
 
-    def _crop_head_icon(self, sticker_paths: list, out: Path):
+    def _crop_head_icon(self, sticker_paths: list, out: Path,
+                        header_slots: tuple = (13, 14, 15, 16)):
         """从成品贴纸裁头部做图标（2026-09-03 用户降本：绝不为此花生图机会）。
 
-        选片（2026-09-03 驳回修正：曾偏好"看/呆/乖/笑"安静脸——所有专辑
-        都挑相似脸导致**跨专辑图标撞图**被平台驳回"不同专辑应使用不一样
-        的图片"。改为按 episode 目录名 hash 选格——每单固定但跨单差异化）。
+        选片（2026-09-05 根修）：keyword_combo 单的格 13-16 是固定的头部
+        特写格（generate.HEADER_SLOTS：头肩 ≥60%、无道具无装饰）——图标
+        只从这 4 格里 hash 选一个（跨单差异化）；格数不足或非 combo 单
+        退回全格 hash 选。旧"偏好安静脸"与纯 hash 的两个坑都不再踩。
         主体定位两路：
         - 透明底：alpha>8 找主体 bbox
         - 非透明底（ref 库保留背景）：四边采样背景中位色，色差>60 为主体
@@ -179,7 +181,11 @@ class AssetsStage:
                 return None
             ep_name = Path(paths_sorted[0]).parent.parent.name  # episode 目录名
             h = int(hashlib.md5(ep_name.encode("utf-8")).hexdigest(), 16)
-            src = Path(paths_sorted[h % len(paths_sorted)])
+            slots = [s for s in header_slots if s <= len(paths_sorted)]
+            if slots:
+                src = Path(paths_sorted[slots[h % len(slots)] - 1])
+            else:
+                src = Path(paths_sorted[h % len(paths_sorted)])
             if src is None or not src.exists():
                 return None
             im = Image.open(src).convert("RGBA")
