@@ -182,6 +182,7 @@ class AssetsStage:
             ep_name = Path(paths_sorted[0]).parent.parent.name  # episode 目录名
             h = int(hashlib.md5(ep_name.encode("utf-8")).hexdigest(), 16)
             slots = [s for s in header_slots if s <= len(paths_sorted)]
+            is_header = bool(slots)
             if slots:
                 src = Path(paths_sorted[slots[h % len(slots)] - 1])
             else:
@@ -206,8 +207,13 @@ class AssetsStage:
                 return None
             y0, y1 = int(ys.min()), int(ys.max())
             x0, x1 = int(xs.min()), int(xs.max())
-            head_h = max(1, int((y1 - y0) * 0.5))   # 头约占全身 50%（用户口径）
-            crop = im.crop((x0, y0, x1 + 1, min(y0 + head_h, y1 + 1)))
+            if is_header:
+                # header 特写格（头肩 ≥60%）：整块主体就是完美构图——
+                # 2026-09-05 事故：走"上 50% 裁线"把脸下半切掉只剩头顶
+                crop = im.crop((x0, y0, x1 + 1, y1 + 1))
+            else:
+                head_h = max(1, int((y1 - y0) * 0.5))   # 头约占全身 50%（用户口径）
+                crop = im.crop((x0, y0, x1 + 1, min(y0 + head_h, y1 + 1)))
             w, h = crop.size
             side = max(w, h)
             canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
