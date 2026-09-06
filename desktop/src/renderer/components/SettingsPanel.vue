@@ -92,10 +92,9 @@
         <h3 class="section-title">base 图管理</h3>
         <WizardStepBase />
       </div>
-      <div v-if="store.lastError" class="settings-error">
-        {{ store.lastError[0]?.message }}
-      </div>
-      <button class="save" @click="save">保存生图设置</button>
+      <div v-if="genSaveMsg" class="settings-error">{{ genSaveMsg }}</div>
+      <span v-if="genSaved" class="gen-saved">✓ 已保存</span>
+      <button class="save" @click="save">{{ saving ? '保存中…' : '保存生图设置' }}</button>
     </div>
 
     <!-- 发布账号 -->
@@ -343,8 +342,26 @@ async function clearCredentials() {
   }
 }
 
+const saving = ref(false)
+const genSaved = ref(false)
+const genSaveMsg = ref('')
 async function save() {
-  await store.savePrefs(store.prefs)
+  if (saving.value) return
+  saving.value = true
+  genSaveMsg.value = genSaved.value = false
+  try {
+    const r = await store.savePrefs(store.prefs)
+    if (r === 'adjusted') {
+      genSaveMsg.value = '概率没凑满 100%，已自动按比例折算 ✓'
+    } else if (r) {
+      genSaved.value = true
+      setTimeout(() => (genSaved.value = false), 2000)
+    } else {
+      genSaveMsg.value = (store.lastError?.[0]?.message) || '保存失败'
+    }
+  } finally {
+    saving.value = false
+  }
 }
 function back() {
   store.phase = 'main'
@@ -518,4 +535,5 @@ h2 {
 .bm-opt input { margin: 0; }
 .bm-name { font-size: 13.5px; font-weight: 600; }
 .bm-desc { font-size: 12px; color: var(--muted); }
+.gen-saved { color: var(--correct, #2f7d46); font-size: 13px; font-weight: 700; }
 </style>

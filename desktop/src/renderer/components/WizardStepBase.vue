@@ -15,7 +15,9 @@
         <div class="base-list">
           <div v-for="(path, key) in info.bases" :key="key" class="base-row">
             <img :src="fileUrl(path)" :alt="`${name} ${key}`" />
-            <span :title="key">{{ key }}</span>
+            <span :title="key" class="base-key">{{ key }}</span>
+            <button class="del-btn" title="删除这张图（仅自定义上传的可删）"
+                    @click="removeBase(name, key, path)">✕</button>
             <input
               type="range"
               min="0"
@@ -53,7 +55,7 @@
       </div>
       <p class="hint" v-if="generateMsg" :class="{ err: generateErr }">{{ generateMsg }}</p>
 
-      <p class="hint note">提示：自定义 base 图会作为新角色加入，可在大本营「设置」里调整概率。</p>
+      <p class="hint note">提示：上传的图会作为新角色加入（新角色自动获得 25% 出场概率），概率可在上方「角色概率」里调整。</p>
     </div>
   </div>
 </template>
@@ -65,7 +67,7 @@ const store = useEngineStore()
 const uploading = ref(false)
 const uploadedPath = ref('')
 const uploadedName = ref('')
-const characterName = ref('自定义')
+const characterName = ref('')   // 评审：预填'自定义'会让所有上传堆进同一角色
 const aiPrompt = ref('')
 const generating = ref(false)
 const generateMsg = ref('')
@@ -87,31 +89,52 @@ function updateBaseProb(name, key, event) {
   store.prefs.base_probs[name][key] = Number(event.target.value) / 100
 }
 
+async function removeBase(name, key, path) {
+  if (!window.api) return
+  const res = await window.api.send('remove_base', { character: name, key, path })
+  if (res && res.status === 'ok') {
+    if (store.prefs?.base_probs?.[name]) delete store.prefs.base_probs[name][key]
+    store.loadCharacters()
+  } else {
+    generateMsg.value = '❌ ' + ((res && res.errors && res.errors[0] && res.errors[0].message) || '删除失败')
+    generateErr.value = true
+  }
+}
+
 onMounted(() => store.loadCharacters())
 
 async function uploadBase() {
   if (!window.api || !window.api.selectFile) return
   uploading.value = true
   try {
-    const result = await window.api.selectFile()
+    const result = window.api.selectFiles
+      ? await window.api.selectFiles()
+      : await window.api.selectFile()
     if (result.canceled) {
       uploading.value = false
       return
     }
-    uploadedPath.value = result.path
-    uploadedName.value = result.path.split(/[\\/]/).pop()
-    // 上传后调 add_base（复制到用户 base 目录）
-    const res = await window.api.send('add_base', {
-      path: result.path,
-      name: uploadedName.value,
-      character: characterName.value,
-    })
-    if (res && res.status === 'ok') {
-      generateMsg.value = '✅ base 图已添加'
+    const paths = result.paths || [result.path]
+    let okCount = 0
+    let lastErr = ''
+    for (const p of paths) {
+      const res = await window.api.send('add_base', {
+        path: p,
+        name: p.split(/[\/]/).pop(),
+        character: characterName.value,
+      })
+      if (res && res.status === 'ok') okCount += 1
+      else lastErr = (res && res.errors && res.errors[0] && res.errors[0].message)
+        || (res && res.error) || '未知错误'
+    }
+    uploadedPath.value = paths[0]
+    uploadedName.value = paths.map(x => x.split(/[\/]/).pop()).join(', ')
+    if (okCount > 0) {
+      generateMsg.value = `✅ 已把 ${okCount} 张图加入角色「${characterName.value}」`
       generateErr.value = false
-      store.loadCharacters()   // 刷新列表
+      store.loadCharacters()   // 刷新列表（新角色自动获得 25% 出场概率）
     } else {
-      generateMsg.value = '❌ 添加失败：' + (res && res.error || '未知错误')
+      generateMsg.value = '❌ 添加失败：' + lastErr
       generateErr.value = true
     }
   } catch (e) {
@@ -132,7 +155,7 @@ async function generateBase() {
       character: characterName.value,
     })
     if (res && res.status === 'ok' && res.data && res.data.path) {
-      generateMsg.value = '✅ AI 已生成 base 图：' + res.data.path.split(/[\\/]/).pop()
+      generateMsg.value = `✅ 已加入角色「${characterName.value}」`
       generateErr.value = false
       store.loadCharacters()
     } else {
@@ -265,4 +288,9 @@ async function generateBase() {
 .hint { color: var(--muted-soft); font-size: 13px; }
 .hint.err { color: var(--brick); font-weight: 600; }
 .note { margin-top: 14px; font-style: italic; }
+.del-btn { border: 0; background: none; color: var(--brick, #b5482a);
+  cursor: pointer; font-size: 13px; padding: 2px 6px; border-radius: 6px; opacity: 0; transition: opacity .12s; }
+.base-row:hover .del-btn { opacity: 1; }
+.del-btn:hover { background: rgba(181,72,42,.12); }
+.base-key { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px; font-size: 11px; color: var(--muted); }
 </style>

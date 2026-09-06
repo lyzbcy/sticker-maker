@@ -19,7 +19,7 @@
         <input type="checkbox" id="transparent" v-model="store.prefs.transparent_default" />
         <span class="slider"></span>
       </label>
-      <label for="transparent" class="check-label">透明背景（prompt 模式默认抠图）</label>
+      <label for="transparent" class="check-label">生成后自动去背景（透明底）</label>
     </div>
     <div class="field check">
       <label class="switch">
@@ -49,7 +49,7 @@
       <select v-model="store.prefs.default_series_id">
         <option :value="null">不自动命名（生成后到详情页手动命名）</option>
         <option v-for="s in seriesOptions" :key="s.id" :value="s.id">
-          {{ s.name }}（下一个：{{ s.name }} {{ s.next_number }}）
+          {{ s.name }} · 下一个编号 {{ s.next_number }}
         </option>
       </select>
       <p class="hint">

@@ -84,6 +84,10 @@ async function finish() {
         ? store.lastError.map(e => e.message)
         : ['保存失败，请重试']
       finishErrors.value = errors
+    } else {
+      // savePrefs 不再负责跳转（评审 P0-1：设置页复用同一函数，跳转会
+      // 把用户踢出设置页）——向导完成后的进主界面由这里自行处理
+      store.phase = 'main'
     }
   } catch (e) {
     finishErrors.value = [(e && e.message) || '保存失败，请重试']

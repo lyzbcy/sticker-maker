@@ -533,6 +533,29 @@ def cmd_add_base(req_id, args):
     _result(req_id, "ok", data={"path": str(dst), "name": dst.name})
 
 
+def cmd_remove_base(req_id, args):
+    """删除自定义 base 图（仅限 custom_bases/ 目录内——内置资源不可删）。"""
+    character = args.get("character") or ""
+    key = args.get("key") or ""
+    engine = _ensure_engine()
+    custom_dir = (engine.config.paths.user_data / "custom_bases" / character).resolve()
+    target = (custom_dir / key).resolve()
+    if custom_dir not in target.parents or not target.exists():
+        _result(req_id, "fail", errors=[{"message": "只能删除自定义上传的角色图"}])
+        return
+    target.unlink()
+    # 同步清掉概率条目，避免残留 0% 滑条
+    _sync_custom_bases(engine)
+    prefs_p = engine.config.paths.prefs_file
+    from .config.loader import load_prefs_from_file, save_prefs as _sp
+    prefs = load_prefs_from_file(prefs_p)
+    if prefs and character in prefs.base_probs:
+        prefs.base_probs[character].pop(key, None)
+        _sp(prefs, prefs_p)
+        engine.config.prefs = prefs
+    _result(req_id, "ok")
+
+
 def cmd_run(req_id, args):
     engine = _ensure_engine()
     _sync_custom_bases(engine)   # C1：run 前同步自定义 base，保证可选
@@ -2319,7 +2342,7 @@ HANDLERS = {
     "get_version": cmd_get_version,
     "load_prefs": cmd_load_prefs, "save_prefs": cmd_save_prefs,
     "list_characters": cmd_list_characters, "generate_base": cmd_generate_base,
-    "add_base": cmd_add_base,
+    "add_base": cmd_add_base, "remove_base": cmd_remove_base,
     "run": cmd_run,
     "run_batch": cmd_run_batch,
     "list_all_stickers": cmd_list_all_stickers,

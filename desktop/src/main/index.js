@@ -95,6 +95,17 @@ app.whenReady().then(() => {
     return { canceled: false, path: result.filePaths[0] }
   })
 
+  // 2026-09-05 评审：base 图批量上传（此前只能单选，传 6 张要重复 6 遍）
+  ipcMain.handle('select-files', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: '选择 base 图（可多选）',
+      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg'] }],
+      properties: ['openFile', 'multiSelections'],
+    })
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true }
+    return { canceled: false, paths: result.filePaths }
+  })
+
   // I2 修复：目录选择（参考图库位置）
   ipcMain.handle('select-directory', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -103,6 +114,17 @@ app.whenReady().then(() => {
     })
     if (result.canceled || result.filePaths.length === 0) return { canceled: true }
     return { canceled: false, path: result.filePaths[0] }
+  })
+
+  // 2026-09-05 评审：base 图批量上传（此前只能单选，传 6 张要重复 6 遍）
+  ipcMain.handle('select-files', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: '选择 base 图（可多选）',
+      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg'] }],
+      properties: ['openFile', 'multiSelections'],
+    })
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true }
+    return { canceled: false, paths: result.filePaths }
   })
 
   // 打开外部链接（关于页/求好评一键直达；集中管控协议白名单）

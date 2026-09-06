@@ -26,6 +26,7 @@ const api = {
     ipcRenderer.on('python-restarting', (_, data) => cb(data))
   },
   selectFile: async () => ipcRenderer.invoke('select-file'),
+  selectFiles: async () => ipcRenderer.invoke('select-files'),
   selectDirectory: async () => ipcRenderer.invoke('select-directory'),
   toFileUrl,
   copyText: (text) => ipcRenderer.invoke('copy-text', text),

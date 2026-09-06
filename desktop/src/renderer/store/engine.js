@@ -7,42 +7,38 @@ const sumValues = (object) => Object.values(object || {}).reduce(
 )
 
 export function validatePrefs(prefs, characters = {}) {
-  const modeSum = sumValues(prefs?.mode_probs)
-  if (!nearOne(modeSum)) {
-    return {
-      ok: false,
-      message: `模式概率总和必须为 100%，当前 ${Math.round(modeSum * 100)}%`,
-    }
-  }
+  // 2026-09-05 评审 P0：概率不再硬性要求 =100%（此前用户要凑满三组滑条
+  // 才能保存，差 1% 都被拦）。概率类问题交给 savePrefs 里的 normalizePrefs
+  // 自动按比例折算到 100%；这里只拦"无法自动修复"的真错误。
   const names = Object.keys(characters)
   if (names.length === 0) {
-    return { ok: false, message: '至少需要一个带 base 图的角色' }
-  }
-  const charSum = names.reduce(
-    (total, name) => total + (Number(prefs?.single_char_probs?.[name]) || 0), 0,
-  )
-  if (!nearOne(charSum)) {
-    return {
-      ok: false,
-      message: `角色概率总和必须为 100%，当前 ${Math.round(charSum * 100)}%`,
-    }
+    return { ok: false, message: '至少需要一个带角色图的角色' }
   }
   for (const name of names) {
     const baseKeys = Object.keys(characters[name]?.bases || {})
     if (baseKeys.length === 0) {
-      return { ok: false, message: `角色「${name}」至少需要一张 base 图` }
-    }
-    const baseSum = baseKeys.reduce(
-      (total, key) => total + (Number(prefs?.base_probs?.[name]?.[key]) || 0), 0,
-    )
-    if (!nearOne(baseSum)) {
-      return {
-        ok: false,
-        message: `角色「${name}」的 base 概率总和必须为 100%，当前 ${Math.round(baseSum * 100)}%`,
-      }
+      return { ok: false, message: `角色「${name}」至少需要一张角色图` }
     }
   }
   return { ok: true, message: '' }
+}
+
+// 概率自动折算：mode / 角色 / base 三组概率按比例归一到 100%（2026-09-05）。
+// 返回 { prefs, adjusted } —— adjusted=true 表示用户没凑满，已自动折算。
+export function normalizePrefs(raw) {
+  const prefs = JSON.parse(JSON.stringify(raw))
+  let adjusted = false
+  const scale = (obj) => {
+    if (!obj) return
+    const total = Object.values(obj).reduce((s, v) => s + (Number(v) || 0), 0)
+    if (total <= 0 || Math.abs(total - 1) <= 0.001) return
+    adjusted = true
+    Object.keys(obj).forEach(k => { obj[k] = (Number(obj[k]) || 0) / total })
+  }
+  scale(prefs.mode_probs)
+  scale(prefs.single_char_probs)
+  Object.values(prefs.base_probs || {}).forEach(scale)
+  return { prefs, adjusted }
 }
 
 export const useEngineStore = defineStore('engine', () => {
@@ -126,15 +122,24 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
   }
 
   function defaultPrefs() {
+    // 2026-09-05 评审 P0-3：与后端 schema.py 单一来源对齐——此前
+    // story_mode:true 违背后端"故事模式默认关"定型；缺
+    // ref_consume/browser_headless/sticker_price 等字段致兜底路径开关绑 undefined
     return {
-      mode_probs: { single: 1, duo: 0, trio: 0, quad: 0 },
-      single_char_probs: { 星星布丁: 0.7, 捞鱼: 0.3 },
+      mode_probs: { single: 0.5, duo: 0.3, trio: 0, quad: 0.2 },
+      single_char_probs: {},
       base_probs: {},
       grid_size: 4,
       transparent_default: true,
       ref_lib_priority: true,
-      story_mode: true,
-      default_series_id: null,   // 默认系列：run 成功后自动编号命名（null=不自动）
+      ref_consume: true,
+      story_mode: false,
+      reference_lib_path: null,
+      default_series_id: null,
+      prompt_set_id: null,
+      vision_calls: false,
+      browser_headless: false,
+      sticker_price: 0,
     }
   }
 
@@ -193,7 +198,24 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
     } else {
       names.forEach(name => {
         if (prefs.value.single_char_probs[name] == null) {
-          prefs.value.single_char_probs[name] = 0
+          // 2026-09-05 评审 P0-2 根修：新增角色不再默认 0%（旧逻辑新角色
+          // 永远不出场且无提示，用户白配）。改为等比压缩既有角色、腾出
+          // 25% 份额给新角色——开箱即有出场机会。
+          const SHARE = 0.25
+          const others = names.filter(n => n !== name &&
+            prefs.value.single_char_probs[n] != null)
+          const othersTotal = others.reduce(
+            (s, n) => s + (Number(prefs.value.single_char_probs[n]) || 0), 0)
+          if (othersTotal > SHARE && others.length) {
+            const k = (othersTotal - SHARE) / othersTotal
+            others.forEach(n => { prefs.value.single_char_probs[n] *= k })
+            prefs.value.single_char_probs[name] = SHARE
+          } else if (names.length) {
+            const equal = 1 / names.length
+            names.forEach(n => { prefs.value.single_char_probs[n] = equal })
+          } else {
+            prefs.value.single_char_probs[name] = 1
+          }
         }
       })
     }
@@ -217,23 +239,25 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
   }
 
   async function savePrefs(newPrefs) {
-    const validation = validatePrefs(newPrefs, characters.value)
-    if (!validation.ok) {
-      lastError.value = [{ message: validation.message }]
-      return false
-    }
-    if (!api) { phase.value = 'main'; return true }
+    // 2026-09-05 评审修复：①概率不再拦截——自动按比例折算到 100%；
+    // ②不再 phase='main' 踢出当前页（那是向导完成跳转，设置页复用后
+    // 变成"点保存/切开关被踢出设置"，P0-1）。跳转由向导 finish 自行处理。
+    if (!api) return true
     try {
-      // prefs 是 Vue 响应式 Proxy，无法被 Electron IPC structured clone 序列化，
-      // 必须先深拷贝成纯对象，否则 invoke 抛 "An object could not be cloned."
-      const plainPrefs = JSON.parse(JSON.stringify(newPrefs))
+      const { prefs: normalized, adjusted } = normalizePrefs(newPrefs)
+      const validation = validatePrefs(normalized, characters.value)
+      if (!validation.ok) {
+        lastError.value = [{ message: validation.message }]
+        return false
+      }
+      // Vue 响应式 Proxy 无法 structured clone，深拷贝成纯对象
+      const plainPrefs = JSON.parse(JSON.stringify(normalized))
       const res = await api.send('save_prefs', { prefs: plainPrefs })
       if (res && res.status === 'ok') {
         prefs.value = plainPrefs
         firstRun.value = false
-        phase.value = 'main'
         lastError.value = null
-        return true
+        return adjusted ? 'adjusted' : true
       }
       lastError.value = [{ message: '保存失败' }]
       return false
