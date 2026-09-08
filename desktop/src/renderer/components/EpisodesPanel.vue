@@ -10,11 +10,13 @@
         <span v-if="syncing" class="spin">◌</span>
         {{ syncing ? '同步中…' : '一键更新' }}
       </button>
+      <button v-if="syncing" class="cancel-btn" @click="cancelPlatformTask">✕ 取消同步</button>
       <button v-if="shelfCount > 0" class="shelf-btn" :disabled="shelving"
               @click="shelfPassed"
               :title="`把 ${shelfCount} 个审核通过的作品预约今日上架`">
         {{ shelving ? '发布中…' : `🚀 一键发布（${shelfCount} 单）` }}
       </button>
+      <button v-if="shelving" class="cancel-btn" @click="cancelPlatformTask">✕ 取消发布</button>
       <span v-if="shelfTip" class="reject-copy-tip">{{ shelfTip }}</span>
       <button v-if="rejectCount > 0" class="copy-all-rejects-btn"
               :disabled="copyingAllRejects" @click="copyAllRejects"
@@ -25,8 +27,9 @@
     </header>
 
     <!-- 同步结果摘要 -->
-    <div v-if="syncSummary" class="sync-summary">
-      ✅ 已同步 {{ syncSummary.matched }} 个作品（{{ syncSummary.pages }} 页）
+    <div v-if="syncSummary" class="sync-summary" :class="{ 'sync-cancelled': syncSummary.cancelled }">
+      <template v-if="syncSummary.cancelled">⏹ 已取消：已同步 {{ syncSummary.updated }} 个作品（剩余未同步，可再次一键更新）</template>
+      <template v-else>✅ 已同步 {{ syncSummary.matched }} 个作品（{{ syncSummary.pages }} 页）</template>
       <template v-if="(syncSummary.unmatched_platform || []).length">
         ；平台有 {{ (syncSummary.unmatched_platform || []).length }} 条未匹配记录
         （可能是脏数据，如时间戳名）：<span class="unmatched-names">{{
@@ -61,8 +64,8 @@
         </tr>
       </thead>
       <tbody>
-        <template v-for="ep in filtered" :key="ep.path">
-        <tr :class="{ incomplete: !ep.complete }" @click="openRow(ep)">
+        <template v-for="ep in filtered" :key="ep.work_id || ep.path || ep.name">
+        <tr :class="{ incomplete: !ep.complete, 'resource-row': !!ep.resource_state }" @click="openRow(ep)">
           <td class="col-work">
             <img v-if="ep.cover" class="thumb" :src="fileUrl(ep.cover)" alt="" @error="onThumbError" />
             <div v-else class="thumb thumb-empty">🧸</div>
@@ -71,6 +74,9 @@
               <p class="work-sub">
                 {{ ep.sticker_count }} 张
                 <template v-if="ep.series_name"> · {{ ep.series_name }} #{{ ep.number }}</template>
+                <span v-if="ep.resource_state" class="resource-badge" :class="resourceStateClass(ep)">
+                  {{ resourceStateText(ep) }}
+                </span>
               </p>
             </div>
           </td>
@@ -88,17 +94,35 @@
           </td>
           <td class="date">{{ displayDate(ep) }}</td>
           <td class="col-ops" @click.stop>
-            <button class="op-btn" title="查看详情" @click="openRow(ep)">详情</button>
-            <button v-if="ep.complete" class="op-btn pub" :disabled="store.publishing"
-                    @click="store.publishEpisode(ep.path)">
+            <button class="op-btn" data-test="episode-detail" title="查看详情" @click="openRow(ep)">详情</button>
+            <button v-if="canShowPublish(ep)" class="op-btn pub" :disabled="store.publishing || !canPublish(ep) || !ep.path"
+                    :title="canPublish(ep) ? '提交作品' : '资源未验证完整，暂不能提交'"
+                    @click="publishRow(ep)">
               {{ ep.published ? '再次提交' : '提交' }}
             </button>
-            <template v-if="confirming === ep.path">
-              <button class="op-btn del sure" @click="doDelete(ep)">确认删除</button>
-              <button class="op-btn" @click="confirming = ''">取消</button>
+            <template v-if="isLibraryRecord(ep)">
+              <button v-if="ep.resource_state === 'deleted'" class="op-btn" data-test="restore-work"
+                      title="恢复共享删除的作品" @click.stop="doLibraryDelete(ep, 'restore')">恢复</button>
+              <template v-else>
+                <button class="op-btn del" data-test="hide-work" title="只在本机隐藏，不删除共享文件"
+                        @click.stop="doLibraryDelete(ep, 'hide')">本机隐藏</button>
+                <template v-if="confirming === ep.work_id">
+                  <button class="op-btn del sure" data-test="confirm-delete-work"
+                          @click.stop="doLibraryDelete(ep, 'delete')">确认共享删除</button>
+                  <button class="op-btn" @click.stop="confirming = ''">取消</button>
+                </template>
+                <button v-else class="op-btn del" data-test="delete-work" title="从共享库创建可恢复的删除版本"
+                        @click.stop="confirmLibraryDelete(ep)">共享删除</button>
+              </template>
             </template>
-            <button v-else class="op-btn del" title="连同本地文件夹一起物理删除"
-                    @click="confirming = ep.path">删除</button>
+            <template v-else>
+              <template v-if="confirming === ep.path">
+                <button class="op-btn del sure" @click="doDelete(ep)">确认删除</button>
+                <button class="op-btn" @click="confirming = ''">取消</button>
+              </template>
+              <button v-else class="op-btn del" title="连同本地文件夹一起物理删除"
+                      @click="confirming = ep.path">删除</button>
+            </template>
           </td>
         </tr>
         <tr v-if="expandedRejects.has(ep.path) && ep.platform_reject_reason"
@@ -150,9 +174,19 @@ function toggleReject(path) {
 const copyingRejectPath = ref('')
 const rejectCopyTip = ref('')
 
+// 取消进行中的平台命令（sync/shelf；后端 stop_event，保留已完成结果）
+async function cancelPlatformTask() {
+  try {
+    await window.api.stop()
+    store.pushActivity({ stage: '平台', message: '已请求取消：完成后保留已处理结果' })
+  } catch (e) {
+    store.pushActivity({ stage: '平台', message: '取消失败：' + (e?.message || '无正在运行的任务') })
+  }
+}
+
 // 一键发布：审核通过的单逐个预约今日上架
 const shelfCount = computed(() =>
-  store.episodes.filter(ep => (ep.platform_status || '') === '审核通过').length)
+  store.episodes.filter(ep => (ep.platform_status || '') === '审核通过' && ep.can_shelf !== false).length)
 const shelving = ref(false)
 const shelfTip = ref('')
 async function shelfPassed() {
@@ -164,8 +198,15 @@ async function shelfPassed() {
     const res = await window.api.send('shelf_passed', {})
     if (res?.status === 'ok') {
       const f = res.data.failed || []
-      shelfTip.value = `✓ 已预约上架 ${res.data.published} 单` +
-        (f.length ? `，失败 ${f.length}（${f.map(x => x.name).join('、')}）` : '')
+      if (res.data.cancelled) {
+        const remain = res.data.remaining || []
+        shelfTip.value = `⏹ 已取消：成功预约 ${res.data.published} 单` +
+          (f.length ? `，失败 ${f.length}` : '') +
+          (remain.length ? `，剩余 ${remain.length} 单未处理（${remain.join('、')}）` : '')
+      } else {
+        shelfTip.value = `✓ 已预约上架 ${res.data.published} 单` +
+          (f.length ? `，失败 ${f.length}（${f.map(x => x.name).join('、')}）` : '')
+      }
       store.pushActivity({ stage: '发布', message: shelfTip.value })
       await store.loadEpisodes()
     } else {
@@ -251,8 +292,62 @@ function toggleSort(k) {
   else sortKey.value = ''
 }
 
-function openRow(ep) {
-  if (ep.complete) store.openEpisode(ep.path)
+function isLibraryRecord(ep) {
+  return !!(ep && (ep.work_id || ep.resource_state))
+}
+
+function resourceStateText(ep) {
+  const labels = {
+    available: '本机资源可用',
+    offline: '共享库离线，显示上次本地记录',
+    placeholder: '资源未到齐',
+    pending: '资源未到齐',
+    conflict: '版本冲突',
+    deleted: '已删除',
+  }
+  return labels[ep.resource_state] || '资源状态未知'
+}
+
+function resourceStateClass(ep) {
+  return `resource-${ep.resource_state || 'unknown'}`
+}
+
+function canPublish(ep) {
+  if (!ep) return false
+  if (ep.can_publish === false) return false
+  if (['pending', 'conflict', 'deleted', 'placeholder', 'offline'].includes(ep.resource_state)) return false
+  if (ep.can_publish === true) return true
+  return !!ep.complete
+}
+
+function canShowPublish(ep) {
+  return !!(ep && (ep.complete || isLibraryRecord(ep)))
+}
+
+async function publishRow(ep) {
+  if (!canPublish(ep) || !ep?.path || store.publishing) return
+  await store.publishEpisode(ep.path)
+}
+
+async function openRow(ep) {
+  if (!ep || (!ep.path && !ep.work_id)) return
+  if (ep.path) {
+    await store.openEpisode(ep.path)
+    return
+  }
+  if (!window.api) return
+  try {
+    const res = await window.api.send('get_episode', { work_id: ep.work_id, episode_dir: '' })
+    if (res?.status === 'ok') {
+      store.selectedEpisode = res.data
+      store.phase = 'episodeDetail'
+      await store.loadSeries()
+    } else {
+      store.lastError = res?.errors || [{ message: '加载作品详情失败' }]
+    }
+  } catch (e) {
+    store.lastError = [{ message: e?.message || '加载作品详情失败' }]
+  }
 }
 
 function fileUrl(path) {
@@ -309,6 +404,27 @@ async function doDelete(ep) {
     store.pushActivity({ stage: '作品', message: '删除失败：' + (res?.errors?.[0]?.message || '未知原因') })
   }
 }
+
+function confirmLibraryDelete(ep) {
+  if (!ep?.work_id) return
+  confirming.value = ep.work_id
+}
+
+async function doLibraryDelete(ep, action) {
+  const id = ep?.work_id
+  if (!id || !window.api) return
+  confirming.value = ''
+  const res = await window.api.send('library_delete', { work_id: id, action })
+  if (res?.status === 'ok') {
+    store.pushActivity({
+      stage: '资源库',
+      message: action === 'restore' ? '已请求恢复共享作品' : action === 'hide' ? '已在本机隐藏作品' : '已创建共享删除版本',
+    })
+    await store.loadEpisodes()
+  } else {
+    store.pushActivity({ stage: '资源库', message: '作品操作失败：' + (res?.errors?.[0]?.message || '未知原因') })
+  }
+}
 </script>
 
 <style scoped>
@@ -347,6 +463,10 @@ h2 { margin: 0; font-family: var(--font-head); font-size: 22px; font-weight: 700
 .copy-all-rejects-btn:hover:not(:disabled) { background: rgba(181, 72, 42, .16); }
 .copy-all-rejects-btn:disabled { opacity: .6; cursor: wait; }
 .sync-btn:disabled { opacity: .65; cursor: wait; }
+.cancel-btn { border: 1px solid rgba(181, 72, 42, .45); background: rgba(181, 72, 42, .08);
+  color: var(--brick); border-radius: 999px; padding: 8px 14px; font-size: 12px;
+  font-weight: 700; cursor: pointer; }
+.cancel-btn:hover { background: rgba(181, 72, 42, .16); }
 .spin { display: inline-block; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -354,6 +474,7 @@ h2 { margin: 0; font-family: var(--font-head); font-size: 22px; font-weight: 700
   padding: 10px 16px; margin-bottom: 14px; border-radius: var(--r-md);
   background: rgba(175, 205, 168, .18); color: var(--forest); font-size: 12.5px; line-height: 1.7;
 }
+.sync-summary.sync-cancelled { background: rgba(181, 72, 42, .1); color: var(--brick); }
 .unmatched-names { color: var(--brick); }
 
 .filter-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
@@ -401,6 +522,12 @@ tr.incomplete { opacity: .6; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .work-sub { margin: 2px 0 0; color: var(--muted-soft); font-size: 11.5px; }
+.resource-badge { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; }
+.resource-available { background: rgba(47, 125, 70, .13); color: var(--correct); }
+.resource-placeholder, .resource-pending { background: rgba(230, 162, 60, .16); color: #9a6c13; }
+.resource-conflict { background: rgba(181, 72, 42, .13); color: var(--brick); }
+.resource-deleted { background: rgba(110, 112, 99, .15); color: var(--muted); }
+.resource-unknown { background: var(--paper); color: var(--muted); }
 
 .num, .date { color: var(--muted); text-align: center; }
 .col-ops { text-align: right; }

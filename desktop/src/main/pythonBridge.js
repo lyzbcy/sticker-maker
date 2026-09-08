@@ -30,6 +30,9 @@ function resolveDevPython(repoRoot, platform = process.platform) {
 }
 
 class PythonBridge extends EventEmitter {
+  // 后端注册了 stop_event、可被 stop 命令取消的命令（2026-09-07）
+  static CANCELLABLE = new Set(['run', 'sync_platform_status', 'shelf_passed'])
+
   constructor(cliPath) {
     super()
     this.cliPath = cliPath   // 'dev' | 'packaged' | 绝对路径
@@ -37,6 +40,7 @@ class PythonBridge extends EventEmitter {
     this.reqId = 0
     this.pending = new Map()   // {reqId -> {resolve, reject, progressCb}}
     this.currentRunId = null
+    this.cancelableIds = new Set()   // 在跑的可取消平台命令（sync/shelf）
     this._buffer = ''
     this._stopped = false   // true 表示主动 stopAll，不要自动重启
   }
@@ -77,6 +81,7 @@ class PythonBridge extends EventEmitter {
       }
       this.pending.clear()
       this.currentRunId = null
+      this.cancelableIds.clear()
       // C3 修复：崩溃（非主动关闭）自动重启
       if (!this._stopped) {
         console.error('[pythonBridge] CLI 崩溃，3 秒后自动重启...')
@@ -115,12 +120,14 @@ class PythonBridge extends EventEmitter {
         this.pending.delete(id)
         // run 结束后清当前 run 标记
         if (id === this.currentRunId) this.currentRunId = null
+        this.cancelableIds.delete(id)
         if (ev.status === 'ok') pending.resolve(ev)
         else pending.reject(ev)
       }
     } else if (ev.type === 'error') {
       if (pending) {
         this.pending.delete(id)
+        this.cancelableIds.delete(id)
         pending.reject(ev)
       } else {
         // 无 pending 的 error（如协议级错误），也 emit 出去
@@ -141,15 +148,27 @@ class PythonBridge extends EventEmitter {
       if (cmd === 'run') {
         this.currentRunId = id
       }
+      // 平台命令（sync/shelf）后端注册了 stop_event，可取消（2026-09-07）
+      if (this.constructor.CANCELLABLE.has(cmd)) {
+        this.cancelableIds.add(id)
+      }
       this.proc.stdin.write(JSON.stringify({ id, cmd, args }) + '\n')
     })
   }
 
   stop(targetId) {
     // C2 修复：targetId 缺省时用当前 run 的 id（前端不知道真实 reqId）
-    const realTarget = targetId && targetId !== 'all' ? targetId : this.currentRunId
-    if (!realTarget) return Promise.reject(new Error('无正在运行的任务'))
-    return this.send('stop', { target_id: realTarget })
+    if (targetId && targetId !== 'all') {
+      return this.send('stop', { target_id: targetId })
+    }
+    // 缺省/all：停当前 run；没有 run 时停所有可取消的平台命令（sync/shelf）
+    if (this.currentRunId) {
+      return this.send('stop', { target_id: this.currentRunId })
+    }
+    const ids = [...this.cancelableIds]
+    if (!ids.length) return Promise.reject(new Error('无正在运行的任务'))
+    // 逐个发 stop；任一成功即算取消指令已下达
+    return Promise.allSettled(ids.map((id) => this.send('stop', { target_id: id })))
   }
 
   async stopAll() {
@@ -158,6 +177,17 @@ class PythonBridge extends EventEmitter {
       this.proc.kill()
       this.proc = null
     }
+  }
+
+  // 失败事件拍平成统一 errors 结构：CLI 的 fail result 带 errors 数组、
+  // error 事件带 message、异常对象带 message——谁在哪层丢了都不再显示"未知原因"
+  static flattenError(err) {
+    const message = err?.errors?.[0]?.message
+      || err?.errors?.[0]?.error
+      || err?.message
+      || err?.data?.error
+      || (err ? JSON.stringify(err).slice(0, 300) : '未知原因')
+    return { status: 'fail', errors: [{ message }] }
   }
 }
 

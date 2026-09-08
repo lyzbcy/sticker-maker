@@ -80,3 +80,66 @@ def test_get_episode_uses_name_locked_pairing(tmp_path, monkeypatch):
     assert status == "ok"
     for s in data["stickers"]:
         assert s["meaning"] == s["file"][:-4]  # 图和词一致，用户打分键才可信
+
+
+def test_get_episode_keeps_existing_materials_when_shared_editing_is_disabled(tmp_path, monkeypatch):
+    import sticker_engine.cli as cli
+    from sticker_engine.cli import cmd_get_episode
+    from sticker_engine.config.series import EpisodeMeta, save_meta
+    from types import SimpleNamespace
+
+    ep = _make_episode(tmp_path, ["欢呼"], {"1": "欢呼"})
+    save_meta(ep, EpisodeMeta(album_name="离线作品"))
+    (ep / "横幅").mkdir()
+    (ep / "横幅" / "横幅.png").write_bytes(b"banner")
+    (ep / "封面").mkdir()
+    (ep / "封面" / "封面.png").write_bytes(b"cover")
+    (ep / "介绍.txt").write_text("介绍", encoding="utf-8")
+    engine = SimpleNamespace()
+    runtime = SimpleNamespace(
+        refresh=lambda: {"offline": True},
+        rows=lambda: [{"path": str(ep), "work_id": "w", "account_id": "a",
+                       "resource_state": "offline", "can_edit": False,
+                       "can_publish": False, "can_shelf": False}],
+    )
+    results = []
+    monkeypatch.setattr(cli, "_ensure_engine", lambda: engine)
+    monkeypatch.setattr("sticker_engine.library.hooks.runtime_for", lambda _engine: runtime)
+    monkeypatch.setattr(cli, "_result", lambda req_id, status, data=None, **kw:
+                        results.append((status, data if data is not None else kw)))
+
+    cmd_get_episode("req-offline", {"episode_dir": str(ep)})
+    [(status, data)] = results
+    assert status == "ok"
+    assert data["stickers"]
+    assert data["banner"].endswith("横幅/横幅.png")
+    assert data["intro_file"].endswith("介绍.txt")
+    assert data["can_edit"] is False
+
+
+def test_get_episode_resolves_resource_by_work_id_when_path_is_missing(tmp_path, monkeypatch):
+    import sticker_engine.cli as cli
+    from sticker_engine.cli import cmd_get_episode
+    from sticker_engine.config.series import EpisodeMeta, save_meta
+    from types import SimpleNamespace
+
+    ep = _make_episode(tmp_path, ["欢呼"], {"1": "欢呼"})
+    save_meta(ep, EpisodeMeta(album_name="按 ID 打开"))
+    engine = SimpleNamespace()
+    runtime = SimpleNamespace(
+        refresh=lambda: {"offline": False},
+        rows=lambda: [{"path": str(ep), "work_id": "work-id", "account_id": "a",
+                       "resource_state": "available", "can_edit": True,
+                       "can_publish": False, "can_shelf": False}],
+    )
+    results = []
+    monkeypatch.setattr(cli, "_ensure_engine", lambda: engine)
+    monkeypatch.setattr("sticker_engine.library.hooks.runtime_for", lambda _engine: runtime)
+    monkeypatch.setattr(cli, "_result", lambda req_id, status, data=None, **kw:
+                        results.append((status, data if data is not None else kw)))
+
+    cmd_get_episode("req-id", {"work_id": "work-id", "episode_dir": ""})
+    [(status, data)] = results
+    assert status == "ok"
+    assert data["path"] == str(ep)
+    assert data["meta"]["album_name"] == "按 ID 打开"

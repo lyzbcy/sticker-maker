@@ -56,4 +56,25 @@ describe('PythonBridge (mock child_process)', () => {
     bridge.proc = null
     await expect(bridge.send('x')).rejects.toThrow('CLI 未启动')
   })
+
+  test('stop 贯通平台命令：sync/shelf 在跑时可取消（无 run 时不再拒绝）', async () => {
+    // sync 平台命令在跑
+    const p = bridge.send('sync_platform_status')
+    expect(bridge.cancelableIds.size).toBe(1)
+    const syncId = [...bridge.cancelableIds][0]
+    // 用户点取消 → stop 命令带上真实 reqId
+    const stopP = bridge.stop()
+    const stopId = lastReqId
+    bridge._onData(JSON.stringify({ id: stopId, type: 'result', status: 'ok' }) + '\n')
+    await stopP
+    // 平台命令收到取消结果（ok + cancelled）
+    bridge._onData(JSON.stringify({ id: syncId, type: 'result', status: 'ok', data: { cancelled: true } }) + '\n')
+    const res = await p
+    expect(res.data.cancelled).toBe(true)
+    expect(bridge.cancelableIds.size).toBe(0)   // 结果回来后清理
+  })
+
+  test('stop 无可取消任务时仍 reject（缺省 target 且无 run 无平台命令）', async () => {
+    await expect(bridge.stop()).rejects.toThrow('无正在运行的任务')
+  })
 })

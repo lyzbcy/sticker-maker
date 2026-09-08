@@ -48,3 +48,54 @@
 ## 发布前置校验（cli.py publish 命令）
 
 专辑名必须是正式名（系列编号名或手改名），还是时间戳目录名 → 直接 fail 并提示先去详情页命名。
+
+## 平台操作互斥与安全取消（2026-09-07 增量，doc 实测建议第 5 步）
+
+- **互斥**：`cli.py` 的 `_platform_exclusive`（非阻塞锁）包住四个平台命令——
+  `sync_platform_status` / `shelf_passed` / `publish_episode` /
+  `fix_and_republish`（仅其编辑器重提段）。并发第二个命令**立刻失败**并提示
+  谁在跑（不排队：平台浏览器登录态与 meta.json 会被竞写破坏）。
+- **安全取消**：sync 与 shelf 注册 `_stop_events[req_id]`，`stop` 命令可取消：
+  - `sync_rows` 逐单理由抓取前检查 `should_stop`：取消时 `cancelled: true,
+    complete: false`，已抓理由保留，剩余跳过；状态已在第一批全量落库。
+  - shelf 逐单上架前检查：取消时返回 `cancelled + remaining` 列表，
+    已上架单 meta 已落库（逐单保存，中断不丢已完成结果）。
+- **失败重试**：沿用既有语义——理由失败单下次同步只补失败单
+  （`platform_reject_checked_cycle` 守卫）；shelf 失败单在 `failed` 列表
+  带原因返回，重跑即可（`fresh_passed` 语义不变）。
+- 测试：`tests/publish/test_fast_status.py` 新增 3 例（互斥立刻失败/锁释放后
+  可跑、sync 取消保留部分理由、shelf 取消保留已完成 + remaining）。
+
+### CR 修复补记（2026-09-07，老田/土豆双评审）
+
+- **取消语义统一**：任何阶段的取消都返回 `ok + cancelled: true`（不再用
+  fail 表达取消）；登录前取消/降级路径取消/理由队列取消/上架逐单取消一致。
+- **取消拦登录段**：shelf 在 sync 返回后立即检查 stop，取消时不启动
+  Playwright/不登录；sync_rows 状态落库循环也逐单检查（`updated` 计数
+  从 0 累计，取消时如实反映已写入数）。
+- **legacy 降级路径**接入 `should_stop`（翻页/理由抓取逐轮检查）。
+- **fix_and_republish 锁**改为标准 `with _platform_exclusive(...)`。
+- **前端取消入口**：`pythonBridge.js` 追踪可取消平台命令
+  （`CANCELLABLE = run/sync_platform_status/shelf_passed`），`stop()` 缺省
+  target 时先停 run、再停平台命令；作品库页同步/发布中显示「✕ 取消」
+  按钮，取消结果显示剩余未处理清单（`cancelled`/`remaining`）。
+- **驳回理由全文入库**（不再 `[:500]` 截断）：meta.json 里的
+  `platform_reject_reason` 是平台原文全文，前端展示自行截断。
+- 新测试：`test_fix_republish_publish_step_is_exclusive`、
+  `test_shelf_sync_phase_makes_zero_detail_requests`、
+  `tests/pythonBridge.test.js` stop 贯通 2 例。
+
+## 真机排障：同步失败「未知原因」（2026-09-07 23:44 实测）
+
+三层叠加，已全修：
+1. **凭据键名不匹配**：旧版引擎（2026-07）把密码存成 `password_b64`，
+   现 `load_credentials` 只读 `password` → 读不到密码 → 登录失败。
+   修复：兼容读 `password_b64`（`credentials.py`，`test_credentials.py` 3 例）。
+   修复后真机实测：自动登录成功，列表 303 单全量返回（与 doc 实测一致）。
+2. **失败原因在 Electron main 层被吞**：`python-command` 的 catch 把 CLI 的
+   fail 事件压成 `{error: err.message}`（事件对象上 message 是 undefined）
+   → 前端读 `errors[0].message` 落空 → 显示「未知原因」。
+   修复：`PythonBridge.flattenError` 统一拍平成 errors 数组。
+3. 已知项（不修）：本机若有旧命名作品目录（如 `周三涵做表情61`，非
+   `episode_*` 且无 meta.json），`_match_rows` 不扫描 → matched=0；
+   Windows 主力机不受影响。

@@ -45,10 +45,14 @@ class BatchPublisher:
                  state_file: Optional[Path] = None):
         self.config = config
         self.output_root = Path(output_root)
+        self._default_state_file = state_file is None
         self.state_file = state_file or (self.output_root / "_batch_total.json")
 
     def list_episodes(self, start: int, end: int) -> list:
         """列出 episode_start 到 episode_end（按编号）。也兼容其他命名。"""
+        bound = self._bound_episodes(start, end)
+        if bound is not None:
+            return bound
         episodes = []
         for n in range(start, end + 1):
             # 常见命名：episode_N 或 episode_YYYYMMDD_HHMMSS_N
@@ -97,12 +101,35 @@ class BatchPublisher:
 
     def _find_episode(self, num: int) -> Optional[Path]:
         """按编号找一个 episode 目录。"""
+        bound = self._bound_episodes(num, num)
+        if bound is not None:
+            return bound[0][1] if bound else None
         for pattern in [f"episode_*_{num:02d}", f"episode_*_{num}",
                         f"episode_{num:02d}*", f"episode_{num}*"]:
             matches = list(self.output_root.glob(pattern))
             if matches:
                 return matches[0]
         return None
+
+    def _bound_episodes(self, start, end):
+        from ..library.runtime import active_runtime
+        runtime = active_runtime()
+        if not runtime.enabled:
+            return None
+        if runtime.refresh().get('offline'):
+            raise ValueError('共享库离线，请恢复连接后再发布')
+        self.output_root = runtime.output_root
+        if self._default_state_file:
+            self.state_file = self.output_root / '_batch_total.json'
+        selected = {}
+        for row in runtime.rows():
+            number = row.get('number')
+            if not isinstance(number, int) or not start <= number <= end:
+                continue
+            if number in selected:
+                raise ValueError(f'编号 {number} 对应多个作品，请在作品库明确选择后发布')
+            selected[number] = Path(row['path'])
+        return sorted(selected.items())
 
     def _publish_one_with_retry(self, ep_dir: Path, retry: int, headless: bool) -> str:
         """发布一弹，失败重试。返回 ok/fail。"""

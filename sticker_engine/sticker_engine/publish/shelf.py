@@ -38,6 +38,10 @@ class Shelf:
         - dry_run: 只点详情不点上架（验证用）
         返回 {summary, results}
         """
+        from ..library.runtime import active_runtime
+        runtime = active_runtime()
+        if runtime.enabled:
+            return self._shelve_bound(runtime, limit, dry_run, headless)
         page = self.session.start(headless=headless)
         results = []
         try:
@@ -76,6 +80,52 @@ class Shelf:
                     "error": f"{type(e).__name__}: {e}"}
         finally:
             self.session.close()
+
+    def _shelve_bound(self, runtime, limit, dry_run, headless):
+        """Reuse the account-aware exact-ID flow for Agent/API callers too."""
+        import uuid
+        from .. import cli
+        from ..library.commands import LOCK
+        from ..library.runtime import active_runtime
+        from .status import sync_status
+        result = {"summary": {"ok": 0, "fail": 0, "skip": 0, "unknown": 0}, "results": []}
+        if not LOCK.acquire(blocking=False):
+            return dict(result, error="资源任务正在进行，请稍后重试")
+        try:
+            if runtime.refresh().get('offline'):
+                return dict(result, error="共享库离线，请恢复连接后再上架")
+            cli._engine = None
+            req_id = 'library-shelf-' + uuid.uuid4().hex
+            outcome = {}
+            def collect(_id, status, data=None, errors=None):
+                outcome.update(status=status, data=data or {}, errors=errors or [])
+            with cli._platform_exclusive('账号资源库上架', req_id):
+                cli._run_shelf_passed(req_id, {'limit': limit, 'dry_run': dry_run,
+                    'headless': headless}, runtime.output_root, sync_status, lambda _message: None,
+                    result_callback=collect)
+            if outcome.get('status') != 'ok':
+                result['error'] = '；'.join(str(e.get('message', e)) for e in outcome.get('errors', [])) or '上架未完成'
+                return result
+            data = outcome['data']
+            results = [ShelfResult(name=name, status='OK') for name in data.get('published_names', [])]
+            results += [ShelfResult(name=name, status='SKIP', reason='dry-run') for name in data.get('skipped_names', [])]
+            results += [ShelfResult(name=item.get('name', ''), status='UNKNOWN', reason=item.get('reason', ''))
+                        for item in data.get('failed', [])]
+            result.update(summary=self._summarize(results), results=results)
+            if data.get('warnings'):
+                result['warnings'] = list(data['warnings'])
+            if data.get('message'):
+                result['message'] = data['message']
+            return result
+        except Exception as exc:
+            result['error'] = str(exc)
+            return result
+        finally:
+            try:
+                active_runtime().refresh()
+            except Exception as exc:
+                result.setdefault('warnings', []).append(f'上架记录保存失败，请核对平台：{exc}')
+            LOCK.release()
 
     def _get_total_pages(self, page) -> int:
         """总页数（分页标签的最后一个数字）。"""
@@ -208,7 +258,13 @@ class Shelf:
                     pass
                 time.sleep(1.5)
             except Exception:
-                page.goto(S.HOME_URL, timeout=self.config.navigation_timeout_ms)
+                # Cleanup/navigation is best effort.  A failure here must not
+                # replace a platform success (or its original failure) with a
+                # new exception from the finally block.
+                try:
+                    page.goto(S.HOME_URL, timeout=self.config.navigation_timeout_ms)
+                except Exception:
+                    pass
 
     def _is_shelved_success(self, page) -> bool:
         """预约成功判定：弹窗消失 或 出现成功文案。"""

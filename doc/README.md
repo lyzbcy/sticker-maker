@@ -15,6 +15,7 @@
 | 桌面应用（Win+Mac） | ✅ 真实走查通过，32 个前端测试 | [`status-B.md`](./status-B.md) |
 | 微信发布 | ✅ 密码自动登录 + 全字段自动填写 + 真实提交成功 | [`status-C.md`](./status-C.md) + [`reference/publish.md`](./reference/publish.md) |
 | 系列/作品库 | ✅ 系列编号 + 全部作品 + 详情页 | [`reference/series.md`](./reference/series.md) |
+| 账号与资源库 | ✅ Syncthing 共享库、占位符、迁移/导入、冲突和手动交接 | [`reference/resource-library.md`](./reference/resource-library.md) |
 | 平台审核驳回 | 🔧 驳回理由抓取/展示/一键评审 + 整改记录 | [`reference/platform-review.md`](./reference/platform-review.md) |
 | AI Agent | ✅ 本地令牌接口、提示词、计划任务、启停已接入 | [`status-D.md`](./status-D.md) |
 | 推广与介绍页 | ✅ 精选表情、三码、版本刷新与更新清单 | [`status-E.md`](./status-E.md) |
@@ -36,6 +37,7 @@
 - 改 Electron、安装、更新：读 `status-B.md`。
 - 改微信开放平台自动化：读 `status-C.md`、`reference/publish.md`。
 - 改系列命名、作品库、详情页：读 `reference/series.md`。
+- 改账号绑定、Syncthing 资源库、迁移导入或版本冲突：读 `reference/resource-library.md`。
 - 改 Agent 或定时任务：读 `status-D.md`。
 - 改介绍页、二维码、精选展示：读 `status-E.md`。
 - 判断是否能发布：只读 `mission-acceptance.md`。

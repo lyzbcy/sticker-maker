@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { validatePrefs } from '../src/renderer/store/engine'
+import { validatePrefs, normalizePrefs } from '../src/renderer/store/engine'
 
+// 2026-09-05 起（commit 9a0c752）：概率不足 100% 不再拦截保存，
+// 由 normalizePrefs 按比例自动折算到 100%；validatePrefs 只拦真错误。
 describe('mission preference validation', () => {
-  it('rejects character probabilities that do not total 100%', () => {
+  it('accepts character probabilities below 100% (auto-folded on save)', () => {
     const prefs = {
       mode_probs: { single: 1, duo: 0, trio: 0, quad: 0 },
       single_char_probs: { 甲: 0.2, 乙: 0.2 },
@@ -14,13 +16,13 @@ describe('mission preference validation', () => {
       乙: { bases: { b: '/b.png' } },
     }
 
-    const result = validatePrefs(prefs, characters)
-
-    expect(result.ok).toBe(false)
-    expect(result.message).toContain('角色概率')
+    expect(validatePrefs(prefs, characters).ok).toBe(true)
+    const { prefs: folded, adjusted } = normalizePrefs(prefs)
+    expect(adjusted).toBe(true)
+    expect(folded.single_char_probs.甲 + folded.single_char_probs.乙).toBeCloseTo(1)
   })
 
-  it('rejects a base probability group that does not total 100%', () => {
+  it('folds a base probability group that does not total 100%', () => {
     const prefs = {
       mode_probs: { single: 1, duo: 0, trio: 0, quad: 0 },
       single_char_probs: { 甲: 1 },
@@ -30,11 +32,19 @@ describe('mission preference validation', () => {
       甲: { bases: { a: '/a.png', b: '/b.png' } },
     }
 
-    const result = validatePrefs(prefs, characters)
+    expect(validatePrefs(prefs, characters).ok).toBe(true)
+    const { prefs: folded, adjusted } = normalizePrefs(prefs)
+    expect(adjusted).toBe(true)
+    expect(folded.base_probs.甲.a).toBeCloseTo(0.5)
+  })
 
-    expect(result.ok).toBe(false)
-    expect(result.message).toContain('甲')
-    expect(result.message).toContain('base')
+  it('leaves already-normalized probabilities untouched', () => {
+    const prefs = {
+      mode_probs: { single: 0.5, duo: 0.5, trio: 0, quad: 0 },
+      single_char_probs: { 甲: 1 },
+      base_probs: { 甲: { a: 1 } },
+    }
+    expect(normalizePrefs(prefs).adjusted).toBe(false)
   })
 })
 

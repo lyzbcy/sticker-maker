@@ -71,6 +71,7 @@ class Paths:
     prefs_file: Path
     codex_exec: str
     codex_output_dir: Path
+    assets_root: Optional[Path] = None
 
     @classmethod
     def resolve(cls, platform: str, app_name: str = "StickerEngine") -> "Paths":

@@ -135,7 +135,7 @@ def _reset_last_theme(monkeypatch):
 
 
 def test_themed_combo_locks_one_theme(tmp_path, monkeypatch):
-    """主题抽取：16 格中主主题占 10-12 格（~70%），其余跨主题点缀。"""
+    """主题抽取保留 12 个场景格；末尾 4 格固定为图标用头部特写。"""
     _reset_last_theme(monkeypatch)
     from collections import Counter
     stage = GenerateStage(codex=MagicMock(), keywords=_theme_kws(), seed=7)
@@ -150,9 +150,11 @@ def test_themed_combo_locks_one_theme(tmp_path, monkeypatch):
         for t in range(3):
             if f". E{t}-" in ln:
                 counts[t] += 1
-    assert sum(counts.values()) == 16
+    assert sum(counts.values()) == 12
+    assert all("HEADER SHOT" in ln for ln in lines[12:])
+    assert all("no props, no accessories" in ln for ln in lines[12:])
     main_count = counts.most_common(1)[0][1]
-    assert 10 <= main_count <= 12, counts
+    assert 6 <= main_count <= 12, counts  # 原主题 10–12 格中最多 4 格被特写替换
     assert any("本单主题" in m for m in msgs)
 
 
@@ -178,9 +180,9 @@ def test_old_keywords_structure_without_themes_still_works(tmp_path, monkeypatch
            "actions": []}
     stage = GenerateStage(codex=MagicMock(), keywords=kws, seed=3)
     ctx = _ctx(tmp_path)
-    text = stage._random_combo_panels(ctx, 5)
+    text = stage._random_combo_panels(ctx, 16)
     lines = text.strip().splitlines()
-    assert len(lines) == 5
+    assert len(lines) == 16
     assert any(". Happy:" in ln for ln in lines)
     assert any(". Sad: droopy ears" in ln for ln in lines)
 

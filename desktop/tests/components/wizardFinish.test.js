@@ -62,26 +62,20 @@ describe('wizard finish button', () => {
     setActivePinia(createPinia())
   })
 
-  it('shows the validation message when finishing fails (probabilities do not total 100%)', async () => {
+  it('finishes with below-100% probabilities (auto-folded, no blocking)', async () => {
     const { wrapper, store, send } = await setupWizard({ status: 'ok' })
     // 已到达第 5 步：完成按钮可见
     const finishBtn = wrapper.get('.btn-finish')
     expect(finishBtn.text()).toBe('完成')
 
-    // 模拟真实场景：进入第 5 步后角色/概率数据失效（例如新增角色后概率未重新分配）
+    // 2026-09-05 起（commit 9a0c752）：概率不足 100% 不再拦截，保存时自动折算
     store.prefs.single_char_probs.星星布丁 = 0.7
     await finishBtn.trigger('click')
     await flushPromises()
 
-    // 修复前：这里什么都不会发生（静默失败）；修复后：必须出现错误提示
-    const errorBox = wrapper.find('.finish-error')
-    expect(errorBox.exists()).toBe(true)
-    expect(errorBox.text()).toContain('角色概率总和必须为 100%')
-    expect(errorBox.text()).toContain('当前 70%')
-    // 校验失败时不应调用后端保存
-    expect(send).not.toHaveBeenCalledWith('save_prefs', expect.anything())
-    // 停留在向导
-    expect(store.phase).toBe('wizard')
+    // 不拦截：正常保存并进入主界面
+    expect(send).toHaveBeenCalledWith('save_prefs', expect.anything())
+    expect(store.phase).toBe('main')
   })
 
   it('shows a backend error when save_prefs fails', async () => {

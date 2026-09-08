@@ -20,6 +20,38 @@ VERSION = "0.3.0"
 _engine = None
 _stop_events = {}
 _memory_logs = deque(maxlen=50)
+# 平台操作互斥（2026-09-07 doc 第 5 步）：sync/shelf/publish/fix_republish 都
+# 各开 Playwright 会话并写 meta.json，并发会互相踩（浏览器抢同一登录态 +
+# meta 竞写覆盖）。非阻塞抢锁，抢不到立刻失败并告知谁在跑。
+# _platform_busy 无锁读写是已知 benign race：最坏在报错瞬间对方刚释放
+# （提示里 cmd 显示 None），不影响互斥正确性——锁才是裁决者，busy 仅提示用。
+_platform_lock = threading.Lock()
+_platform_busy = {"cmd": None, "req_id": None}
+
+
+class _PlatformBusy(RuntimeError):
+    """平台操作互斥：另一个平台命令正在执行。"""
+
+
+class _platform_exclusive:
+    """平台命令的互斥作用域（context manager，抢不到立刻抛 _PlatformBusy）。"""
+
+    def __init__(self, cmd, req_id):
+        self.cmd = cmd
+        self.req_id = req_id
+
+    def __enter__(self):
+        if not _platform_lock.acquire(blocking=False):
+            raise _PlatformBusy(
+                f"平台操作正在执行（{_platform_busy['cmd']}），"
+                "请等它完成后再试；浏览器登录态与作品数据会被并发操作破坏。")
+        _platform_busy.update(cmd=self.cmd, req_id=self.req_id)
+        return self
+
+    def __exit__(self, *exc):
+        _platform_busy.update(cmd=None, req_id=None)
+        _platform_lock.release()
+        return False
 _SENSITIVE_LOG_KEYS = {"token", "password", "authorization", "secret"}
 _agent_state = {
     "server": None,
@@ -67,9 +99,25 @@ def _ensure_engine() -> StickerEngine:
         config.prefs = prefs
         # I2：应用用户自定义的参考图库位置
         if prefs.reference_lib_path:
-            config.paths.reference_lib = Path(prefs.reference_lib_path)
+            reference = Path(prefs.reference_lib_path).expanduser()
+            if not reference.is_absolute():
+                reference = (Path(config.paths.assets_root or config.paths.prefs_file.parent)
+                             / reference)
+            config.paths.reference_lib = reference
     _engine = StickerEngine(config)
     return _engine
+
+
+def _asset_data_dir(engine):
+    root = getattr(engine.config.paths, 'assets_root', None)
+    return Path(root) if isinstance(root, (str, Path)) else engine.config.paths.user_data
+
+
+def _resolve_reference_lib_path(engine, value):
+    if not value:
+        return _asset_data_dir(engine) / "reference_library"
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else _asset_data_dir(engine) / path
 
 
 def _emit(event: dict) -> None:
@@ -406,11 +454,8 @@ def cmd_save_prefs(req_id, args):
             prefs.default_series_id = None
     save_prefs(prefs, engine.config.paths.prefs_file)
     engine.config.prefs = prefs
-    engine.config.paths.reference_lib = (
-        Path(prefs.reference_lib_path)
-        if prefs.reference_lib_path
-        else engine.config.paths.user_data / "reference_library"
-    )
+    engine.config.paths.reference_lib = _resolve_reference_lib_path(
+        engine, prefs.reference_lib_path)
     _apply_base_probs(engine)
     _result(req_id, "ok")
 
@@ -420,7 +465,7 @@ def _sync_custom_bases(engine):
 
     每次 list/add/generate 后调用，保证上传/生成的 base 可见、可选。
     """
-    custom_dir = engine.config.paths.user_data / "custom_bases"
+    custom_dir = _asset_data_dir(engine) / "custom_bases"
     if not custom_dir.exists():
         return
     from .config.schema import Character
@@ -505,7 +550,7 @@ def cmd_generate_base(req_id, args):
         if character is None:
             _result(req_id, "fail", errors=[{"message": "角色名不合法"}])
             return
-        custom_dir = engine.config.paths.user_data / "custom_bases" / character
+        custom_dir = _asset_data_dir(engine) / "custom_bases" / character
         custom_dir.mkdir(parents=True, exist_ok=True)
         dst = custom_dir / f"ai_{Path(path).name}"
         shutil.copy2(path, dst)
@@ -525,7 +570,7 @@ def cmd_add_base(req_id, args):
         _result(req_id, "fail", errors=[{"message": "角色名不合法"}])
         return
     engine = _ensure_engine()
-    custom_dir = engine.config.paths.user_data / "custom_bases" / character
+    custom_dir = _asset_data_dir(engine) / "custom_bases" / character
     custom_dir.mkdir(parents=True, exist_ok=True)
     dst = custom_dir / Path(src).name
     shutil.copy2(src, dst)
@@ -538,7 +583,7 @@ def cmd_remove_base(req_id, args):
     character = args.get("character") or ""
     key = args.get("key") or ""
     engine = _ensure_engine()
-    custom_dir = (engine.config.paths.user_data / "custom_bases" / character).resolve()
+    custom_dir = (_asset_data_dir(engine) / "custom_bases" / character).resolve()
     target = (custom_dir / key).resolve()
     if custom_dir not in target.parents or not target.exists():
         _result(req_id, "fail", errors=[{"message": "只能删除自定义上传的角色图"}])
@@ -712,6 +757,12 @@ def cmd_stop(req_id, args):
 
 def cmd_list_episodes(req_id, args):
     engine = _ensure_engine()
+    from .library.hooks import runtime_for
+    runtime = runtime_for(engine)
+    if runtime:
+        runtime.refresh()
+        _result(req_id, 'ok', data={'episodes': runtime.rows()})
+        return
     root = engine.config.paths.output_root
     from .config.series import load_meta
     episodes = []
@@ -742,6 +793,8 @@ def cmd_list_episodes(req_id, args):
                     "platform_tips": meta.platform_tips,
                     "platform_updated_at": meta.platform_updated_at,
                     "platform_reject_reason": meta.platform_reject_reason,
+                    "platform_review_round": meta.platform_review_round,
+                    "platform_review_history": meta.platform_review_history,
                     "complete": len(stickers) > 0,
                 })
     _result(req_id, "ok", data={"episodes": episodes})
@@ -1004,120 +1057,203 @@ def cmd_shelf_passed(req_id, args):
         except Exception:
             pass
 
-    # 1) 先刷新状态（拿最新"审核通过"名单）
-    _say("正在刷新平台状态（获取最新审核结果）…")
-    sync_status(engine, on_status=_say)
+    try:
+        with _platform_exclusive("一键发布(上架)", req_id):
+            _run_shelf_passed(req_id, args, root, sync_status, _say)
+    except _PlatformBusy as e:
+        _result(req_id, "fail", errors=[{"message": str(e)}])
 
-    passed = []
-    for ep_dir in sorted(root.iterdir()) if root.exists() else []:
-        if not (ep_dir.is_dir() and ep_dir.name.startswith("episode")):
-            continue
-        meta = load_meta(ep_dir)
-        if (meta.platform_status or "") == "审核通过":
-            passed.append((ep_dir, meta))
-    if not passed:
-        _result(req_id, "ok", data={"published": 0,
-                                    "message": "没有「审核通过待发布」的作品"})
-        return
-    _say(f"共 {len(passed)} 个作品审核通过，开始逐个上架…")
 
-    from .publish.config import PublishConfig
-    from .publish.browser import BrowserSession
-    from .publish.status import HOME_URL, normalize_name
-    from playwright.sync_api import sync_playwright
+def _run_shelf_passed(req_id, args, root, sync_status, _say, stop=None,
+                      result_callback=None):
+    """一键发布的上架执行段（cmd_shelf_passed 持互斥锁后调用）。
 
-    published, failed = [], []
-    with sync_playwright() as pw:
-        session = BrowserSession(PublishConfig(), playwright=pw)
-        page = session.start()
-        try:
-            if not session.ensure_login(page, on_status=_say):
-                _result(req_id, "fail",
-                        errors=[{"message": "登录失败，无法上架"}])
-                return
-            for ep_dir, meta in passed:
-                album = meta.album_name or ep_dir.name
-                _say(f"正在上架「{album}」…")
-                tn = normalize_name(album)
-                try:
-                    page.goto(HOME_URL, wait_until="domcontentloaded",
-                              timeout=45000)
-                    page.wait_for_timeout(4000)
-                    links = page.locator("a:has-text('详情'), td:has-text('详情')")
-                    hit = False
-                    for _pg in range(12):   # 翻页查找（2026-09-02：62/59
-                        # 在第 2 页，旧实现只扫第 1 页导致上架全失败）
-                        for i in range(links.count()):
-                            el = links.nth(i)
-                            try:
-                                in_tr = el.evaluate("e=>e.closest('tr')!==null")
-                                row_txt = (
-                                    el.locator("xpath=ancestor::tr[1]")
-                                    .inner_text(timeout=2000) if in_tr
-                                    else el.inner_text(timeout=2000))
-                            except Exception:
-                                continue
-                            if tn in normalize_name(row_txt):
-                                el.click()
-                                hit = True
-                                break
-                        if hit:
-                            break
-                        nb = page.locator("a:has-text('下一页')")
-                        if not nb.count():
-                            break
-                        nb.first.click(timeout=3000)
-                        page.wait_for_timeout(2200)
-                    if not hit:
-                        failed.append((album, "管理页未找到作品行"))
-                        continue
-                    page.wait_for_timeout(7000)
+    安全取消（2026-09-07 doc 第 5 步）：sync 前/后、逐单上架前都检查 stop；
+    取消统一返回 ok + cancelled，已上架单 meta 已逐单落库（remaining=未处理）。
+    """
+    from .config.series import load_meta, save_meta
+    stop = stop or threading.Event()
+    output_result = result_callback or _result
+    _stop_events[req_id] = stop
+    try:
+        # 1) 先刷新状态（拿最新"审核通过"名单）；可随时取消（中断保留已完成）
+        engine = _ensure_engine()
+        _say("正在刷新平台状态（获取最新审核结果）…")
+        sync_result = sync_status(engine, on_status=_say, fetch_reasons=False,
+                                  should_stop=stop.is_set)
+        if sync_result.get('cancelled'):
+            # 取消统一 ok + cancelled（不进 Playwright/登录段）
+            output_result(req_id, 'ok', data={'published': 0, 'cancelled': True,
+                                              'remaining': [], 'failed': [],
+                                              'message': '已取消：本次未执行上架'})
+            return
+        if sync_result.get('error') or not sync_result.get('list_complete'):
+            output_result(req_id, 'fail', errors=[{'message': sync_result.get('error') or
+                    '平台名单未完整读取，本次未执行上架，请重新更新。'}])
+            return
+        fresh_passed = set(sync_result.get('fresh_passed', []))
+        from .library.hooks import runtime_for
+        runtime = runtime_for(engine)
+        safe_works = ({w['work_id'] for w in runtime.rows()
+                       if w.get('can_shelf')} if runtime else None)
+
+        passed = []
+        for ep_dir in sorted(root.iterdir()) if root.exists() else []:
+            if not (ep_dir.is_dir() and ep_dir.name.startswith("episode")):
+                continue
+            meta = load_meta(ep_dir)
+            if runtime and (meta.account_id != runtime.account_id or meta.work_id not in safe_works):
+                continue
+            if str(ep_dir) in fresh_passed and meta.platform_item_id and meta.platform_status == "审核通过":
+                passed.append((ep_dir, meta))
+        if not passed:
+            output_result(req_id, "ok", data={"published": 0,
+                                               "message": "没有「审核通过待发布」的作品"})
+            return
+        raw_limit = args.get('limit')
+        if raw_limit is not None:
+            try:
+                limit = max(0, int(raw_limit))
+            except (TypeError, ValueError) as exc:
+                raise ValueError('limit 必须是非负整数') from exc
+            passed = passed[:limit]
+        if not passed:
+            output_result(req_id, "ok", data={"published": 0,
+                                               "message": "没有「审核通过待发布」的作品"})
+            return
+        if args.get('dry_run'):
+            skipped_names = [m.album_name or p.name for p, m in passed]
+            output_result(req_id, 'ok', data={
+                'dry_run': True, 'skipped_names': skipped_names,
+                'published': 0, 'published_names': [], 'cancelled': False,
+                'remaining': skipped_names, 'failed': [],
+            })
+            return
+        _say(f"共 {len(passed)} 个作品审核通过，开始逐个上架…")
+
+        if stop.is_set():   # sync 阶段被取消：不启动浏览器、不登录
+            output_result(req_id, 'ok', data={'published': 0, 'cancelled': True,
+                                              'remaining': [str(p) for p, _ in passed],
+                                              'failed': [], 'message': '已取消：未开始上架'})
+            return
+
+        from .publish.config import PublishConfig
+        from .publish.browser import BrowserSession
+        from .publish.platform_data import read_detail, detail_url
+        from playwright.sync_api import sync_playwright
+
+        published, failed, warnings = [], [], []
+        done_dirs = set()   # 已开始处理的 episode 路径，取消时算 remaining 用
+        with sync_playwright() as pw:
+            session = BrowserSession(PublishConfig(), playwright=pw)
+            if 'headless' in args:
+                page = session.start(headless=args.get('headless'))
+            else:
+                # Preserve the direct legacy helper contract used by
+                # callers that provide a minimal session double.
+                page = session.start()
+            try:
+                if not session.ensure_login(page, on_status=_say):
+                    output_result(req_id, "fail",
+                                  errors=[{"message": "登录失败，无法上架"}])
+                    return
+                for ep_dir, meta in passed:
+                    if stop.is_set():
+                        _say("收到取消请求：保留已完成结果，停止后续上架")
+                        break
+                    album = meta.album_name or ep_dir.name
+                    done_dirs.add(str(ep_dir))   # 已开始处理（成功/失败都不算剩余）
+                    _say(f"正在上架「{album}」…")
+                    operation_id = None
+                    operation_success = False
                     try:
-                        page.wait_for_load_state("domcontentloaded",
-                                                 timeout=30000)
-                    except Exception:
-                        pass
-                    page.wait_for_timeout(2500)
-                    # 详情页「上架」
-                    shelf = page.locator(
-                        "button:has-text('上架'), a:has-text('上架'), "
-                        "span:has-text('上架')")
-                    if not shelf.count():
-                        failed.append((album, "详情页无「上架」按钮"))
-                        continue
-                    shelf.first.click()
-                    page.wait_for_timeout(2500)
-                    # 弹窗默认已选今日 → 点「预约」
-                    confirm = page.locator(
-                        '.weui-desktop-dialog:visible '
-                        'button:has-text("预约")')
-                    if not confirm.count():
-                        failed.append((album, "未找到预约按钮（弹窗未出现？）"))
-                        continue
-                    confirm.first.click()
-                    page.wait_for_timeout(4000)
-                    body = page.inner_text("body")
-                    if "预约成功" in body or "已上架" in body:
-                        meta.platform_status = "已上架"
-                        meta.published = True
-                        save_meta(ep_dir, meta)
-                        published.append(album)
-                        _say(f"✓「{album}」已预约今日上架")
-                    else:
-                        failed.append((album, "预约后未见成功标志"))
-                        try:
-                            page.screenshot(
-                                path=str(ep_dir / "_shelf_error.png"))
-                        except Exception:
-                            pass
-                except Exception as e:   # noqa: BLE001
-                    failed.append((album, f"{type(e).__name__}: {e}"))
-        finally:
-            session.close()
-    _say(f"一键发布完成：成功 {len(published)}，失败 {len(failed)}")
-    _result(req_id, "ok", data={
-        "published": len(published), "published_names": published,
-        "failed": [{"name": n, "reason": r} for n, r in failed]})
+                        # A fresh status check by exact identity; never search by name substring.
+                        detail = read_detail(page, meta.platform_item_id)
+                        if detail['Status'] != 5:
+                            failed.append((album, '当前已不是审核通过状态，请更新后重试'))
+                            continue
+                        page.goto(detail_url(meta.platform_item_id),
+                                  wait_until='domcontentloaded', timeout=45000)
+                        page.get_by_role('heading', name=album, exact=True).wait_for(timeout=20000)
+                        # 详情页「上架」
+                        shelf = page.locator(
+                            "button:has-text('上架'), a:has-text('上架'), "
+                            "span:has-text('上架')")
+                        shelf.first.wait_for(state="visible", timeout=20000)
+                        if not shelf.count():
+                            failed.append((album, "详情页无「上架」按钮"))
+                            continue
+                        shelf.first.click()
+                        page.wait_for_timeout(2500)
+                        # 弹窗默认已选今日 → 点「预约」
+                        confirm = page.locator(
+                            '.weui-desktop-dialog:visible '
+                            'button:has-text("预约")')
+                        if not confirm.count():
+                            failed.append((album, "未找到预约按钮（弹窗未出现？）"))
+                            continue
+                        if runtime:
+                            from .library.operations import begin
+                            operation_id = begin(runtime, meta.work_id, album, 'shelf')
+                        confirm.first.click()
+                        page.wait_for_timeout(4000)
+                        body = page.inner_text("body")
+                        if "预约成功" in body or "已上架" in body:
+                            operation_success = True
+                            meta = load_meta(ep_dir)
+                            meta.platform_status = "已上架"
+                            meta.published = True
+                            save_meta(ep_dir, meta)
+                            published.append(album)
+                            _say(f"✓「{album}」已预约今日上架")
+                        else:
+                            failed.append((album, "预约后未见成功标志"))
+                            try:
+                                page.screenshot(
+                                    path=str(ep_dir / "_shelf_error.png"))
+                            except Exception:
+                                pass
+                    except Exception as e:   # noqa: BLE001
+                        failed.append((album, f"{type(e).__name__}: {e}"))
+                    finally:
+                        if runtime and operation_id:
+                            from .library.operations import finish
+                            try:
+                                finish(runtime, operation_id, operation_success)
+                            except Exception as exc:   # noqa: BLE001
+                                warning = {
+                                    'name': album,
+                                    'message': f'平台结果已记录在本机，但共享操作记录写入失败：{type(exc).__name__}: {exc}',
+                                }
+                                warnings.append(warning)
+                                if operation_success:
+                                    # Keep a confirmed platform success as a
+                                    # success; the persistence issue is shown
+                                    # separately so it cannot trigger a retry.
+                                    _say(f'⚠「{album}」平台已成功，但操作记录未写入共享库')
+                                else:
+                                    for index, (failed_name, reason) in enumerate(failed):
+                                        if failed_name == album:
+                                            failed[index] = (failed_name, reason + '；' + warning['message'])
+                                            break
+                                    else:
+                                        failed.append((album, warning['message']))
+            finally:
+                session.close()
+        cancelled = stop.is_set()
+        remaining = [m.album_name or p.name for p, m in passed
+                     if str(p) not in done_dirs]
+        if cancelled:
+            _say(f"已取消：成功 {len(published)}，失败 {len(failed)}，剩余未处理 {len(remaining)}")
+        else:
+            _say(f"一键发布完成：成功 {len(published)}，失败 {len(failed)}")
+        output_result(req_id, "ok", data={
+            "published": len(published), "published_names": published,
+            "cancelled": cancelled, "remaining": remaining,
+            "failed": [{"name": n, "reason": r} for n, r in failed],
+            "warnings": warnings})
+    finally:
+        _stop_events.pop(req_id, None)
 
 
 def cmd_fix_and_republish(req_id, args):
@@ -1287,27 +1423,32 @@ def cmd_fix_and_republish(req_id, args):
         from .publish.browser import BrowserSession
         from .publish.publisher import Publisher
         from playwright.sync_api import sync_playwright
-        with sync_playwright() as pw:
-            session = BrowserSession(PublishConfig(), playwright=pw)
-            vision = None
-            if "meanings" in fields:
-                from .providers.codex import CodexProvider as _CP
-                from .providers.vision import VisionProvider as _VP
-                _c = _CP(codex_exec=engine.config.paths.codex_exec,
-                         output_dir=engine.config.paths.codex_output_dir)
-                if not _c.check().image_ready:
-                    raise RuntimeError('codex 不可用，无法识图重填含义词')
-                vision = _VP(_c)
-            publisher = Publisher(PublishConfig(), session, vision=vision)
-            _r = publisher.publish(ep_dir, edit=True,
-                                   fix_fields=fields)
-            result["publish"] = _r
-            result["published"] = bool(_r.get("success"))
-            if result["published"]:
-                meta.platform_status = "待审核"
-                meta.published = True
-                meta.platform_reject_reason = ""   # S2（评审）：清旧驳回理由
-                save_meta(ep_dir, meta)
+        try:
+            with _platform_exclusive("修改重提(编辑器)", req_id), \
+                    sync_playwright() as pw:
+                session = BrowserSession(PublishConfig(), playwright=pw)
+                vision = None
+                if "meanings" in fields:
+                    from .providers.codex import CodexProvider as _CP
+                    from .providers.vision import VisionProvider as _VP
+                    _c = _CP(codex_exec=engine.config.paths.codex_exec,
+                             output_dir=engine.config.paths.codex_output_dir)
+                    if not _c.check().image_ready:
+                        raise RuntimeError('codex 不可用，无法识图重填含义词')
+                    vision = _VP(_c)
+                publisher = Publisher(PublishConfig(), session, vision=vision)
+                _r = publisher.publish(ep_dir, edit=True,
+                                       fix_fields=fields)
+                result["publish"] = _r
+                result["published"] = bool(_r.get("success"))
+                if result["published"]:
+                    from .config.series import mark_published
+                    mark_published(ep_dir, preserve_platform_id=True)
+        except _PlatformBusy as e:
+            result["publish"] = {"success": False, "error": str(e)}
+            _result(req_id, "fail", data=result,
+                    errors=[{"message": str(e)}])
+            return
     _result(req_id, "ok", data=result)
 
 
@@ -1325,7 +1466,19 @@ def cmd_sync_platform_status(req_id, args):
         except Exception:
             pass
 
-    res = sync_status(engine, on_status=_say)
+    try:
+        with _platform_exclusive("一键更新(同步)", req_id):
+            stop = threading.Event()
+            _stop_events[req_id] = stop
+            try:
+                res = sync_status(engine, on_status=_say,
+                                  force_reasons=bool(args.get('force_reasons')),
+                                  should_stop=stop.is_set)
+            finally:
+                _stop_events.pop(req_id, None)
+    except _PlatformBusy as e:
+        _result(req_id, "fail", errors=[{"message": str(e)}])
+        return
     if "error" in res:
         _result(req_id, "fail", errors=[{"message": res["error"]}])
         return
@@ -1343,6 +1496,11 @@ def cmd_delete_episode(req_id, args):
     import shutil
     from .config.series import load_series, save_series
     engine = _ensure_engine()
+    from .library.hooks import runtime_for
+    runtime = runtime_for(engine)
+    if runtime:
+        _result(req_id, 'fail', errors=[{'message': '共享作品请使用“本机隐藏”或“从共享库移除”，不能直接物理删除'}])
+        return
     root = engine.config.paths.output_root.resolve()
     ep_dir = Path(args.get("episode_dir") or "").resolve()
     if not ep_dir.is_dir() or root not in ep_dir.parents:
@@ -1367,7 +1525,30 @@ def cmd_delete_episode(req_id, args):
 
 def cmd_get_episode(req_id, args):
     """作品详情：meta + 表情列表 + 含义词 + 素材文件 + 角色。"""
-    episode_dir = Path(args.get("episode_dir") or "")
+    raw_episode_dir = str(args.get("episode_dir") or "").strip()
+    episode_dir = Path(raw_episode_dir) if raw_episode_dir else Path()
+    requested_work_id = str(args.get("work_id") or "").strip()
+    from .library.hooks import runtime_for
+    runtime = runtime_for(_ensure_engine())
+    resource = None
+    if runtime:
+        runtime.refresh()
+        resource = next((r for r in runtime.rows()
+                         if (requested_work_id and r.get('work_id') == requested_work_id)
+                         or (raw_episode_dir and Path(r['path']).resolve() == episode_dir.resolve())), None)
+        if resource is None:
+            _result(req_id, 'fail', errors=[{'message': '当前账号中未找到该作品'}])
+            return
+        # Placeholder/offline rows can be opened from the work ID even when
+        # the renderer has no local path to send.  Prefer the cached material
+        # path when it exists so an existing materialized copy remains
+        # viewable while editing/upload gates stay disabled.
+        episode_dir = Path(resource.get('path') or episode_dir)
+        if not resource['can_edit'] and not episode_dir.is_dir():
+            from .config.series import EpisodeMeta
+            _result(req_id, 'ok', data=dict(resource, meta=EpisodeMeta.from_dict(resource).to_dict(),
+                stickers=[], characters=[], banner=None, icon=None, grid=None, intro_file=None))
+            return
     if not episode_dir.is_dir():
         _result(req_id, "fail", errors=[{"message": f"作品目录不存在：{episode_dir}"}])
         return
@@ -1381,6 +1562,8 @@ def cmd_get_episode(req_id, args):
         f = episode_dir / sub
         return str(f) if f.exists() else None
     _result(req_id, "ok", data={
+        **({k: resource[k] for k in ('work_id', 'account_id', 'resource_state',
+             'can_edit', 'can_publish', 'can_shelf')} if resource else {}),
         "name": episode_dir.name, "path": str(episode_dir),
         "meta": meta.to_dict(),
         "stickers": stickers,
@@ -1559,7 +1742,7 @@ def cmd_list_prompt_sets(req_id, args):
     engine = _ensure_engine()
     from .config.prompts import list_sets
     _result(req_id, "ok", data={
-        "sets": [s.to_dict() for s in list_sets(engine.config.paths.user_data)],
+        "sets": [s.to_dict() for s in list_sets(_asset_data_dir(engine))],
         "active": engine.config.prefs.prompt_set_id or "builtin-2026-08-28-moe"})
 
 
@@ -1571,7 +1754,7 @@ def cmd_save_prompt_set(req_id, args):
     if not str(data.get("name") or "").strip():
         _result(req_id, "fail", errors=[{"message": "方案名不能为空"}])
         return
-    ps = save_set(engine.config.paths.user_data, data)
+    ps = save_set(_asset_data_dir(engine), data)
     if args.get("is_default"):
         engine.config.prefs.prompt_set_id = ps.id
         save_prefs(engine.config.prefs, engine.config.paths.prefs_file)
@@ -1583,7 +1766,7 @@ def cmd_delete_prompt_set(req_id, args):
     engine = _ensure_engine()
     from .config.prompts import delete_set, is_builtin
     set_id = args.get("id") or ""
-    ok = delete_set(engine.config.paths.user_data, set_id)
+    ok = delete_set(_asset_data_dir(engine), set_id)
     if ok and engine.config.prefs.prompt_set_id == set_id:
         engine.config.prefs.prompt_set_id = None
         save_prefs(engine.config.prefs, engine.config.paths.prefs_file)
@@ -1606,7 +1789,7 @@ def cmd_build_feedback_prompt(req_id, args):
                 errors=[{"message": "还没有打分记录：先在详情页给表情打分，再来复制。"}])
         return
     rating = _json.loads(rating_file.read_text(encoding="utf-8"))
-    prompts_dir = engine.config.paths.user_data / "prompts"
+    prompts_dir = _asset_data_dir(engine) / "prompts"
     text = f"""你是「表情包一键制作」的生图 prompt 优化助手。下面是一次作品的打分数据与制作过程，请反哺优化生图 prompt。
 
 ## 评分语义（重要）
@@ -1692,7 +1875,7 @@ def cmd_build_reject_review_prompt(req_id, args):
     pfile = ep_dir / "原图" / "prompt.txt"
     if pfile.exists():
         prompt_txt = pfile.read_text(encoding="utf-8")[:3000]
-    prompts_dir = engine.config.paths.user_data / "prompts"
+    prompts_dir = _asset_data_dir(engine) / "prompts"
     text = f"""你是「表情包一键制作」的审核驳回评审助手。作品《{meta.album_name or ep_dir.name}》被微信表情平台驳回，请分析原因并给出修改方案。
 
 ## 平台驳回理由（原文）
@@ -2154,7 +2337,10 @@ def cmd_publish_episode(req_id, args):
         })
 
     try:
-        result = _publish_episode(episode_dir, progress)
+        with _platform_exclusive("提交作品(发布)", req_id):
+            result = _publish_episode(episode_dir, progress)
+    except _PlatformBusy as exc:
+        result = {"success": False, "step": "prepare", "error": str(exc)}
     except Exception as exc:
         result = {
             "success": False,
@@ -2377,6 +2563,9 @@ HANDLERS = {
     "agent_prompt": cmd_agent_prompt, "agent_stop": cmd_agent_stop,
 }
 
+from .library.commands import register as _register_library_commands
+_register_library_commands(sys.modules[__name__])
+
 
 def _handle_in_thread(req_id, cmd, args):
     """在独立线程执行 handler，避免长任务（run）阻塞 stdin 读取（C1 修复）。"""
@@ -2387,7 +2576,8 @@ def _handle_in_thread(req_id, cmd, args):
         return
     _log("info", f"开始命令：{cmd}", command=cmd, command_id=req_id)
     try:
-        handler(req_id, args)
+        from .library.hooks import invoke
+        invoke(sys.modules[__name__], req_id, cmd, args, handler)
         _log("info", f"完成命令：{cmd}", command=cmd, command_id=req_id)
     except Exception as e:
         _log(

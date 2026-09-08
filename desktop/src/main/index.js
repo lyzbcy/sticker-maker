@@ -76,7 +76,9 @@ app.whenReady().then(() => {
       })
       return result
     } catch (err) {
-      return { status: 'fail', error: err.message || String(err), raw: err }
+      // 失败原因统一拍平成 errors 数组（此前只有 error 字段，
+      // 前端读 errors[0].message 读不到 → 全显示"未知原因"）
+      return PythonBridge.flattenError(err)
     }
   })
 

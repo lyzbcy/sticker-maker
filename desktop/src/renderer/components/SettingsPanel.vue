@@ -14,6 +14,9 @@
         <span v-if="credStatus.configured" class="tab-dot ok" title="已配置"></span>
         <span v-else class="tab-dot warn" title="未配置，提交微信前需要填写"></span>
       </button>
+      <button class="tab" data-test="resource-tab" :class="{ active: tab === 'resource' }" @click="tab = 'resource'">
+        🗂️ 账号与资源库
+      </button>
     </div>
 
     <!-- Prompt 方案：多套可切换，评分数据可反哺 AI 来调这里 -->
@@ -75,7 +78,7 @@
     </div>
 
     <!-- 生图设置 -->
-    <div v-if="tab === 'gen'" class="settings-body">
+    <div v-else-if="tab === 'gen'" class="settings-body">
       <div class="section">
         <h3 class="section-title">生图偏好</h3>
         <WizardStepPref />
@@ -95,6 +98,11 @@
       <div v-if="genSaveMsg" class="settings-error">{{ genSaveMsg }}</div>
       <span v-if="genSaved" class="gen-saved">✓ 已保存</span>
       <button class="save" @click="save">{{ saving ? '保存中…' : '保存生图设置' }}</button>
+    </div>
+
+    <!-- 账号与资源库：保持独立组件，资源操作不混入生图/发布偏好 -->
+    <div v-else-if="tab === 'resource'" class="settings-body">
+      <ResourceLibraryPanel />
     </div>
 
     <!-- 发布账号 -->
@@ -178,9 +186,11 @@ import WizardStepBase from './WizardStepBase.vue'
 import WizardStepMode from './WizardStepMode.vue'
 import WizardStepChar from './WizardStepChar.vue'
 import WizardStepPref from './WizardStepPref.vue'
+import ResourceLibraryPanel from './ResourceLibraryPanel.vue'
 
 const store = useEngineStore()
-const tab = ref('gen')
+const tab = ref(store.settingsTab || 'gen')
+watch(tab, value => { store.settingsTab = value })
 
 // ---- 发布账号（凭据管理）----
 const isWindows = typeof navigator !== 'undefined' && /windows/i.test(navigator.userAgent)

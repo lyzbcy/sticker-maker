@@ -58,7 +58,16 @@ def load_credentials():
         try:
             import json
             data = json.loads(f.read_text(encoding="utf-8"))
-            return data.get("account"), data.get("password")
+            password = data.get("password")
+            if not password and data.get("password_b64"):
+                # 旧版引擎（2026-07 前后）把密码存成 password_b64——
+                # 读不出来会导致"未配置发布账号密码"假报（2026-09-07 实测）
+                import base64
+                try:
+                    password = base64.b64decode(data["password_b64"]).decode("utf-8")
+                except Exception:
+                    password = None
+            return data.get("account"), password
         except (json.JSONDecodeError, OSError):
             pass
     return None, None

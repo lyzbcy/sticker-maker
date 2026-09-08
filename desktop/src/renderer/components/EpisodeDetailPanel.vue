@@ -2,15 +2,28 @@
   <div class="detail" v-if="ep">
     <header>
       <button class="back" @click="store.phase = 'episodes'">← 作品库</button>
-      <h2 class="title">{{ ep.meta.album_name || ep.name }}</h2>
-      <span class="ep-badge published" v-if="ep.meta.published">✓ 已发布</span>
+      <h2 class="title">{{ meta.album_name || ep.album_name || ep.name }}</h2>
+      <span class="ep-badge platform" v-if="platformStatus">平台：{{ platformStatus }}</span>
+      <span class="ep-badge published" v-else-if="isPublished">✓ 已发布</span>
+      <span v-if="ep.resource_state" class="ep-badge resource" :class="`resource-${ep.resource_state}`">
+        资源：{{ resourceStateText }}
+      </span>
     </header>
+
+    <section v-if="!canEdit" class="resource-guard" data-test="edit-blocked">
+      <strong>当前版本不能直接修改</strong>
+      <span>{{ resourceGuardMessage }}</span>
+      <button v-if="['pending', 'placeholder', 'conflict', 'deleted', 'offline'].includes(ep.resource_state)"
+              class="btn-link" data-test="resource-library-link" @click="openResourceLibrary">
+        去资源库刷新或补齐素材 →
+      </button>
+    </section>
 
     <div class="body">
       <!-- 审核驳回警示卡（有驳回理由时显示，多条理由全部列出） -->
-      <section v-if="ep.meta.platform_reject_reason" class="card reject-card">
-        <h3 class="card-title">⛔ 审核未通过——平台驳回理由（共 {{ reasonCount(ep.meta.platform_reject_reason, ep.meta.album_name || ep.name) }} 条）</h3>
-        <div v-for="(item, idx) in parseReasonItems(ep.meta.platform_reject_reason, ep.meta.album_name || ep.name)"
+      <section v-if="meta.platform_reject_reason" class="card reject-card">
+        <h3 class="card-title">⛔ 审核未通过——平台驳回理由（共 {{ reasonCount(meta.platform_reject_reason, meta.album_name || ep.name) }} 条）</h3>
+        <div v-for="(item, idx) in parseReasonItems(meta.platform_reject_reason, meta.album_name || ep.name)"
              :key="idx" class="reject-item">
           <span v-if="item.group" class="reject-group">{{ item.group }}</span>
           <p class="reject-text-full">{{ item.text }}</p>
@@ -29,40 +42,40 @@
         <h3 class="card-title">名称</h3>
         <!-- 专辑名 -->
         <div class="name-row">
-          <input v-model="albumName" class="name-input" placeholder="专辑名（最多 30 字）" maxlength="30" />
-          <button class="btn-sm" :disabled="!albumName || albumName === (ep.meta.album_name || '')"
+          <input v-model="albumName" class="name-input" :disabled="!canEdit" placeholder="专辑名（最多 30 字）" maxlength="30" />
+          <button class="btn-sm" data-test="save-name" :disabled="!canEdit || !albumName || albumName === (meta.album_name || '')"
                   @click="saveName">保存</button>
         </div>
         <!-- 系列归属：状态 + 修改，一层一层来 -->
         <div class="series-block">
           <div class="series-status">
-            <template v-if="ep.meta.series_name">
-              归属系列：<strong>{{ ep.meta.series_name }}</strong>
-              <span class="series-num">编号 {{ ep.meta.number }}</span>
+            <template v-if="meta.series_name">
+              归属系列：<strong>{{ meta.series_name }}</strong>
+              <span class="series-num">编号 {{ meta.number }}</span>
             </template>
             <template v-else>
               <span class="muted">未编入系列——编入后自动按系列编号命名（如「周思涵做表情 61」）</span>
             </template>
           </div>
           <div class="name-row" v-if="!showNewSeries">
-            <select v-model="pickedSeries" class="name-input series-select">
+            <select v-model="pickedSeries" class="name-input series-select" :disabled="!canEdit">
               <option value="">— 选择要编入的系列 —</option>
               <option v-for="s in store.seriesList" :key="s.id" :value="s.id">
                 {{ s.name }}（将命名为「{{ s.name }}{{ s.next_number }}」）
               </option>
             </select>
-            <button class="btn-sm" :disabled="!pickedSeries" @click="assignSeries">编入</button>
-            <button class="link-btn" @click="showNewSeries = true">+ 新建系列</button>
+            <button class="btn-sm" :disabled="!canEdit || !pickedSeries" @click="assignSeries">编入</button>
+            <button class="link-btn" :disabled="!canEdit" @click="showNewSeries = true">+ 新建系列</button>
           </div>
           <!-- 新建系列（点开后独占一层，不再挤在一起） -->
           <div class="new-series-box" v-else>
             <p class="new-series-title">新建系列并编入本作品：</p>
             <div class="name-row">
-              <input v-model="newSeriesName" class="name-input" placeholder="系列名称，如：周思涵做表情" />
-              <input v-model.number="newSeriesStart" type="number" min="1" class="num-input" placeholder="起始编号" />
+              <input v-model="newSeriesName" class="name-input" :disabled="!canEdit" placeholder="系列名称，如：周思涵做表情" />
+              <input v-model.number="newSeriesStart" type="number" min="1" class="num-input" :disabled="!canEdit" placeholder="起始编号" />
             </div>
             <div class="name-row">
-              <button class="btn-sm" :disabled="!newSeriesName" @click="createSeries">创建并编入</button>
+              <button class="btn-sm" :disabled="!canEdit || !newSeriesName" @click="createSeries">创建并编入</button>
               <button class="btn-sm btn-reset" @click="showNewSeries = false">取消</button>
             </div>
           </div>
@@ -76,11 +89,11 @@
       <!-- 介绍 -->
       <section class="card">
         <h3 class="card-title">介绍（{{ intro.length }}/80）</h3>
-        <textarea v-model="intro" class="intro-textarea" maxlength="80"
+        <textarea v-model="intro" class="intro-textarea" :disabled="!canEdit" maxlength="80"
                   placeholder="一句话介绍这组表情（保存后随发布一起提交）"></textarea>
         <div class="row-actions">
-          <button class="btn-sm" :disabled="intro === (ep.meta.intro || '')" @click="saveIntro">保存介绍</button>
-          <button class="btn-sm btn-ai" :disabled="regenIntroBusy" @click="regenIntro">
+          <button class="btn-sm" :disabled="!canEdit || intro === (meta.intro || '')" @click="saveIntro">保存介绍</button>
+          <button class="btn-sm btn-ai" :disabled="!canEdit || regenIntroBusy" @click="regenIntro">
             {{ regenIntroBusy ? 'AI 生成中…' : '✨ AI 重新生成（用系列提示词）' }}
           </button>
         </div>
@@ -94,22 +107,22 @@
             <img v-if="ep[kind]" :src="fileUrl(ep[kind])" class="asset-img" :class="kind" />
             <div v-else class="asset-img placeholder">{{ assetLabel(kind) }}缺失</div>
             <div class="asset-controls">
-              <select v-model="modes[kind]" class="mode-select">
+              <select v-model="modes[kind]" class="mode-select" :disabled="!canEdit">
                 <option value="auto">标准拼贴</option>
                 <option value="pick" v-if="kind !== 'banner'">从本组选图</option>
                 <option value="custom">自定义上传</option>
                 <option value="role" v-if="hasRoleMap">角色默认映射</option>
               </select>
-              <select v-if="modes[kind] === 'pick'" v-model.number="picks[kind]" class="mode-select">
-                <option v-for="(st, i) in ep.stickers" :key="i" :value="i">第 {{ i + 1 }} 张 · {{ st.meaning }}</option>
+              <select v-if="modes[kind] === 'pick'" v-model.number="picks[kind]" class="mode-select" :disabled="!canEdit">
+                <option v-for="(st, i) in stickers" :key="i" :value="i">第 {{ i + 1 }} 张 · {{ st.meaning }}</option>
               </select>
-              <button v-if="modes[kind] === 'custom'" class="btn-sm" @click="pickCustomFile(kind)">选择文件…</button>
+              <button v-if="modes[kind] === 'custom'" class="btn-sm" :disabled="!canEdit" @click="pickCustomFile(kind)">选择文件…</button>
               <span v-if="customPaths[kind]" class="custom-path">{{ shortPath(customPaths[kind]) }}</span>
             </div>
           </div>
         </div>
         <div class="row-actions">
-          <button class="btn-sm" :disabled="regenAssetsBusy" @click="regenAssets">
+          <button class="btn-sm" :disabled="!canEdit || regenAssetsBusy" @click="regenAssets">
             {{ regenAssetsBusy ? '生成中…' : '↻ 按以上设置重新生成素材' }}
           </button>
           <span v-if="assetWarnings.length" class="warn-text">{{ assetWarnings.join('；') }}</span>
@@ -119,11 +132,11 @@
       <!-- 表情预览 + 打分（打分自动存 rating.json，可整文件发给 AI 反哺优化 prompt） -->
       <section class="card">
         <h3 class="card-title">
-          表情（{{ ep.stickers.length }} 张）<span class="muted">角色：{{ ep.characters.join('、') || '—' }}</span>
+          表情（{{ stickers.length }} 张）<span class="muted">角色：{{ characters.join('、') || '—' }}</span>
           <span class="rate-hint">👆 点星星打分（1-5，自动保存；评分文件可发给 AI 优化 prompt）</span>
         </h3>
         <div class="sticker-grid">
-          <div v-for="(st, i) in ep.stickers" :key="st.file" class="sticker-cell" :title="st.meaning">
+          <div v-for="(st, i) in stickers" :key="st.file" class="sticker-cell" :title="st.meaning">
             <img :src="fileUrl(st.path)" />
             <span class="meaning">{{ st.meaning }}</span>
             <span class="idx">{{ i + 1 }}</span>
@@ -140,9 +153,10 @@
         <div class="overall-row">
           <span class="overall-label">整组总评：</span>
           <button v-for="s in 5" :key="s" class="star big"
+                  :disabled="!canEdit"
                   :class="{ on: (overall || 0) >= s }"
-                  @click="overall = (overall === s ? null : s); saveRating()">{{ s }}</button>
-          <input class="overall-note" v-model="note" placeholder="一句话总评（哪里好/哪里不行，AI 反哺时用得上）"
+                  @click="setOverall(s)">{{ s }}</button>
+          <input class="overall-note" :disabled="!canEdit" v-model="note" placeholder="一句话总评（哪里好/哪里不行，AI 反哺时用得上）"
                  @change="saveRating" />
           <span v-if="ratingSavedAt" class="saved-tip">✓ {{ ratingSavedAt }}</span>
           <button class="copy-feedback-btn" :disabled="copyingFeedback" @click="() => copyFeedback()">
@@ -155,12 +169,12 @@
       <section class="card">
         <h3 class="card-title">发布</h3>
         <!-- 未通过审核：按驳回理由精准修复 + 平台编辑器重提（用户 SOP） -->
-        <div v-if="(ep.meta.platform_status || '').includes('未通过')" class="republish-box">
+        <div v-if="(meta.platform_status || ep.platform_status || '').includes('未通过')" class="republish-box">
           <p class="republish-title">⛔ 这单被驳回——按驳回理由修改后再提交：</p>
-          <button class="republish-btn" :disabled="fixingRepublish" @click="fixAndRepublish(true)">
+          <button class="republish-btn" :disabled="!canEdit || !canPublish || fixingRepublish" @click="fixAndRepublish(true)">
             {{ fixingRepublish ? '正在修改并重新提交（约几分钟）…' : '✅ 修改完毕，去平台重新提交' }}
           </button>
-          <button class="btn-sm" :disabled="fixingRepublish" @click="fixAndRepublish(false)">
+          <button class="btn-sm" :disabled="!canEdit || fixingRepublish" @click="fixAndRepublish(false)">
             只修复本地素材
           </button>
           <p class="republish-note">
@@ -170,15 +184,20 @@
           </p>
         </div>
         <div class="row-actions">
-          <button class="publish-btn" :disabled="store.publishing" @click="publish">
-            {{ store.publishing ? '正在提交…' : (ep.meta.published ? '再次提交微信' : '一键提交微信') }}
+          <button class="publish-btn" data-test="publish" :disabled="store.publishing || !canPublish" @click="publish">
+            {{ store.publishing ? '正在提交…' : (isPublished ? '再次提交微信' : '一键提交微信') }}
           </button>
-          <button class="btn-sm btn-reset" @click="openFinder">在文件夹中显示</button>
+          <button class="btn-sm btn-reset" :disabled="!ep.path" @click="openFinder">在文件夹中显示</button>
           <!-- 弹药闭环：本组贴纸去重回流参考图库（已上架作品=市场验证过的良品） -->
-          <button class="btn-sm" :disabled="replenishing" @click="replenishRefs">
+          <button class="btn-sm" :disabled="!canEdit || replenishing" @click="replenishRefs">
             {{ replenishing ? '回流中…' : '回流参考图库' }}
           </button>
+          <button class="btn-sm" data-test="capture-library" :disabled="!canEdit || !ep.path || capturing" @click="captureLibrary">
+            {{ capturing ? '收录中…' : '收录修改' }}
+          </button>
         </div>
+        <p v-if="captureTip" class="pub-ok" data-test="capture-tip">{{ captureTip }}</p>
+        <p v-if="!canPublish" class="resource-action-hint">当前资源版本未验证完整，平台写入已暂停；请先刷新资源或处理冲突。</p>
         <p v-if="replenishResult" class="pub-ok" style="font-size: 12px;">
           {{ replenishResult }}
         </p>
@@ -207,6 +226,48 @@ import { parseReasonItems, reasonCount } from '../utils/reason'
 
 const store = useEngineStore()
 const ep = computed(() => store.selectedEpisode)
+const meta = computed(() => ep.value?.meta || ep.value || {})
+const stickers = computed(() => Array.isArray(ep.value?.stickers) ? ep.value.stickers : [])
+const characters = computed(() => Array.isArray(ep.value?.characters) ? ep.value.characters : [])
+
+const resourceStateText = computed(() => {
+  const labels = {
+    available: '本机资源可用',
+    offline: '共享库离线，显示上次本地记录',
+    placeholder: '平台记录，资源未到齐',
+    pending: '资源未到齐，等待同步',
+    conflict: '版本冲突，等待处理',
+    deleted: '共享删除，可恢复',
+  }
+  return labels[ep.value?.resource_state] || '资源状态未知'
+})
+const platformStatus = computed(() => ep.value?.platform_status || meta.value.platform_status || '')
+const isPublished = computed(() => !!(ep.value?.published ?? meta.value.published))
+const canEdit = computed(() => {
+  if (!ep.value) return false
+  if (['pending', 'conflict', 'deleted', 'placeholder', 'offline'].includes(ep.value.resource_state)) return false
+  if (typeof ep.value.can_edit === 'boolean') return ep.value.can_edit
+  return true
+})
+const canPublish = computed(() => {
+  if (!ep.value) return false
+  if (['pending', 'conflict', 'deleted', 'placeholder', 'offline'].includes(ep.value.resource_state)) return false
+  if (typeof ep.value.can_publish === 'boolean') return ep.value.can_publish
+  if (ep.value.resource_state === 'placeholder') return false
+  return !!(ep.value.path && (ep.value.complete !== false || ep.value.published || meta.value.published))
+})
+const resourceGuardMessage = computed(() => {
+  if (ep.value?.resource_state === 'offline') return '共享目录暂不可访问。请恢复连接后刷新，当前显示上次本地记录。'
+  if (ep.value?.resource_state === 'conflict') return '这个作品有多个并行版本，先在资源库选择版本或另存为草稿。'
+  if (ep.value?.resource_state === 'deleted') return '这个作品已从共享库删除，可在资源库中恢复。'
+  if (ep.value?.resource_state === 'placeholder') return '当前只有平台记录，没有可编辑的本机素材。'
+  return '请等待资源同步并通过完整性校验。'
+})
+
+function openResourceLibrary() {
+  store.settingsTab = 'resource'
+  store.phase = 'settings'
+}
 
 const albumName = ref('')
 const intro = ref('')
@@ -220,6 +281,8 @@ const assetWarnings = ref([])
 const modes = ref({ banner: 'auto', cover: 'auto', icon: 'auto' })
 const picks = ref({ banner: 0, cover: 0, icon: 0 })
 const customPaths = ref({})
+const capturing = ref(false)
+const captureTip = ref('')
 
 onMounted(() => { if (!store.selectedEpisode) store.phase = 'episodes' })
 
@@ -242,11 +305,13 @@ async function loadRating() {
   } catch { /* 静默 */ }
 }
 function rate(meaning, score) {
+  if (!canEdit.value) return
   const cur = (ratings.value[meaning] || {}).score
   ratings.value = { ...ratings.value, [meaning]: { score: cur === score ? 0 : score, note: '' } }
   saveRating()
 }
 function noteRate(meaning, ev) {
+  if (!canEdit.value) return
   const cur = ratings.value[meaning] || {}
   ratings.value = { ...ratings.value, [meaning]: { score: cur.score || 0, note: ev.target.value } }
   saveRating()
@@ -279,7 +344,7 @@ const fixingRepublish = ref(false)
 const fixRepublishActions = ref('')
 const fixRepublishError = ref('')
 async function fixAndRepublish(publish) {
-  if (!ep.value?.path || !window.api) return
+  if (!canEdit.value || (publish && !canPublish.value) || !ep.value?.path || !window.api) return
   // R5（评审）：与普通发布互斥——占住 publishing 锁，防并发双开浏览器
   if (store.publishing) return
   store.publishing = true
@@ -328,7 +393,7 @@ async function copyRejectReview() {
 }
 
 function saveRating() {
-  if (!ep.value?.path || !window.api) return
+  if (!canEdit.value || !ep.value?.path || !window.api) return
   clearTimeout(ratingTimer)
   ratingTimer = setTimeout(async () => {
     try {
@@ -345,19 +410,20 @@ function saveRating() {
 loadRating()
 watch(ep, (v) => {
   if (v) {
-    albumName.value = v.meta.album_name || ''
-    intro.value = v.meta.intro || ''
-    pickedSeries.value = v.meta.series_id || ''
+    const m = v.meta || v
+    albumName.value = m.album_name || ''
+    intro.value = m.intro || ''
+    pickedSeries.value = m.series_id || ''
     modes.value = {
-      banner: v.meta.banner_mode || 'auto',
-      cover: v.meta.cover_mode || 'auto',
-      icon: v.meta.icon_mode || 'auto',
+      banner: m.banner_mode || 'auto',
+      cover: m.cover_mode || 'auto',
+      icon: m.icon_mode || 'auto',
     }
-    picks.value = { banner: 0, cover: v.meta.cover_pick || 0, icon: 0 }
+    picks.value = { banner: 0, cover: m.cover_pick || 0, icon: 0 }
     customPaths.value = {
-      banner: v.meta.banner_custom || '',
-      cover: v.meta.cover_custom || '',
-      icon: v.meta.icon_custom || '',
+      banner: m.banner_custom || '',
+      cover: m.cover_custom || '',
+      icon: m.icon_custom || '',
     }
   }
 }, { immediate: true })
@@ -371,7 +437,7 @@ const introStale = computed(() =>
   !!intro.value &&
   intro.value.includes(introOldName.value) &&
   !intro.value.includes(albumName.value || ep.value?.meta?.album_name || ''))
-watch(ep, (v) => { if (v) introOldName.value = extractOldName(v.meta.intro || '') }, { immediate: true })
+watch(ep, (v) => { if (v) introOldName.value = extractOldName((v.meta || v).intro || '') }, { immediate: true })
 function extractOldName(text) {
   const m = text.match(/《(.+?)》/)
   return m ? m[1] : ''
@@ -392,13 +458,21 @@ function shortPath(p) { const s = String(p || ''); return s.length > 30 ? '…' 
 function assetLabel(kind) { return { banner: '横幅', cover: '封面', icon: '图标' }[kind] }
 
 async function saveName() {
+  if (!canEdit.value) return
   await store.updateEpisodeMeta({ album_name: albumName.value })
 }
+function setOverall(score) {
+  if (!canEdit.value) return
+  overall.value = overall.value === score ? null : score
+  saveRating()
+}
 async function assignSeries() {
+  if (!canEdit.value) return
   await store.updateEpisodeMeta({ assign_series_id: pickedSeries.value })
   await store.loadSeries()   // 刷新各系列"下一编号"显示
 }
 async function createSeries() {
+  if (!canEdit.value) return
   const ok = await store.saveSeriesList([
     ...store.seriesList.map(s => ({
       id: s.id, name: s.name, start_number: s.start_number,
@@ -415,9 +489,11 @@ async function createSeries() {
   }
 }
 async function saveIntro() {
+  if (!canEdit.value) return
   await store.updateEpisodeMeta({ intro: intro.value })
 }
 async function regenIntro() {
+  if (!canEdit.value) return
   regenIntroBusy.value = true
   try {
     const r = await store.regenEpisodeIntro()
@@ -425,11 +501,12 @@ async function regenIntro() {
   } finally { regenIntroBusy.value = false }
 }
 async function pickCustomFile(kind) {
-  if (!window.api) return
+  if (!canEdit.value || !window.api) return
   const res = await window.api.selectFile()
   if (res && !res.canceled && res.path) customPaths.value[kind] = res.path
 }
 async function regenAssets() {
+  if (!canEdit.value) return
   regenAssetsBusy.value = true
   assetWarnings.value = []
   try {
@@ -444,7 +521,7 @@ async function regenAssets() {
   } finally { regenAssetsBusy.value = false }
 }
 async function publish() {
-  if (ep.value?.path) await store.publishEpisode(ep.value.path)
+  if (canPublish.value && ep.value?.path) await store.publishEpisode(ep.value.path)
 }
 async function openFinder() {
   if (ep.value?.path && window.api) {
@@ -456,7 +533,7 @@ async function openFinder() {
 const replenishing = ref(false)
 const replenishResult = ref('')
 async function replenishRefs() {
-  if (!ep.value?.path || !window.api) return
+  if (!canEdit.value || !ep.value?.path || !window.api) return
   replenishing.value = true
   replenishResult.value = ''
   try {
@@ -472,6 +549,21 @@ async function replenishRefs() {
   } finally {
     replenishing.value = false
   }
+}
+
+async function captureLibrary() {
+  if (!canEdit.value || !ep.value?.path || capturing.value || !window.api) return
+  capturing.value = true
+  captureTip.value = ''
+  try {
+    const res = await window.api.send('library_capture', { episode_dir: ep.value.path })
+    if (res?.status === 'ok') {
+      captureTip.value = `✓ 已收录修改（版本 ${res.data?.revision_id || '已生成'}），请等待 Syncthing 完成同步`
+    } else {
+      captureTip.value = '收录失败：' + (res?.errors?.[0]?.message || '未知原因')
+    }
+  } catch (e) { captureTip.value = '收录失败：' + (e?.message || '未知原因') }
+  finally { capturing.value = false }
 }
 </script>
 
@@ -492,6 +584,15 @@ header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; fle
   font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: var(--r-pill);
   background: rgba(175, 205, 168, .3); color: var(--correct);
 }
+.ep-badge.platform { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: var(--r-pill); background: rgba(188,216,238,.35); color: #31617c; }
+.ep-badge.resource { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: var(--r-pill); background: var(--paper); color: var(--muted); }
+.ep-badge.resource-available { background: rgba(175,205,168,.3); color: var(--correct); }
+.ep-badge.resource-placeholder, .ep-badge.resource-pending { background: rgba(230,162,60,.16); color: #9a6c13; }
+.ep-badge.resource-conflict { background: rgba(181,72,42,.13); color: var(--brick); }
+.ep-badge.resource-deleted { background: rgba(110,112,99,.15); color: var(--muted); }
+.resource-guard { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 11px 14px; border: 1px dashed rgba(181,72,42,.4); border-radius: var(--r-md); background: rgba(181,72,42,.06); color: var(--brick); font-size: 12px; line-height: 1.5; }
+.resource-guard span { color: var(--muted); }
+.btn-link { padding: 0; border: 0; background: none; color: var(--forest); cursor: pointer; font-size: 12px; font-weight: 700; text-decoration: underline; }
 
 .body { display: flex; flex-direction: column; gap: 16px; }
 .card {
@@ -649,6 +750,7 @@ header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; fle
 }
 .publish-btn:hover:not(:disabled) { background: var(--forest-hover); transform: translateY(-1px); }
 .publish-btn:disabled { opacity: .6; cursor: wait; }
+.resource-action-hint { margin: 10px 0 0; color: var(--brick); font-size: 12px; line-height: 1.6; }
 
 .pub-progress { margin-top: 12px; color: var(--forest); font-size: 13px; font-weight: 600; }
 .pub-ok { margin: 12px 0 0; color: var(--correct); font-size: 13.5px; font-weight: 700; }

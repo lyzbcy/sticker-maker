@@ -42,6 +42,7 @@ class PlatformRow:
     updated: str = ""
     reject_reason: str = ""   # 未通过审核时：详情页→未通过审核→表情驳回理由
     reject_stage: str = ""    # 诊断：抓取失败死在哪一步（locate/wait_btn/…）
+    item_id: str = ""
 
 
 def _extract_reason(text: str) -> str:
@@ -56,7 +57,7 @@ def _extract_reason(text: str) -> str:
         j = seg.find(stop)
         if j > 0:
             seg = seg[:j]
-    return seg.strip()[:500]
+    return seg.strip()
 
 
 def _fetch_reject_reason_for_row(page, row: "PlatformRow", page_no: int = None) -> str:
@@ -291,14 +292,16 @@ def parse_rows_from_text(text: str) -> List[PlatformRow]:
     return rows
 
 
-def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
-                ) -> dict:
+def _sync_status_legacy(engine, on_status: Optional[Callable[[str], None]] = None,
+                        fetch_reasons=True, should_stop=None, library_runtime=None) -> dict:
     """扫描平台作品列表并回写本地 meta。
 
     返回 ``{matched, unmatched_platform, updated, pages}``。
     engine：StickerEngine（用它的 config.paths.output_root 找本地作品）。
     on_status：进度回调（喂给活动日志）。
+    should_stop：取消回调（翻页/理由抓取逐轮检查，取消时带已完成结果返回）。
     """
+    stopped = should_stop or (lambda: False)
     def say(msg: str) -> None:
         if on_status:
             try:
@@ -316,6 +319,8 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
     for ep_dir in sorted(root.iterdir()) if root.exists() else []:
         if ep_dir.is_dir() and ep_dir.name.startswith("episode"):
             meta = load_meta(ep_dir)
+            if library_runtime and meta.account_id != library_runtime.account_id:
+                continue
             locals_.append({"dir": ep_dir, "meta": meta,
                             "album_name": meta.album_name or ep_dir.name,
                             "name": ep_dir.name})
@@ -324,6 +329,7 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
     cfg = PublishConfig()
     all_rows: List[PlatformRow] = []
     pages = 0
+    cancelled = False
     with sync_playwright() as p:
         b = BrowserSession(cfg, playwright=p)
         page = b.start()
@@ -339,11 +345,30 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
             last_sig = ""   # 上一页整页签名（防"点击翻页没前进"的死循环）
             stall_pages = 0  # 连续相同签名页数（连续 2 次才判卡页）
             for page_no in range(1, MAX_PAGES + 1):
+                if stopped():
+                    say("收到取消请求：保留已读取页面，停止后续翻页")
+                    cancelled = True
+                    break
                 page.wait_for_timeout(700)
                 rows = parse_rows_from_text(page.inner_text("body"))
                 # 过滤幻影行（2026-09-01 回归发现：页头按钮"创建形象"被当成
                 # 行名，混进 unmatched 列表显示为不存在的作品）
                 rows = [r for r in rows if r.name not in _UI_BUTTON_WORDS]
+                if library_runtime:
+                    # Stable identity must come from the actual detail link,
+                    # never a name prefix or an inferred page position.
+                    try:
+                        links = page.locator('a[href*="stikerid="]').evaluate_all('''els => els.map(a => ({
+                          href:a.href, text:(a.closest('tr') || a.parentElement).innerText
+                        }))''')
+                        from urllib.parse import urlparse, parse_qs
+                        for row in rows:
+                            hits = [x for x in links if row.name in x['text'].splitlines()]
+                            ids = {parse_qs(urlparse(x['href']).query).get('stikerid', [''])[0] for x in hits}
+                            if len(ids) == 1:
+                                row.item_id = next(iter(ids))
+                    except Exception:
+                        pass  # ID unavailable: keep unmatched, do not invent one.
                 if rows:
                     # 卡页检测（2026-09-01 引入；2026-09-03 误杀事故：签名
                     # 只取第 3-5 行，作品重提导致排序洗牌时连续两页前 3 行
@@ -365,7 +390,7 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
                     _seen_r = set()
                     rejects = []
                     for r in rows:
-                        if "未通过" in r.status and "审核" in r.status:
+                        if fetch_reasons and "未通过" in r.status and "审核" in r.status:
                             key = normalize_name(r.name)
                             if key in _seen_r:
                                 continue   # 平台同名重复行，省一次详情往返
@@ -424,6 +449,10 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
                             return False
 
                         for r in rejects:
+                            if stopped():
+                                say("收到取消请求：停止读取剩余驳回理由")
+                                cancelled = True
+                                break
                             _restore_page_pos()
                             say(f"正在读取「{r.name}」的驳回理由…")
                             r.reject_reason = _fetch_reject_reason_for_row(page, r, page_no=page_no)
@@ -487,7 +516,7 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
     # 去重（同一专辑可能翻页重复抓到）
     seen = {}
     for r in all_rows:
-        seen[normalize_name(r.name)] = r
+        seen[r.item_id or normalize_name(r.name)] = r
     all_rows = list(seen.values())
 
     # 匹配回写
@@ -496,7 +525,14 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
     used_dirs = set()
     now = time.strftime("%Y-%m-%d %H:%M:%S")
     for r in all_rows:
-        hit = match_episode(r.name, locals_)
+        if library_runtime:
+            hits = [c for c in locals_ if r.item_id and c['meta'].platform_item_id == r.item_id]
+            if not hits and r.item_id:
+                path = library_runtime.placeholder({'StikerID': r.item_id, 'Name': r.name})
+                hits = [{'dir': path, 'meta': load_meta(path)}]
+            hit = hits[0] if len(hits) == 1 else None
+        else:
+            hit = match_episode(r.name, locals_)
         if hit is None or str(hit["dir"]) in used_dirs:
             unmatched.append({"name": r.name, "status": r.status, "updated": r.updated})
             continue
@@ -514,5 +550,62 @@ def sync_status(engine, on_status: Optional[Callable[[str], None]] = None
         save_meta(hit["dir"], meta)
         matched += 1
     say(f"同步完成：匹配 {matched} 个作品，平台未匹配 {len(unmatched)} 条")
+    if library_runtime:
+        library_runtime.refresh()
     return {"matched": matched, "unmatched_platform": unmatched,
-            "updated": matched, "pages": pages}
+            "updated": matched, "pages": pages, "source": "page",
+            "complete": False, "list_complete": False, "cancelled": cancelled,
+            "warning": "已使用页面降级读取，无法确认全量完整性；请稍后重试快速同步。"}
+
+
+def sync_status(engine, on_status=None, fetch_reasons=True, force_reasons=False,
+                should_stop=None):
+    """Fast full-list sync, falling back only before any fast-path writes."""
+    from .platform_data import read_json, parse_list, sync_rows, LIST_URL, PlatformDataError
+    from .config import PublishConfig
+    from .browser import BrowserSession
+    from playwright.sync_api import sync_playwright
+
+    say = on_status or (lambda message: None)
+    stopped = should_stop or (lambda: False)
+    library_runtime = None
+    if getattr(engine.config.paths, 'user_data', None):
+        from ..library.runtime import LibraryRuntime
+        candidate = LibraryRuntime(engine.config.paths.user_data)
+        if candidate.enabled:
+            library_runtime = candidate
+            candidate.refresh()
+    say('正在读取平台全部作品状态…')
+    fallback = False
+    with sync_playwright() as pw:
+        session = BrowserSession(PublishConfig(), playwright=pw)
+        try:
+            page = session.start()
+            if not session.ensure_login(page, on_status=say):
+                return {'error': '登录失败：' + (session.last_login_error or '请重新登录'),
+                        'complete': False, 'list_complete': False}
+            try:
+                rows = parse_list(read_json(page, LIST_URL))
+            except PlatformDataError:
+                fallback = True
+            if not fallback:
+                options = ({'account_id': library_runtime.account_id,
+                            'placeholder_factory': library_runtime.placeholder}
+                           if library_runtime else {})
+                result = sync_rows(page, Path(engine.config.paths.output_root), rows,
+                                 say, fetch_reasons, force_reasons,
+                                 should_stop=stopped, **options)
+                if library_runtime:
+                    library_runtime.refresh()
+                return result
+        finally:
+            session.close()
+    if stopped():
+        # 取消统一走 ok + cancelled（cli 层透传），不再用 error/fail 表达取消
+        return {'cancelled': True, 'complete': False, 'list_complete': False,
+                'matched': 0, 'unmatched_platform': [], 'pages': 0,
+                'message': '已取消（登录前中断，未写入任何数据）'}
+    say('快速数据读取不可用，改用页面读取（耗时较长）…')
+    options = {'library_runtime': library_runtime} if library_runtime else {}
+    return _sync_status_legacy(engine, on_status=say, fetch_reasons=fetch_reasons,
+                               should_stop=stopped, **options)

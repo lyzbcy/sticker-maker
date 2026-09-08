@@ -110,7 +110,36 @@ class StickerEngine:
             ref_lib_priority=prefs.ref_lib_priority,
         )
 
-    def run(
+    def run(self, progress_callback=None, stop_event=None) -> Episode:
+        """Persist every generated item, including direct scheduler/agent calls."""
+        from .library.hooks import runtime_for
+        from .library.commands import LOCK
+        runtime = runtime_for(self)
+        if runtime is None:
+            return self._run_impl(progress_callback=progress_callback, stop_event=stop_event)
+        if not LOCK.acquire(blocking=False):
+            return Episode(success=False, aborted_reason="资源任务正在进行，请稍后重试")
+        try:
+            status = runtime.refresh()
+            if isinstance(status, dict) and status.get('offline'):
+                return Episode(success=False,
+                               aborted_reason='共享资源库当前不可用，已停止生成；请恢复同步目录后重试')
+            from .library.hooks import reload_engine_config
+            reload_engine_config(self, runtime)
+            episode = self._run_impl(progress_callback=progress_callback, stop_event=stop_event)
+            if episode.episode_dir and Path(episode.episode_dir).is_dir():
+                try:
+                    runtime.capture(episode.episode_dir)
+                    from .library.settings import SharedSettings
+                    SharedSettings(runtime).capture()
+                except Exception as exc:
+                    episode.success = False
+                    episode.aborted_reason = f"作品保留在本机，但写入资源库失败：{exc}"
+            return episode
+        finally:
+            LOCK.release()
+
+    def _run_impl(
         self,
         progress_callback: Optional[Callable] = None,
         stop_event: Optional[threading.Event] = None,

@@ -80,6 +80,7 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
   // 作品库 / 详情
   const seriesList = ref([])
   const selectedEpisode = ref(null)   // get_episode 返回的详情
+  const settingsTab = ref('gen')
 
   // 确保 window.api 存在（开发模式 Electron 注入）
   // 关键：contextIsolation 下渲染进程 → preload 的参数会先经过 contextBridge
@@ -576,7 +577,7 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
     running, progress, lastEpisode, lastError, runStartedAt, activity,
     installing, installLog,
     publishing, publishProgress, publishResult, logs, agentStatus, agentPrompt,
-    seriesList, selectedEpisode, codexUsage, loadCodexUsage,
+    seriesList, selectedEpisode, settingsTab, codexUsage, loadCodexUsage,
     reviewAskVisible, shouldAskForReview, dismissReviewAsk,
     init, checkCodex, installCodex, loadCharacters, ensureProbabilityDefaults,
     savePrefs, runGenerate, runBatch, batchInfo, stopRun, loadEpisodes, clearResult, pushActivity,

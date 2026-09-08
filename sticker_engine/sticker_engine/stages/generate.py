@@ -284,7 +284,7 @@ class GenerateStage:
         """当前生效的 Prompt 方案（prefs.prompt_set_id 指定，缺省=内置）。"""
         if getattr(self, "_prompt_set_cache", None) is None:
             from ..config.prompts import find_set
-            user_data = ctx.config.paths.user_data
+            user_data = getattr(ctx.config.paths, "assets_root", None) or ctx.config.paths.user_data
             self._prompt_set_cache = find_set(
                 user_data, getattr(ctx.config.prefs, "prompt_set_id", None))
         return self._prompt_set_cache

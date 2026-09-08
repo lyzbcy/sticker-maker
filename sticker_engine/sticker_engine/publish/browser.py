@@ -9,6 +9,8 @@
 首次登录成功后存 storage_state，仅作为短期加速缓存。
 """
 import time
+import json
+import hashlib
 from pathlib import Path
 from typing import Optional
 
@@ -52,6 +54,8 @@ class BrowserSession:
         self._context = None
         self._owns_playwright = False   # 是否由本类启动 playwright（影响清理）
         self.last_login_error = ""      # 登录失败原因（人类可读，供上层展示）
+        self._required_account = ''
+        self._trusted_account = ''
 
     def start(self, headless: Optional[bool] = None):
         """启动浏览器。headless=None（默认）跟随用户设置（见 pref_headless）；
@@ -63,6 +67,15 @@ class BrowserSession:
         """
         if headless is None:
             headless = pref_headless()
+        from ..config.paths import resolve_paths, current_platform
+        device_file = resolve_paths(current_platform()).user_data / 'resource_library/device.json'
+        if device_file.exists():
+            device = json.loads(device_file.read_text(encoding='utf-8'))
+            self._required_account = str(device.get('account_label') or '').strip().casefold()
+        if self._required_account:
+            account, password = self._load_credentials()
+            if not password or str(account or '').strip().casefold() != self._required_account:
+                raise ValueError('当前发布凭据与资源库账号不一致，请在发布账号中保存对应账号密码')
         if self._playwright is None:
             from playwright.sync_api import sync_playwright
             self._playwright = sync_playwright().start()
@@ -73,6 +86,17 @@ class BrowserSession:
         # 复用 storage_state（若存在）——仅作加速缓存，失效自动转密码登录
         storage = self.config.storage_state
         ctx_kwargs = {"storage_state": str(storage)} if storage.exists() else {}
+        if self._required_account:
+            proof = storage.with_suffix('.account.json')
+            try:
+                record = json.loads(proof.read_text(encoding='utf-8'))
+                digest = hashlib.sha256(storage.read_bytes()).hexdigest()
+                if record.get('account') == self._required_account and record.get('sha256') == digest:
+                    self._trusted_account = self._required_account
+                else:
+                    ctx_kwargs.pop('storage_state', None)
+            except (OSError, ValueError):
+                ctx_kwargs.pop('storage_state', None)
         if headless:
             # 2026-09-03 A/B/C 实测（扫码续登录态后同 state 对照）：微信平台
             # **没有**拦无头浏览器——裸 headless shell（UA 含 HeadlessChrome）
@@ -91,6 +115,11 @@ class BrowserSession:
         """保存当前 context 的登录态到 storage_state。"""
         self.config.storage_state.parent.mkdir(parents=True, exist_ok=True)
         self._context.storage_state(path=str(self.config.storage_state))
+        if self._required_account and self._trusted_account == self._required_account:
+            from ..library.runtime import write_json
+            write_json(self.config.storage_state.with_suffix('.account.json'), {
+                'account': self._trusted_account,
+                'sha256': hashlib.sha256(self.config.storage_state.read_bytes()).hexdigest()})
 
     def close(self) -> None:
         if self._context:
@@ -113,7 +142,7 @@ class BrowserSession:
         self.last_login_error = ""
         page.goto(S.HOME_URL, timeout=self.config.navigation_timeout_ms)
         time.sleep(2)
-        if self._is_logged_in(page):
+        if self._is_logged_in(page) and (not self._required_account or self._trusted_account == self._required_account):
             return True
 
         # storage_state 失效 → 账号密码自动登录
@@ -224,6 +253,11 @@ class BrowserSession:
 
         # 5) 验证 + 存 storage_state（加速下次）
         if self._is_logged_in(page):
+            if self._required_account:
+                if account.strip().casefold() != self._required_account:
+                    self.last_login_error = '登录账号与当前资源库不一致'
+                    return False
+                self._trusted_account = self._required_account
             self.save_state(page)
             return True
         # 2026-09-03 实测：平台密码错误会明确报「账号或密码不正确」——

@@ -22,7 +22,8 @@ from .paths import resolve_paths, current_platform
 
 
 def _series_file() -> Path:
-    return resolve_paths(current_platform()).user_data / "series.json"
+    paths = resolve_paths(current_platform())
+    return (paths.assets_root or paths.user_data) / 'series.json'
 
 
 @dataclass
@@ -131,6 +132,10 @@ def save_series_list_from_dicts(items: list) -> list:
 
 @dataclass
 class EpisodeMeta:
+    work_id: str = ""
+    account_id: str = ""
+    account_label: str = ""
+    resource_placeholder: bool = False
     series_id: Optional[str] = None
     series_name: str = ""
     number: Optional[int] = None
@@ -156,8 +161,27 @@ class EpisodeMeta:
     # 未通过审核时的平台驳回理由（详情页→未通过审核→表情驳回理由，2026-08-29）
     platform_reject_reason: str = ""
 
+    # Platform identity and review observations (legacy records keep an unknown round).
+    platform_item_id: str = ""
+    platform_modified_at: str = ""
+    platform_review_cycle: str = ""
+    platform_review_round: int = 0
+    platform_review_source: str = "unknown"
+    platform_reject_checked_cycle: str = ""
+    platform_review_history: list = field(default_factory=list)
+
     def to_dict(self) -> dict:
         return dict(
+            work_id=self.work_id, account_id=self.account_id,
+            account_label=self.account_label,
+            resource_placeholder=self.resource_placeholder,
+            platform_item_id=self.platform_item_id,
+            platform_modified_at=self.platform_modified_at,
+            platform_review_cycle=self.platform_review_cycle,
+            platform_review_round=self.platform_review_round,
+            platform_review_source=self.platform_review_source,
+            platform_reject_checked_cycle=self.platform_reject_checked_cycle,
+            platform_review_history=self.platform_review_history,
             series_id=self.series_id, series_name=self.series_name,
             number=self.number, album_name=self.album_name, intro=self.intro,
             published=self.published, published_at=self.published_at,
@@ -226,8 +250,14 @@ def rename_album(episode_dir: Path, album_name: str) -> EpisodeMeta:
     return meta
 
 
-def mark_published(episode_dir: Path) -> EpisodeMeta:
+def mark_published(episode_dir: Path, preserve_platform_id=False) -> EpisodeMeta:
+    from ..publish.platform_data import new_cycle
     meta = load_meta(episode_dir)
+    new_cycle(meta, 'submitted')
+    meta.platform_status = '待审核'
+    if not preserve_platform_id:
+        meta.platform_item_id = ''
+        meta.platform_modified_at = ''
     meta.published = True
     meta.published_at = time.strftime("%Y-%m-%d %H:%M:%S")
     save_meta(episode_dir, meta)

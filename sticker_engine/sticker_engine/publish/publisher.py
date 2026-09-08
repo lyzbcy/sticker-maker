@@ -233,6 +233,45 @@ class Publisher:
 
     def publish(self, episode_dir, headless: Optional[bool] = None, edit: bool = False,
                 fix_fields=None) -> dict:
+        from ..library.runtime import active_runtime
+        from ..library.commands import LOCK
+        runtime = active_runtime()
+        self._library_runtime = runtime if runtime.enabled else None
+        self._library_operation = None
+        if not runtime.enabled:
+            return self._publish_impl(episode_dir, headless, edit, fix_fields)
+        if not LOCK.acquire(blocking=False):
+            return {'success': False, 'step': 'prepare', 'error': '资源任务正在进行，请等待完成'}
+        result = {'success': False, 'step': 'unknown', 'error': '提交中断，结果待核对'}
+        try:
+            captured = runtime.capture(episode_dir)
+            work = runtime.library.read_work(runtime.account_id, captured['work_id'])
+            if work['state'] != 'available' or work['revision']['metadata'].get('missing_resources'):
+                raise ValueError('原文件未齐或作品存在版本冲突，不能提交')
+            runtime.refresh(capture=False)
+            row = next((r for r in runtime.rows() if r['work_id'] == captured['work_id']), None)
+            if not row or not row.get('can_publish'):
+                raise ValueError('发布素材不完整或资源身份存在冲突，请补齐素材并处理冲突')
+            result = self._publish_impl(episode_dir, headless, edit, fix_fields)
+            return result
+        except Exception as exc:
+            result = {'success': False, 'step': 'prepare', 'error': str(exc)}
+            return result
+        finally:
+            try:
+                if self._library_operation:
+                    from ..library.operations import finish
+                    finish(runtime, self._library_operation, bool(result.get('success')))
+                runtime.capture(episode_dir)
+            except Exception as exc:
+                # Preserve the observed platform result; an intent left unfinished
+                # still blocks retries until the user reconciles it.
+                result.setdefault('warnings', []).append(f'资源库记录保存失败，请核对平台结果：{exc}')
+                result['library_save_failed'] = True
+            finally:
+                LOCK.release()
+
+    def _publish_impl(self, episode_dir, headless=None, edit=False, fix_fields=None):
         """发布一弹。edit=True 走「编辑已驳回作品」入口（修改后重新提交审核）。
 
         fix_fields：编辑模式下**只改这些字段**（"album"/"stickers"/"icon"/
@@ -264,6 +303,9 @@ class Publisher:
             if not self.session.ensure_login(page, on_status=_login_status):
                 return {"success": False, "step": "login",
                         "error": self.session.last_login_error or "登录失败（未知原因）"}
+            if self._library_runtime:
+                from ..library.operations import verify_target
+                edit = verify_target(self._library_runtime, page, Path(episode_dir), edit)
 
             # 步骤3-5：提交作品 → 表情专辑 → 选静态（新建）；
             # 编辑模式：管理页 → 详情 → 「编辑」→ 新标签编辑器（重走全部填表，
@@ -399,6 +441,11 @@ class Publisher:
 
             # 步骤25：提交
             self._report("submit", "正在提交审核…", 0.97)
+            if self._library_runtime:
+                from ..library.operations import begin
+                from ..config.series import load_meta
+                meta = load_meta(assets.episode_dir)
+                self._library_operation = begin(self._library_runtime, meta.work_id, assets.album_name)
             ok = self._step_submit(page)
             if not ok:
                 try:
@@ -466,15 +513,22 @@ class Publisher:
                     return True
             return False
 
-        _goto_list()
+        from ..config.series import load_meta
+        platform_id = load_meta(assets.episode_dir).platform_item_id
+        if platform_id:
+            from .platform_data import detail_url, read_detail
+            read_detail(page, platform_id)
+            page.goto(detail_url(platform_id), wait_until='domcontentloaded', timeout=45000)
+        else:
+            _goto_list()
         # 定位目标行：当前页找不到则翻页继续找（2026-09-01：历史弹导入后
         # 作品 69 个占 8 页）。点击翻页后用页签名验证真的前进了——"下一页"
         # 点击偶发不生效（sync 同款问题），不验证会整轮空转。
         # 2026-09-04：列表已 30 页 ~330 行，旧上限 12 页→68/109/56 全部
         # "未找到作品行"。改页码输入框直达 + 上限 40 页。
         prev_sig = ""
-        found = False
-        for _pg in range(40):
+        found = bool(platform_id)
+        for _pg in range(0 if found else 40):
             if _click_detail_row():
                 found = True
                 break
