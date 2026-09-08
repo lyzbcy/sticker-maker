@@ -72,6 +72,29 @@
             </div>
           </div>
 
+          <!-- 账号收益卡（一键更新时刷新） -->
+          <div v-if="store.income?.summary" class="quota-card income-card">
+            <div class="quota-head">
+              <span class="quota-title">💰 账号收益</span>
+              <span class="quota-plan">{{ store.income.fetched_at }}</span>
+            </div>
+            <div class="quota-windows income-nums">
+              <div class="income-item">
+                <div class="qw-name">累计热度</div>
+                <div class="income-val">{{ store.income.summary.total_heat || 0 }}</div>
+              </div>
+              <div class="income-item">
+                <div class="qw-name">累计赞赏</div>
+                <div class="income-val">¥{{ store.income.summary.total_tips || 0 }}</div>
+              </div>
+              <div class="income-item">
+                <div class="qw-name">可提现</div>
+                <div class="income-val">¥{{ store.income.summary.withdrawable || 0 }}</div>
+              </div>
+            </div>
+            <p class="income-note">付费表情收入由热度转化，每月15日结算 · 点「一键更新」刷新</p>
+          </div>
+
           <div class="cta-row">
             <button class="start-btn" @click="store.runGenerate">
               <span class="start-emoji">🎨</span>开始生图
@@ -265,6 +288,7 @@ const fileUrl = (path) => window.api?.toFileUrl ? window.api.toFileUrl(path) : `
 const onThumbError = (e) => { e.target.style.display = 'none' }
 
 onMounted(() => {
+  store.loadIncome()
   store.loadEpisodes()
   store.loadSeries()
 })
@@ -792,4 +816,9 @@ onMounted(() => {
   .showcase-card :deep(.grid) { grid-template-columns: repeat(4, 1fr); }
   .nav-btn { padding: 8px 12px; }
 }
+.income-card { max-width: 420px; }
+.income-nums { display: flex; gap: 18px; }
+.income-item { flex: 1; text-align: center; }
+.income-val { font-size: 20px; font-weight: 800; color: var(--forest, #2e4a34); }
+.income-note { margin: 8px 0 0; font-size: 11px; color: var(--muted, #999); }
 </style>

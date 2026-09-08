@@ -1452,6 +1452,21 @@ def cmd_fix_and_republish(req_id, args):
     _result(req_id, "ok", data=result)
 
 
+def cmd_get_income(req_id, args):
+    """读取上次抓取的账号收益（income.json，一键更新时写入）。"""
+    import json as _json
+    engine = _ensure_engine()
+    f = engine.config.paths.user_data / "income.json"
+    if not f.exists():
+        _result(req_id, "ok", data={"empty": True})
+        return
+    try:
+        data = _json.loads(f.read_text(encoding="utf-8"))
+        _result(req_id, "ok", data=data)
+    except Exception as e:   # noqa: BLE001
+        _result(req_id, "fail", errors=[{"message": f"收益数据读取失败: {e}"}])
+
+
 def cmd_sync_platform_status(req_id, args):
     """一键更新：打开平台管理页抓取全部作品状态，回写本地 meta.json。"""
     from .publish.status import sync_status
@@ -2534,7 +2549,7 @@ HANDLERS = {
     "build_all_ratings_prompt": cmd_build_all_ratings_prompt, "stop": cmd_stop,
     "list_episodes": cmd_list_episodes, "open_in_finder": cmd_open_in_finder,
     "list_series": cmd_list_series, "save_series": cmd_save_series,
-    "sync_platform_status": cmd_sync_platform_status,
+    "sync_platform_status": cmd_sync_platform_status, "get_income": cmd_get_income,
     "repolish_finals": cmd_repolish_finals,
     "fix_and_republish": cmd_fix_and_republish,
     "shelf_passed": cmd_shelf_passed,

@@ -581,6 +581,7 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
     installing, installLog,
     publishing, publishProgress, publishResult, logs, agentStatus, agentPrompt,
     seriesList, selectedEpisode, settingsTab, codexUsage, loadCodexUsage,
+    income, loadIncome,
     reviewAskVisible, shouldAskForReview, dismissReviewAsk,
     init, checkCodex, installCodex, loadCharacters, ensureProbabilityDefaults,
     savePrefs, runGenerate, runBatch, batchInfo, stopRun, loadEpisodes, clearResult, pushActivity,

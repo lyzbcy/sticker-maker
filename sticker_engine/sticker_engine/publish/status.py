@@ -558,6 +558,121 @@ def _sync_status_legacy(engine, on_status: Optional[Callable[[str], None]] = Non
             "warning": "已使用页面降级读取，无法确认全量完整性；请稍后重试快速同步。"}
 
 
+INCOME_URL = ("https://sticker.weixin.qq.com/cgi-bin/mmemoticon-bin/"
+              "realnamepage?t=income/index")
+
+
+def fetch_income(page, say=None, output_root=None, max_pages=20):
+    """抓取「账号收入」页：汇总三数 + 明细表（作品名/赞赏收入/热度）全量翻页。
+
+    2026-09-05 用户需求：一键更新顺带更新收益。数据在渲染后的 DOM 里
+    （无独立 JSON 接口），表格列：作品名称 | 赞赏收入(元) | 热度 | 操作。
+    收入页官方文案：付费表情收入由表情热度转化而来，每月15日结算上月。
+    """
+    say = say or (lambda m: None)
+    try:
+        page.goto(INCOME_URL, wait_until="domcontentloaded", timeout=45000)
+        page.wait_for_timeout(4500)
+
+        def _num_after(label):
+            # 汇总卡结构：<div class="data__group__item"><p class="..title">标签
+            # [+tooltip图标]</p>...值...</div>——值与标签同 item，按 item 分组
+            # 解析（此前按兄弟/父容器兜底会跨卡片取到隔壁的数字）
+            try:
+                return page.evaluate("""(label) => {
+                  const items = [...document.querySelectorAll(
+                    '.data__group__item, [class*=group__item]')];
+                  const want = label.replace(/\\s+/g, '');
+                  for (const it of items) {
+                    const txt = (it.innerText || '').replace(/\\s+/g, '');
+                    if (txt.startsWith(want)) {
+                      const m = txt.slice(want.length).match(/[0-9][0-9.,]*/);
+                      if (m) return m[0].replace(/[,\\u00a5]/g, '');
+                    }
+                  }
+                  return '';
+                }""", label)
+            except Exception:
+                return ""
+
+        summary = {
+            "total_tips": _num_after("累计赞赏(元)"),
+            "total_heat": _num_after("累计热度"),
+            "withdrawable": _num_after("当前可提现(元)"),
+        }
+        rows = []
+        # 总页数（分页标签最后一个数字）
+        try:
+            total_pages = page.evaluate("""() => {
+              const nums = [...document.querySelectorAll(
+                'label.weui-desktop-pagination__num, .pagination span, [class*=page] span')]
+                .map(e => parseInt((e.innerText || '').trim())).filter(n => n > 0);
+              return nums.length ? Math.max(...nums) : 1;
+            }""")
+        except Exception:
+            total_pages = 1
+        for pg in range(1, min(total_pages, max_pages) + 1):
+            if pg > 1:
+                nxt = page.locator("a:has-text('下一页')")
+                if not nxt.count():
+                    break
+                try:
+                    nxt.first.click(timeout=3000)
+                except Exception:
+                    break
+            page.wait_for_timeout(1800)
+            got = page.evaluate("""() => {
+              const out = [];
+              for (const tr of document.querySelectorAll('tr')) {
+                const tds = [...tr.querySelectorAll('td')];
+                if (tds.length >= 3) {
+                  const name = (tds[0].innerText || '').trim();
+                  const tip = (tds[1].innerText || '').trim();
+                  const heat = (tds[2].innerText || '').trim();
+                  if (name && !['作品名称'].includes(name) && heat !== '' ) {
+                    out.push({name, tip, heat});
+                  }
+                }
+              }
+              return out;
+            }""")
+            for r in got:
+                if r not in rows:
+                    rows.append(r)
+        say(f"收益已更新：累计赞赏 ¥{summary['total_tips']}｜累计热度 {summary['total_heat']}"
+            f"｜可提现 ¥{summary['withdrawable']}")
+        result = {"summary": summary, "rows": rows,
+                  "fetched_at": __import__("time").strftime("%Y-%m-%d %H:%M:%S")}
+        # 落盘 user_data/income.json + 每单热度/赞赏回写本地 meta
+        if output_root is not None:
+            try:
+                import json as _json
+                from ..config.series import load_meta, save_meta
+                ud = Path(output_root).parent
+                (ud / "income.json").write_text(
+                    _json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+                for r in rows:
+                    tn = normalize_name(r["name"])
+                    for d in Path(output_root).iterdir():
+                        if d.is_dir() and d.name.startswith("episode"):
+                            m = load_meta(d)
+                            if m.album_name and normalize_name(m.album_name) == tn:
+                                try:
+                                    m.platform_heat = int(r["heat"] or 0)
+                                    m.platform_tip_income = r["tip"]
+                                    save_meta(d, m)
+                                except (ValueError, TypeError):
+                                    pass
+                                break
+            except Exception as _e:   # noqa: BLE001
+                import traceback
+                say(f"收益落盘失败：{type(_e).__name__}: {_e}"[:100])
+        return result
+    except Exception as e:   # noqa: BLE001
+        say(f"收益抓取失败（不影响作品同步）：{type(e).__name__}: {e}"[:80])
+        return {"error": str(e)[:120]}
+
+
 def sync_status(engine, on_status=None, fetch_reasons=True, force_reasons=False,
                 should_stop=None):
     """Fast full-list sync, falling back only before any fast-path writes."""
@@ -595,6 +710,10 @@ def sync_status(engine, on_status=None, fetch_reasons=True, force_reasons=False,
                 result = sync_rows(page, Path(engine.config.paths.output_root), rows,
                                  say, fetch_reasons, force_reasons,
                                  should_stop=stopped, **options)
+                # 2026-09-05：一键更新顺带抓收益（失败不影响作品同步）
+                say('正在读取账号收益…')
+                result['income'] = fetch_income(
+                    page, say, output_root=engine.config.paths.output_root)
                 if library_runtime:
                     library_runtime.refresh()
                 return result

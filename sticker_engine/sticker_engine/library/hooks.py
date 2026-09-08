@@ -22,7 +22,7 @@ MUTATIONS = {
 #   （作品状态只在 sync/publish 后才变，那些是写命令，写前会刷新）。
 FAST_LOCAL = {'load_prefs', 'list_series', 'list_prompt_sets',
               'list_episodes', 'get_episode', 'list_all_stickers',
-              'list_characters'}
+              'list_characters', 'get_income'}
 RESOURCE_EDITS = {'publish_episode', 'fix_and_republish', 'repolish_finals',
                   'update_episode_meta', 'regen_intro', 'regen_assets', 'save_rating'}
 PLATFORM = {'publish_episode', 'fix_and_republish', 'shelf_passed', 'sync_platform_status'}
