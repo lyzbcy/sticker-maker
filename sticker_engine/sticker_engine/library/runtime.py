@@ -610,6 +610,13 @@ class LibraryRuntime:
         return result
 
     def rows(self):
+        # 2026-09-05 性能：rows 全量扫库 + 306 个作品目录 glob，冷跑 ~20s。
+        # 30s 内的重复调用直接用快照（runtime 实例已挂 engine 单例复用）。
+        import time as _time
+        if _time.monotonic() - getattr(self, '_rows_at', 0) < 30:
+            cached = self.state.get('last_rows')
+            if cached is not None:
+                return cached
         try:
             self.library
         except (FileNotFoundError, OSError, ValueError) as exc:
@@ -650,6 +657,7 @@ class LibraryRuntime:
                 sync_conflicts=work.get('sync_conflicts', []),
                 identity_conflict=has_identity_conflict))
         self.state['last_rows'] = copy.deepcopy(rows)
+        self._rows_at = _time.monotonic()
         self.save()
         return rows
 
