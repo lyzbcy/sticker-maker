@@ -80,19 +80,19 @@
             </div>
             <div class="quota-windows income-nums">
               <div class="income-item">
-                <div class="qw-name">累计热度</div>
+                <div class="qw-name">累计热度(豆)</div>
                 <div class="income-val">{{ store.income.summary.total_heat || 0 }}</div>
+              </div>
+              <div class="income-item">
+                <div class="qw-name">预计到手</div>
+                <div class="income-val">¥{{ store.income.est_income_yuan ?? '?' }}</div>
               </div>
               <div class="income-item">
                 <div class="qw-name">累计赞赏</div>
                 <div class="income-val">¥{{ store.income.summary.total_tips || 0 }}</div>
               </div>
-              <div class="income-item">
-                <div class="qw-name">可提现</div>
-                <div class="income-val">¥{{ store.income.summary.withdrawable || 0 }}</div>
-              </div>
             </div>
-            <p class="income-note">付费表情收入由热度转化，每月15日结算 · 点「一键更新」刷新</p>
+            <p class="income-note">热度÷10=付费总额，平台抽10%后×0.9=预计到手 · 每月15日结算 · 「一键更新」刷新</p>
           </div>
 
           <div class="cta-row">

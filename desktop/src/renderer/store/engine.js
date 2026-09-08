@@ -75,6 +75,17 @@ async function loadCodexUsage() {
   } catch { /* 额度拉取失败不阻塞首页 */ }
 }
 
+// 表情收益汇总（首页收益卡）：get_income 直通，含 summary.total_heat/total_tips
+// 与 est_income_yuan/fetched_at；MainScreen 模板均用 ?. 防护，失败不阻塞
+const income = ref(null)
+async function loadIncome() {
+  if (!api) return
+  try {
+    const res = await api.send('get_income', {})
+    if (res?.status === 'ok' && res.data) income.value = res.data
+  } catch { /* 收益拉取失败不阻塞首页 */ }
+}
+
 const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: null })
   const agentPrompt = ref('')
   // 作品库 / 详情

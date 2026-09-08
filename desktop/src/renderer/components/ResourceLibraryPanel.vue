@@ -148,11 +148,24 @@
       </label>
       <div class="button-row transfer-actions">
         <button class="btn primary" data-test="preview-export" :disabled="previewing || !exportTarget" @click="previewExport">
-          {{ previewing ? '扫描中…' : '生成迁移预览' }}
+          {{ previewing ? '扫描中…' : exportMode === 'migration' ? '生成迁移预览' : '生成备份预览' }}
         </button>
-        <button class="btn primary" data-test="execute-export" :disabled="!canExecutePlan || executing" @click="executeExport">
+        <button class="btn primary" data-test="execute-export" :disabled="!canExecutePlan || executing"
+                :title="executeDisabledReason || '按已确认的预览执行复制'" @click="executeExport">
           {{ executing ? '执行中…' : '执行已确认预览' }}
         </button>
+      </div>
+      <p v-if="executeDisabledReason" class="disabled-reason" data-test="execute-disabled-reason">
+        暂不能执行：{{ executeDisabledReason }}
+      </p>
+      <div v-if="transferBusy" class="progress-line" data-test="transfer-progress" role="status" aria-live="polite">
+        <div class="progress-track">
+          <div class="progress-fill" :class="{ indeterminate: progressPercent == null }"
+               :style="progressPercent != null ? { width: `${progressPercent}%` } : null"></div>
+        </div>
+        <p class="progress-text">
+          {{ progressText }}<span v-if="elapsedSeconds > 0"> · 已用时 {{ elapsedSeconds }} 秒</span>
+        </p>
       </div>
       <div v-if="executionResult" class="execution-result" :class="transferOutcomeClass(executionResult.state)" data-test="execution-result">
         <strong>{{ transferOutcomeLabel(executionResult.state) }}</strong>
@@ -365,6 +378,9 @@ const workInput = ref('')
 const handingOff = ref(false)
 const handoffMessage = ref('')
 const executionResult = ref(null)
+const progressInfo = ref(null)
+const elapsedSeconds = ref(0)
+let elapsedTimer = null
 const transferTipClass = ref('transfer-success')
 const refreshing = ref(false)
 const mounted = ref(false)
@@ -408,6 +424,59 @@ const canExecutePlan = computed(() => {
   const cleanup = exportMode.value === 'migration' && cleanupOld.value
   return !!plan.value?.plan_id && missing.value.length === 0 &&
     plan.value.mode === exportMode.value && Boolean(plan.value.cleanup) === cleanup
+})
+const executeDisabledReason = computed(() => {
+  if (executing.value) return ''
+  if (!plan.value?.plan_id) return '请先生成预览'
+  if (missing.value.length) return `清单仍缺失 ${missing.value.length} 项，补齐后重新预览`
+  const cleanup = exportMode.value === 'migration' && cleanupOld.value
+  if (plan.value.mode !== exportMode.value) return '预览与当前导出用途不一致，请重新预览'
+  if (Boolean(plan.value.cleanup) !== cleanup) return '清理开关与预览时不一致，请重新预览'
+  return ''
+})
+const transferBusy = computed(() => previewing.value || executing.value)
+const progressPercent = computed(() => {
+  if (previewing.value) return null
+  const n = Number(progressInfo.value?.percent)
+  return Number.isFinite(n) && n >= 0 ? Math.min(100, Math.round(n)) : null
+})
+const progressText = computed(() => {
+  if (previewing.value) return '正在扫描资源库并校验文件清单，文件多时可能需要几分钟…'
+  const info = progressInfo.value
+  if (!info) return '正在校验清单并准备复制…'
+  const label = info.phase === 'cleanup' ? '清理旧位置文件' : '复制到目标位置'
+  return `${label}：${info.completed} / ${info.total} 项（${info.percent}%）`
+})
+function acceptProgress(ev) {
+  if (!mounted.value || ev?.stage !== 'library' || !transferBusy.value) return
+  let completed = Number(ev.completed)
+  let total = Number(ev.total)
+  let phase = ev.phase
+  // 旧引擎把进度 dict 拍平成 message 字符串，从中兜底解析计数
+  if (!(Number.isFinite(completed) && Number.isFinite(total) && total > 0)) {
+    const match = typeof ev.message === 'string'
+      ? ev.message.match(/'completed':\s*(\d+),?\s*'total':\s*(\d+)/) : null
+    if (match) { completed = Number(match[1]); total = Number(match[2]) }
+  }
+  if (!phase && typeof ev.message === 'string' && ev.message.includes("'phase': 'cleanup'")) phase = 'cleanup'
+  if (Number.isFinite(completed) && Number.isFinite(total) && total > 0) {
+    progressInfo.value = {
+      phase: phase || 'copy',
+      completed,
+      total,
+      percent: Math.min(100, Math.round((completed / total) * 100)),
+    }
+  }
+}
+watch(transferBusy, (busy) => {
+  if (busy) {
+    elapsedSeconds.value = 0
+    progressInfo.value = null
+    if (!elapsedTimer) elapsedTimer = setInterval(() => { if (mounted.value) elapsedSeconds.value += 1 }, 1000)
+  } else if (elapsedTimer) {
+    clearInterval(elapsedTimer)
+    elapsedTimer = null
+  }
 })
 
 function api() { return typeof window !== 'undefined' ? window.api : null }
@@ -693,6 +762,7 @@ function formatBytes(value) {
 
 onMounted(async () => {
   mounted.value = true
+  if (api()?.onProgress) api().onProgress(acceptProgress)
   await refreshStatus()
   if (!mounted.value) return
   pollTimer = setInterval(() => {
@@ -703,6 +773,8 @@ onBeforeUnmount(() => {
   mounted.value = false
   if (pollTimer) clearInterval(pollTimer)
   pollTimer = null
+  if (elapsedTimer) clearInterval(elapsedTimer)
+  elapsedTimer = null
 })
 </script>
 
@@ -766,6 +838,13 @@ input[type="text"]:focus { outline: none; border-color: var(--sage); }
 .purpose-option small { margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .cleanup-line { margin-top: 12px; }
 .transfer-actions { margin-top: 13px; }
+.disabled-reason { margin: 8px 0 0; color: #9a6c13; font-size: 11.5px; line-height: 1.6; }
+.progress-line { margin-top: 12px; }
+.progress-track { height: 8px; border-radius: 999px; background: var(--paper); overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 999px; background: var(--forest); transition: width .25s ease; }
+.progress-fill.indeterminate { width: 38%; animation: indeterminate-slide 1.1s ease-in-out infinite; }
+.progress-text { margin: 7px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+@keyframes indeterminate-slide { 0% { margin-left: -38%; } 100% { margin-left: 100%; } }
 .plan-box { margin-top: 14px; padding: 13px 15px; border-radius: var(--r-md); background: var(--bg-cream); border: 1.5px dashed var(--line); color: var(--muted); font-size: 12px; line-height: 1.6; }
 .plan-box p { margin: 5px 0 0; }
 .execution-result { margin-top: 12px; padding: 10px 13px; border-radius: var(--r-md); background: rgba(175,205,168,.16); color: var(--forest); font-size: 12px; }

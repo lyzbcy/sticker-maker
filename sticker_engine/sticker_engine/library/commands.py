@@ -90,8 +90,23 @@ def dispatch(cli, name, req_id, args):
                 if check.config.paths.output_root != rt.output_root:
                     raise ValueError('新资源库读取位置校验失败')
             def progress(*items):
-                cli._emit({'id': req_id, 'type': 'progress', 'stage': 'library',
-                    'message': ' '.join(str(i) for i in items), 'percent': None})
+                # Keep the flat message for logs, but also surface the
+                # structured counters so the UI can render a real progress bar.
+                event = {'id': req_id, 'type': 'progress', 'stage': 'library',
+                         'message': ' '.join(str(i) for i in items), 'percent': None}
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    completed, total = item.get('completed'), item.get('total')
+                    if isinstance(completed, int) and isinstance(total, int) and total > 0:
+                        event.update(
+                            phase=str(item.get('phase') or 'copy'),
+                            entry=str(item.get('entry') or ''),
+                            completed=completed,
+                            total=total,
+                            percent=round(completed * 100.0 / total, 1),
+                        )
+                cli._emit(event)
             result = manager.execute(args.get('plan_id'), activate=activate,
                                      should_stop=stop.is_set, progress=progress)
             if result.get('state') == 'completed':
