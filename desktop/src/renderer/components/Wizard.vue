@@ -7,7 +7,10 @@
     </div>
     <div class="step-title">步骤 {{ step + 1 }}/5：{{ stepNames[step] }}</div>
     <div class="step-body">
-      <component :is="steps[step]" />
+      <component :is="steps[step]" @skip-check="skipAll" />
+    </div>
+    <div class="wizard-skip-row">
+      <button @click="skipAll" class="btn-skip">跳过向导，直接使用默认设置开始 →</button>
     </div>
     <div class="nav">
       <button v-if="step > 0" @click="step--" class="btn-secondary">上一步</button>
@@ -39,29 +42,8 @@ const steps = [WizardStepCodex, WizardStepBase, WizardStepMode, WizardStepChar, 
 const stepNames = ['检测 codex', 'base 图管理', '模式概率', '角色概率', '生图偏好']
 
 const canNext = computed(() => {
-  if (step.value === 0) return store.codexStatus && store.codexStatus.image_ready
-  if (step.value === 1) {
-    const names = Object.keys(store.characters)
-    return names.length > 0 && names.every(name => {
-      const bases = Object.keys(store.characters[name]?.bases || {})
-      const sum = bases.reduce(
-        (total, key) => total + (Number(store.prefs?.base_probs?.[name]?.[key]) || 0), 0,
-      )
-      return bases.length > 0 && Math.abs(sum - 1) <= 0.001
-    })
-  }
-  if (step.value === 2) {
-    const sum = Object.values(store.prefs?.mode_probs || {}).reduce(
-      (total, value) => total + (Number(value) || 0), 0,
-    )
-    return Math.abs(sum - 1) <= 0.001
-  }
-  if (step.value === 3) {
-    const sum = Object.keys(store.characters).reduce(
-      (total, name) => total + (Number(store.prefs?.single_char_probs?.[name]) || 0), 0,
-    )
-    return Math.abs(sum - 1) <= 0.001
-  }
+  // 2026-09-05 产品根修：向导是引导不是门禁——codex 检测可选（主页可
+  // 重试），概率和不拦截（保存时自动按比例折算）。任何一步都能往下走。
   return true
 })
 
@@ -70,6 +52,12 @@ const finishErrors = ref([])
 
 // 用户返回修改任何一步时，清掉上次的完成错误
 watch(step, () => { finishErrors.value = [] })
+
+async function skipAll() {
+  // 产品根修（2026-09-05 用户第一性原理）：向导是引导不是门禁——
+  // 默认配置开箱可用，任何一步都允许直接进主页面，之后随时在设置里改
+  store.phase = 'main'
+}
 
 async function finish() {
   if (finishing.value) return
@@ -193,4 +181,8 @@ button {
 }
 .finish-error p { margin: 0; }
 .finish-error-tip { margin-top: 4px; color: var(--muted); font-size: 12px; }
+.wizard-skip-row { display: flex; justify-content: center; margin: 10px 0 2px; }
+.btn-skip { border: 0; background: none; color: var(--muted, #888); cursor: pointer;
+  font-size: 12.5px; text-decoration: underline; padding: 6px 10px; }
+.btn-skip:hover { color: var(--forest, #2e4a34); }
 </style>

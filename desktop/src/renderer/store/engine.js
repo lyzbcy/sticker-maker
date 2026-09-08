@@ -101,10 +101,11 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
     try {
       const res = await Promise.race([api.send('load_prefs'), timeout])
       if (res && res.__timeout) {
-        // 超时：引擎可能还在启动，先进向导（用户可重试）
-        lastError.value = [{ message: '引擎启动较慢，已进入向导。如 codex 检测失败请点重新检测。' }]
+        // 2026-09-05 产品根修：引擎慢不是把用户锁在向导外的理由——
+        // 主页面本就能用（浏览作品/看状态），检测在主页随时可重试。
+        lastError.value = [{ message: '引擎启动较慢，部分功能稍后可用，可在主页重试检测。' }]
         prefs.value = defaultPrefs()
-        phase.value = 'wizard'
+        phase.value = 'main'
         return
       }
       if (res && res.status === 'ok') {
@@ -113,12 +114,14 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
         firstRun.value = res.data.first_run
         phase.value = firstRun.value ? 'wizard' : 'main'
       } else {
+        // 读不到 prefs = 真正首次使用才走向导；否则直接进主页（产品根修：
+        // 向导是可选引导，不是进入软件的门禁）
         prefs.value = defaultPrefs()
-        phase.value = 'wizard'
+        phase.value = firstRun.value ? 'wizard' : 'main'
       }
     } catch (e) {
       prefs.value = defaultPrefs()
-      phase.value = 'wizard'
+      phase.value = 'main'
     }
   }
 

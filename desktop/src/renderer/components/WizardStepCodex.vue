@@ -1,5 +1,6 @@
 <template>
-  <div class="step-codex">
+  <button class="skip-check" @click="$emit('skip-check')">稍后检测，先跳过 →</button>
+    <div class="step-codex">
     <!-- 未检测 -->
     <div v-if="!store.codexStatus" class="checking">检测中…</div>
 
@@ -230,4 +231,6 @@ pre {
   font-size: 13px;
 }
 .install-error p { margin: 2px 0; }
+.skip-check { border: 0; background: none; color: var(--muted, #888); cursor: pointer;
+  font-size: 12.5px; text-decoration: underline; margin-left: 10px; }
 </style>

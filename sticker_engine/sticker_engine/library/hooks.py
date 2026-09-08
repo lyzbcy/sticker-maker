@@ -16,6 +16,10 @@ MUTATIONS = {
 }
 READS = {'list_episodes', 'get_episode', 'list_all_stickers', 'load_prefs',
          'list_series', 'list_characters', 'list_prompt_sets'}
+# 纯本地毫秒级读（prefs.yaml / series.json / prompts 目录）——不依赖资源库
+# 行、不可能写任何东西，过锁只会被全量 refresh 拖慢。2026-09-05 事故：
+# load_prefs 被 40s 冷刷新拖住 → 前端 15s 超时判定"引擎慢"踢进强制向导。
+FAST_LOCAL = {'load_prefs', 'list_series', 'list_prompt_sets'}
 RESOURCE_EDITS = {'publish_episode', 'fix_and_republish', 'repolish_finals',
                   'update_episode_meta', 'regen_intro', 'regen_assets', 'save_rating'}
 PLATFORM = {'publish_episode', 'fix_and_republish', 'shelf_passed', 'sync_platform_status'}
@@ -106,7 +110,7 @@ def reload_engine_config(engine, runtime):
 
 
 def invoke(cli, req_id, cmd, args, handler):
-    if cmd not in MUTATIONS | READS:
+    if cmd not in MUTATIONS | READS or cmd in FAST_LOCAL:
         return handler(req_id, args)
     # 2026-09-05 评审根修：CLI 多线程分发 + 非阻塞抢锁 → 前端启动时并发
     # 请求只有 1 个成功、其余全部被"正在生成、同步或迁移资源"拒绝（用户
