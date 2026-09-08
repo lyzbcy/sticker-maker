@@ -155,6 +155,7 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
       vision_calls: false,
       browser_headless: false,
       sticker_price: 0,
+      price_probs: {},
     }
   }
 

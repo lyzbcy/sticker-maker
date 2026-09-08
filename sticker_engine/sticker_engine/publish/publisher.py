@@ -1308,14 +1308,15 @@ class Publisher:
     # ---- 步骤19：表情价格（免费） ----
 
     def _step_select_price(self, page) -> None:
-        """步骤20：表情价格——跟随用户设置（0=免费默认 / 10=10 微信豆），
-        点可见 label，已选跳过。2026-09-04 侦察：付费档 label 文本为
-        「10 微信豆」（radio value=false）。"""
-        from .browser import pref_sticker_price
-        if pref_sticker_price() >= 10:
-            self._click_label(page, "10 微信豆", check=True)
-        else:
-            self._click_label(page, "免费", check=True)
+        """步骤20：表情价格——固定（0=免费默认 / 10=10 微信豆）或按
+        price_probs 概率抽样（每次发布一弹抽一次），点可见 label，已选跳过。
+        2026-09-04 侦察：付费档 label 文本为「10 微信豆」（radio value=false）。"""
+        from .browser import roll_sticker_price
+        price, rolled = roll_sticker_price()
+        label = "10 微信豆" if price >= 10 else "免费"
+        if rolled:
+            self._warn(f"本弹价格按概率抽定：【{label}】（价格权重见设置 → 表情价格）")
+        self._click_label(page, label, check=True)
 
     # ---- 步骤20-22：赞赏 ----
 

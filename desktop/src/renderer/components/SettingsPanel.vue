@@ -162,16 +162,34 @@
 
         <h3 class="section-title" style="margin-top:18px;">表情价格</h3>
         <div class="bm-opts">
-          <label class="bm-opt" :class="{ active: stickerPrice === 0 }">
-            <input type="radio" :value="0" v-model.number="stickerPrice" />
+          <label class="bm-opt" :class="{ active: priceMode === 'free' }">
+            <input type="radio" value="free" v-model="priceMode" />
             <span class="bm-name">🆓 免费（默认）</span>
             <span class="bm-desc">提交作品时表情价格选「免费」</span>
           </label>
-          <label class="bm-opt" :class="{ active: stickerPrice === 10 }">
-            <input type="radio" :value="10" v-model.number="stickerPrice" />
+          <label class="bm-opt" :class="{ active: priceMode === 'paid10' }">
+            <input type="radio" value="paid10" v-model="priceMode" />
             <span class="bm-name">💰 10 微信豆</span>
             <span class="bm-desc">提交作品时表情价格选「10 微信豆」——之后生成的表情都会按此价格提交</span>
           </label>
+          <label class="bm-opt" :class="{ active: priceMode === 'prob' }">
+            <input type="radio" value="prob" v-model="priceMode" />
+            <span class="bm-name">🎲 概率定价</span>
+            <span class="bm-desc">每一弹按概率抽定价格，例如 30% 概率 10 微信豆、70% 免费</span>
+          </label>
+        </div>
+        <div v-if="priceMode === 'prob'" class="price-prob-box">
+          <label class="pp-field">
+            <span>免费 {{ priceProbFree }}%</span>
+            <input type="range" min="0" max="100" step="5" v-model.number="priceProbFree"
+                   data-test="price-prob-free" />
+          </label>
+          <label class="pp-field">
+            <span>10 微信豆 {{ 100 - priceProbFree }}%</span>
+            <input type="range" min="0" max="100" step="5" v-model.number="priceProbPaid"
+                   data-test="price-prob-paid" />
+          </label>
+          <p class="pp-hint">两档概率合计恒为 100%；发布日志会记录每一弹抽到的价格。</p>
         </div>
         <p v-if="bmSaved" class="cred-saved">✓ 已保存</p>
       </div>
@@ -214,11 +232,23 @@ async function switchPublish() {
 // ---- 浏览器模式（有头=能看见软件操作 / 无头=后台静默）+ 表情价格 ----
 const browserHeadless = ref(false)
 const stickerPrice = ref(0)
+const priceMode = ref('free')          // free / paid10 / prob
+const priceProbFree = ref(70)          // 免费档百分比（10 豆档 = 100 - 它）
+const priceProbPaid = ref(30)
 const bmSaved = ref(false)
 onMounted(() => {
   if (store.prefs) {
     browserHeadless.value = !!store.prefs.browser_headless
     stickerPrice.value = Number(store.prefs.sticker_price) || 0
+    const probs = store.prefs.price_probs
+    if (probs && Object.keys(probs).length) {
+      priceMode.value = 'prob'
+      const total = Object.values(probs).reduce((s, v) => s + Number(v || 0), 0) || 1
+      priceProbFree.value = Math.round((Number(probs['0'] || 0) / total) * 100)
+      priceProbPaid.value = 100 - priceProbFree.value
+    } else {
+      priceMode.value = stickerPrice.value >= 10 ? 'paid10' : 'free'
+    }
   }
 })
 async function savePrefsNow() {
@@ -233,10 +263,31 @@ watch(browserHeadless, async (v) => {
   store.prefs.browser_headless = v
   savePrefsNow()
 })
-watch(stickerPrice, async (v) => {
-  if (!store.prefs || Number(store.prefs.sticker_price) === v) return
-  store.prefs.sticker_price = v
+watch(priceMode, async (mode) => {
+  if (!store.prefs) return
+  if (mode === 'prob') {
+    store.prefs.price_probs = { '0': priceProbFree.value / 100, '10': priceProbPaid.value / 100 }
+  } else {
+    store.prefs.price_probs = {}
+    stickerPrice.value = mode === 'paid10' ? 10 : 0
+    store.prefs.sticker_price = stickerPrice.value
+  }
   savePrefsNow()
+})
+// 两个滑杆联动（合计恒为 100），改动即保存概率
+watch(priceProbFree, (v) => {
+  priceProbPaid.value = 100 - v
+  if (priceMode.value === 'prob' && store.prefs) {
+    store.prefs.price_probs = { '0': v / 100, '10': priceProbPaid.value / 100 }
+    savePrefsNow()
+  }
+})
+watch(priceProbPaid, (v) => {
+  priceProbFree.value = 100 - v
+  if (priceMode.value === 'prob' && store.prefs) {
+    store.prefs.price_probs = { '0': priceProbFree.value / 100, '10': v / 100 }
+    savePrefsNow()
+  }
 })
 
 // ---- Prompt 方案管理 ----
@@ -535,6 +586,10 @@ h2 {
 
 /* 浏览器模式选项 */
 .bm-opts { display: flex; flex-direction: column; gap: 10px; }
+.price-prob-box { margin-top: 12px; padding: 12px 14px; border-radius: 10px; background: rgba(175, 205, 168, .14); display: flex; flex-direction: column; gap: 10px; }
+.pp-field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink, #333); }
+.pp-field input[type="range"] { accent-color: var(--forest, #2e4a34); }
+.pp-hint { margin: 0; font-size: 12px; color: var(--muted, #888); line-height: 1.6; }
 .bm-opt {
   display: grid; grid-template-columns: auto auto 1fr; align-items: baseline;
   gap: 8px; padding: 10px 12px; border: 1.5px solid var(--line);

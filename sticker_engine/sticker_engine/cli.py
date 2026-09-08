@@ -13,7 +13,7 @@ from pathlib import Path
 from . import StickerEngine, Config
 from .config.schema import Paths, Prefs, ModeProbsConfig
 from .config.paths import resolve_paths, current_platform
-from .config.loader import load_prefs_from_file, save_prefs
+from .config.loader import load_prefs_from_file, save_prefs, _clean_price_probs
 
 VERSION = "0.3.0"
 
@@ -2515,6 +2515,7 @@ def _prefs_to_dict(prefs):
             "vision_calls": prefs.vision_calls,
             "browser_headless": prefs.browser_headless,
             "sticker_price": prefs.sticker_price,
+            "price_probs": {str(k): v for k, v in (prefs.price_probs or {}).items()},
             "background_mode": prefs.background_mode,
             "default_series_id": prefs.default_series_id}
 
@@ -2535,6 +2536,7 @@ def _dict_to_prefs(d):
         vision_calls=d.get("vision_calls", False),
         browser_headless=d.get("browser_headless", False),
         sticker_price=int(d.get("sticker_price", 0) or 0),
+        price_probs=_clean_price_probs(d.get("price_probs")),
         background_mode=str(d.get("background_mode") or "transparent"))
 
 

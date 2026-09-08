@@ -29,6 +29,30 @@ def pref_sticker_price() -> int:
         return 0
 
 
+def roll_sticker_price() -> "tuple[int, bool]":
+    """决定本弹价格：price_probs 非空 → 按权重比例抽样（和不必为 1），
+    返回 (价格, 是否概率抽样)；空 dict / 读不到 → 固定 sticker_price。
+    价格 >=10 一律映射平台的「10 微信豆」档。"""
+    import random
+    try:
+        from ..config.paths import resolve_paths, current_platform
+        from ..config.loader import load_prefs_from_file, _clean_price_probs
+        prefs = load_prefs_from_file(resolve_paths(current_platform()).prefs_file)
+    except Exception:   # noqa: BLE001
+        prefs = None
+    probs = _clean_price_probs(getattr(prefs, "price_probs", None)) if prefs else {}
+    if not probs:
+        return (int(getattr(prefs, "sticker_price", 0) or 0) if prefs else 0), False
+    total = sum(probs.values())
+    r = random.random() * total
+    acc = 0.0
+    for price in sorted(probs):
+        acc += probs[price]
+        if r <= acc:
+            return price, True
+    return max(probs), True
+
+
 def pref_headless() -> bool:
     """读用户设置：浏览器模式（设置 → 发布账号 → 浏览器模式）。
 

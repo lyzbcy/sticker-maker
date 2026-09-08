@@ -1454,6 +1454,19 @@ class TransferManager:
         total = sum(1 for entry in plan.get("entries") or [] if entry.get("capture", True))
         completed_count = 0
         cancelled = False
+        # Same throttling rationale as _execute_library_copy: one plan rewrite
+        # per copied file is quadratic when the plan holds thousands of
+        # entries (episode imports / runtime snapshot exports).
+        import time as _time
+
+        plan_save = {"count": 0, "at": _time.monotonic()}
+
+        def save_plan_throttled(force: bool = False) -> None:
+            plan_save["count"] += 1
+            if force or plan_save["count"] >= 50 or _time.monotonic() - plan_save["at"] >= 5.0:
+                self._save_plan(plan)
+                plan_save.update(count=0, at=_time.monotonic())
+
         for entry in plan.get("entries") or []:
             if not entry.get("capture", True):
                 # meta.json is canonicalised by the runtime and is never put
@@ -1507,7 +1520,9 @@ class TransferManager:
                 entry["status"] = "error"
                 entry["error"] = f"copy_failed: {exc}"
                 errors.append(f"{entry['logical_path']}: copy_failed: {exc}")
-            self._save_plan(plan)
+            save_plan_throttled()
+
+        save_plan_throttled(force=True)
 
         if cancelled:
             plan["state"] = "cancelled"
@@ -1788,6 +1803,11 @@ class TransferManager:
             source.get("source_id"): source
             for source in plan.get("library_sources") or []
         }
+        # The full-source revalidation (every plan entry hashed plus a root
+        # walk) used to run once per deleted file, which is quadratic on
+        # large libraries.  Validate each source once per cleanup pass; every
+        # individual unlink is still guarded by its own snapshot check below.
+        validated_sources: Dict[str, Dict[str, Any]] = {}
         for index, entry in enumerate(plan.get("entries") or [], start=1):
             if not entry.get("managed"):
                 continue
@@ -1805,14 +1825,18 @@ class TransferManager:
             if source_status.get(entry.get("source_id"), {}).get("issues"):
                 entry["status"] = "cleanup_refused"
                 continue
-            current_source = self._revalidate_library_source(plan, source)
-            if current_source.get("issues"):
-                entry["status"] = "cleanup_refused"
-                errors.extend(
-                    f"{entry.get('logical_path')}: cleanup refused; {issue}"
-                    for issue in current_source["issues"]
-                )
-                break
+            sid = entry.get("source_id")
+            current_source = validated_sources.get(sid)
+            if current_source is None:
+                current_source = self._revalidate_library_source(plan, source)
+                if current_source.get("issues"):
+                    entry["status"] = "cleanup_refused"
+                    errors.extend(
+                        f"{entry.get('logical_path')}: cleanup refused; {issue}"
+                        for issue in current_source["issues"]
+                    )
+                    break
+                validated_sources[sid] = current_source
             path = Path(entry["source_path"])
             try:
                 if not _is_within(_canonical(path), _canonical(Path(source["path"]))):

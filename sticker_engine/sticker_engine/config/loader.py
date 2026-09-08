@@ -10,6 +10,20 @@ except ImportError:
     yaml = None
 
 
+def _clean_price_probs(raw) -> dict:
+    """{"0": 0.7, "10": 0.3} → 过滤成 {int价格: float权重}；非法项丢弃。"""
+    cleaned = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            try:
+                price, weight = int(k), float(v)
+            except (TypeError, ValueError):
+                continue
+            if price >= 0 and weight > 0:
+                cleaned[price] = weight
+    return cleaned
+
+
 def load_prefs_from_file(prefs_path: Path) -> Optional[Prefs]:
     """从 prefs.yaml 读用户偏好（前情提要）。文件不存在返回 None（首次启动）。"""
     if prefs_path is None or not Path(prefs_path).exists() or yaml is None:
@@ -34,6 +48,7 @@ def load_prefs_from_file(prefs_path: Path) -> Optional[Prefs]:
         vision_calls=data.get("vision_calls", False),
         browser_headless=data.get("browser_headless", False),
         sticker_price=int(data.get("sticker_price", 0) or 0),
+        price_probs=_clean_price_probs(data.get("price_probs")),
         background_mode=str(data.get("background_mode") or "transparent"),
     )
 
@@ -56,6 +71,7 @@ def save_prefs(prefs: Prefs, prefs_path: Path) -> None:
         "vision_calls": prefs.vision_calls,
         "browser_headless": prefs.browser_headless,
         "sticker_price": prefs.sticker_price,
+        "price_probs": {str(k): v for k, v in (prefs.price_probs or {}).items()},
         "background_mode": prefs.background_mode,
     }
     if yaml is None:

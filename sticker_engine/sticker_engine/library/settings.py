@@ -46,6 +46,7 @@ PREF_KEYS = {
     "prompt_set_id",
     "vision_calls",
     "sticker_price",
+    "price_probs",
 }
 PRIVATE_NAMES = {
     ".env",
@@ -428,14 +429,19 @@ class SharedSettings:
                 local_fingerprint = local_by_id.get(entity_id)
                 marker_fingerprint = marker.get("fingerprint") if marker else None
                 if marker and marker.get("revision_id") == candidate["revision_id"]:
-                    if marker_fingerprint is None or local_fingerprint == marker_fingerprint:
+                    if local_fingerprint is None:
+                        # 本地实体尚未物化（迁移切换库/新设备的工作缓存为空）：
+                        # 落入下方 stage 将库版本写出到本地，而非误判为本地修改冲突
+                        pass
+                    elif marker_fingerprint is None or local_fingerprint == marker_fingerprint:
                         unchanged += 1
                         continue
-                    if candidate.get("metadata", {}).get("setting_type") == "series":
-                        series_blocked = True
-                    conflicts.append(entity_id)
-                    continue
-                if marker and marker_fingerprint and local_fingerprint != marker_fingerprint:
+                    else:
+                        if candidate.get("metadata", {}).get("setting_type") == "series":
+                            series_blocked = True
+                        conflicts.append(entity_id)
+                        continue
+                if marker and marker_fingerprint and local_fingerprint not in (None, marker_fingerprint):
                     if candidate.get("metadata", {}).get("setting_type") == "series":
                         series_blocked = True
                     conflicts.append(entity_id)

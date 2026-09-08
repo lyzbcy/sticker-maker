@@ -5,7 +5,7 @@
 
 ## 一句话现状
 
-`v0.3.0` 双平台（Windows + Mac）闭环：向导配置 → codex 三模式生图（含 **IP 身份门禁**）→ **内容感知切图**（投影找沟 + 连通域归属，不再被格线切歪）→ 系列自动命名（「周三涵做表情 N」）→ 账号密码自动登录发布到微信平台（keyring 存凭据）。已真实发布过专辑。后端 200 测试 / 前端 32 测试全绿。
+`v0.3.0` 双平台（Windows + Mac）闭环：向导配置 → codex 三模式生图（含 **IP 身份门禁**）→ **内容感知切图**（投影找沟 + 连通域归属，不再被格线切歪）→ 系列自动命名（「周三涵做表情 N」）→ 账号密码自动登录发布到微信平台（keyring 存凭据）。已真实发布过专辑。后端 460 测试 / 前端 65 测试全绿。资源库迁移已在 Windows 真实库（12370 文件 / 2GB）实测通过，全程进度可见。
 
 ## 当前交付
 
@@ -15,7 +15,7 @@
 | 桌面应用（Win+Mac） | ✅ 真实走查通过，32 个前端测试 | [`status-B.md`](./status-B.md) |
 | 微信发布 | ✅ 密码自动登录 + 全字段自动填写 + 真实提交成功 | [`status-C.md`](./status-C.md) + [`reference/publish.md`](./reference/publish.md) |
 | 系列/作品库 | ✅ 系列编号 + 全部作品 + 详情页 | [`reference/series.md`](./reference/series.md) |
-| 账号与资源库 | ✅ Syncthing 共享库、占位符、迁移/导入、冲突和手动交接 | [`reference/resource-library.md`](./reference/resource-library.md) |
+| 账号与资源库 | ✅ Syncthing 共享库、占位符、迁移/导入、冲突和手动交接；迁移含全程进度反馈，已真实库实测 | [`reference/resource-library.md`](./reference/resource-library.md) |
 | 平台审核驳回 | 🔧 驳回理由抓取/展示/一键评审 + 整改记录 | [`reference/platform-review.md`](./reference/platform-review.md) |
 | AI Agent | ✅ 本地令牌接口、提示词、计划任务、启停已接入 | [`status-D.md`](./status-D.md) |
 | 推广与介绍页 | ✅ 精选表情、三码、版本刷新与更新清单 | [`status-E.md`](./status-E.md) |

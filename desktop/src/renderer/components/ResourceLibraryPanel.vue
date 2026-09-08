@@ -105,8 +105,8 @@
         <p v-if="!(conflict.heads || []).length" class="hint">
           <span v-if="conflictDetail(conflict)">{{ conflictDetail(conflict) }} · </span>该冲突由本机诊断记录发现；点击上方「↻ 刷新资源」核对后，若仍冲突会显示各设备版本供选择。
         </p>
-        <p v-if="resolveMessage" class="resolve-message" data-test="resolve-message">{{ resolveMessage }}</p>
       </article>
+      <p v-if="resolveMessage" class="resolve-message" data-test="resolve-message">{{ resolveMessage }}</p>
     </section>
 
     <section class="library-card">
@@ -294,13 +294,15 @@
           <span>{{ head.metadata?.device_label || head.metadata?.device_id || '另一台电脑' }} · {{ head.revision_id }}</span>
           <div class="button-row">
             <button class="btn secondary" :data-test="`choose-${head.revision_id}`"
-                    :disabled="!!resolvingRevision" @click="resolveConflict(conflict, head, 'choose')">选用此版本</button>
+                    :disabled="!!resolvingRevision" @click="resolveConflict(conflict, head, 'choose')">
+              {{ resolvingRevision === head.revision_id ? '处理中…' : '选用此版本' }}
+            </button>
             <button class="btn text-btn" :data-test="`draft-${head.revision_id}`"
                     :disabled="!!resolvingRevision" @click="resolveConflict(conflict, head, 'draft')">另存为草稿</button>
           </div>
         </div>
-        <p v-if="resolveMessage" class="resolve-message" data-test="resolve-message">{{ resolveMessage }}</p>
       </article>
+      <p v-if="resolveMessage" class="resolve-message" data-test="resolve-message">{{ resolveMessage }}</p>
     </section>
 
     <section v-if="unresolvedOperations.length" class="library-card operation-card" data-test="unresolved-operations">
@@ -920,10 +922,10 @@ input[type="text"]:focus { outline: none; border-color: var(--sage); }
 .transfer-actions { margin-top: 13px; }
 .disabled-reason { margin: 8px 0 0; color: #9a6c13; font-size: 11.5px; line-height: 1.6; }
 .progress-line { margin-top: 12px; }
-.progress-track { height: 8px; border-radius: 999px; background: var(--paper); overflow: hidden; }
+.progress-track { height: 12px; border-radius: 999px; background: var(--paper); overflow: hidden; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .06); }
 .progress-fill { height: 100%; border-radius: 999px; background: var(--forest); transition: width .25s ease; }
 .progress-fill.indeterminate { width: 38%; animation: indeterminate-slide 1.1s ease-in-out infinite; }
-.progress-text { margin: 7px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+.progress-text { margin: 7px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.6; font-weight: 600; }
 @keyframes indeterminate-slide { 0% { margin-left: -38%; } 100% { margin-left: 100%; } }
 .plan-box { margin-top: 14px; padding: 13px 15px; border-radius: var(--r-md); background: var(--bg-cream); border: 1.5px dashed var(--line); color: var(--muted); font-size: 12px; line-height: 1.6; }
 .plan-box p { margin: 5px 0 0; }

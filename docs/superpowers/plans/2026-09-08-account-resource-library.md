@@ -138,3 +138,22 @@ Owner: Luna UI; only renderer and new UI tests. Files: new `ResourceLibraryPanel
 - Existing generation test assertions were corrected to reflect the already implemented four reserved portrait slots; generation behavior was not changed for those fixes.
 - Shared library resides in the chosen root; per-device mutable workspace resides in its adjacent `.sticker-maker-workspaces` directory. Legacy auto-capture stops after connection.
 - Full-library export includes settings/history. Cleanup candidates are registered files only, with verified target copies and confined deletion. Unknown user files are retained.
+
+## Real-library migration hardening (2026-09-08, evening)
+
+User-driven live migration of a real Windows library (12,370 files / 2.0 GB, 308 works) to `E:\共享\星星布丁\微信表情包\周三涵做表情`, with cleanup requested. Findings and fixes, all regression-scored by independent sub-agent reviews (7 rounds, final 10/10):
+
+- [x] UI feedback for super export: real-time scan counters (every 100 files), staged messages (snapshot → scan → summarize), true percent progress on copy/cleanup, disabled-button reasons, migration conflict pre-warning, empty-target hint, conflict cards with per-head summaries and working resolve buttons (settings heads render choose-only; no draft).
+- [x] Engine progress events structured (`commands.py`): phase/entry/scanned/done/completed/total/percent forwarded alongside the flat log message; preview emits stage messages; execute reuses one emitter.
+- [x] Library lock: acquire with 3s queue instead of instant rejection; renderer pauses its 8s status polling while a transfer is busy (self-contention fix).
+- [x] Plan persistence throttling (`transfer.py`): rewriting the ~37MB plan JSON after every copied file made a 2GB migration take hours; now saved at most every 50 entries / 5s plus forced at loop end. Resume re-verifies existing destination files, so throttling is safe.
+- [x] Cleanup revalidation de-quadraticized (`transfer.py`): full-source revalidation (hash every remaining entry + root walk) once per source per pass instead of once per deleted file; per-file snapshot guard before unlink retained.
+- [x] Settings materialization deadlock fixed (`settings.py`): apply() treated a missing local projection (fingerprint None) as a local-edit conflict, deadlocking all settings after migration activation; None now falls through to stage/materialize. Verified live: 129 settings applied, conflicts cleared.
+- [x] Ghost settings conflict playbook: after resolve(), the marker can lag the merged head; align `settings_versions` marker + `refresh(capture=False)`. Documented in the dev skill.
+- [x] Live results: preview 147s, copy+verify ~9 min, 12,370/12,370 verified, activation switched the library, counts available=308 / conflict=0, stale plans closed, old library archived as `library.migrated-backup-20260908` (activation-time capture in the old library correctly tripped the "new file since preview" guard; file verified merged into the new library, archive kept instead of deleting).
+- [x] Tests: frontend 65/65; engine files compile; temp-library end-to-end migration+cleanup (state=completed, cleaned all managed entries, idempotent resume).
+
+### Verification honesty note (2026-09-08, post-review)
+
+- The local Windows venv lacks pytest, so tonight's engine changes (progress events, lock queue, plan-save throttling in all three loops incl. the episode-level execute branch, cleanup per-source cache, settings None-materialize fix) were verified locally by: py_compile on all touched files, fresh-process JSON-lines smoke, and temp-library end-to-end previews/executes (state=completed, idempotent resume). The 462-test pytest suite figure quoted above comes from the earlier delivery verification on the original environment, not from this machine tonight. Re-run the full pytest suite before the next packaged release.
+- Old-library deletion criteria added to `doc/reference/resource-library.md` FAQ: open app → library location + connected badge, counts match pre-migration (308/0/0), one work detail + settings render correct; all three pass → delete. No open-ended "keep observing".

@@ -75,11 +75,15 @@ def _apply_background_mode(prompt_text: str, mode: str) -> str:
     发送验证过审），替换共享约束里的品红行；transparent=现状不动。"""
     if mode != "solid":
         return prompt_text
+    # 2026-09-08 用户修正：No.6 是柔和彩色底不是纯白——每格一个
+    # 柔和马卡龙色纯色底（浅粉/奶油黄/淡蓝/薄荷绿等），整底保留
     return prompt_text.replace(
         "- Background: solid magenta (#ff00ff), completely flat — no shadows, "
         "no gradients, no scenery",
-        "- Background: pure white (#FFFFFF), completely flat — no shadows, "
-        "no gradients, no scenery")
+        "- Background: one soft pastel solid color per panel (light pink, "
+        "cream yellow, baby blue, mint green, lavender — pick ONE gentle "
+        "pastel per panel), completely flat — no shadows, no gradients, "
+        "no scenery, never white")
 
 
 class GenerateStage:
@@ -563,6 +567,11 @@ class GenerateStage:
     _CHAT_FIRST_THEMES = {
         "日常寒暄", "打工人", "干饭", "睡觉休息", "恋爱贴贴", "友谊互动",
     }
+    # 2026-09-08 爆款公式（No.6 发送 4711）：情侣双人互动是发送量之王
+    # ——新合入"情侣日常"主题（1246 词，ChineseBQB 16k star 全量提取）
+    # 权重最高（×6），让大部分单围绕情侣日常展开。
+    _HERO_THEME = "情侣日常"
+    _HERO_WEIGHT = 6
 
     def _pick_themed_entries(self, themes: dict, n: int):
         """主题抽取：主主题抽 ~70% + 其他主题补足，返回 (词条列表, 主题名, 主题内个数)。
@@ -575,11 +584,13 @@ class GenerateStage:
         global _LAST_THEME_KEY
         keys = list(themes.keys())
         # 加权抽主主题（打分反哺 2026-09-04）
-        weights = [3 if k in self._CHAT_FIRST_THEMES else 1 for k in keys]
+        weights = [(_HERO_W := (getattr(self, "_HERO_WEIGHT", 6) if k == getattr(self, "_HERO_THEME", "情侣日常") else None))
+                   or (3 if k in self._CHAT_FIRST_THEMES else 1) for k in keys]
         main_key = self.rng.choices(keys, weights=weights, k=1)[0]
         if len(keys) > 1 and main_key == _LAST_THEME_KEY:
             others = [k for k in keys if k != _LAST_THEME_KEY]
-            w2 = [3 if k in self._CHAT_FIRST_THEMES else 1 for k in others]
+            w2 = [(6 if k == getattr(self, "_HERO_THEME", "情侣日常")
+                   else 3 if k in self._CHAT_FIRST_THEMES else 1) for k in others]
             main_key = self.rng.choices(others, weights=w2, k=1)[0]
         _LAST_THEME_KEY = main_key
 
@@ -593,7 +604,9 @@ class GenerateStage:
                 continue
             for e in themes[k]:
                 rest_pool.append(e)
-                if k in self._CHAT_FIRST_THEMES:
+                if k == getattr(self, "_HERO_THEME", "情侣日常"):
+                    rest_pool.append(e)   # 点缀池英雄主题 ×2
+                elif k in self._CHAT_FIRST_THEMES:
                     rest_pool.append(e)
         if not rest_pool:
             rest_pool = themes[main_key]

@@ -24,21 +24,22 @@ Electron 桌面应用：向导配置 → codex 生图（主力=参考图弹药�
 ## 开发命令
 
 ```bash
-# 后端测试（venv 在 sticker_engine/.venv）
+# 后端测试（venv 在 sticker_engine/.venv；本机 venv 若缺 pytest，
+# 用 py_compile + 临时库端到端脚本兜底，别现场装依赖污染环境）
 cd sticker_engine && .venv/Scripts/python.exe -m pytest tests -q --ignore=tests/agent
 
-# 前端测试
+# 前端测试（65 个，提交前必跑——Vite build 不报未定义变量，只有它能拦）
 cd desktop && npx vitest run
 
 # 桌面 dev 启动（引擎需 PYTHONPATH 指向 sticker_engine 源码）
 cd desktop && PYTHONPATH=../sticker_engine npx electron . --remote-debugging-port=9235
 
-# 用户数据（prefs/episodes/series）在 %APPDATA%/StickerEngine/
+# 用户数据（prefs/episodes/series/资源库）在 %APPDATA%/StickerEngine/
 ```
 
 ## 必须遵守的项目纪律
 
-1. **改完必须跑测试**：后端 pytest（200+）+ 前端 vitest（32+），全绿才交付。
+1. **改完必须跑测试**：后端 pytest（460+）+ 前端 vitest（65），全绿才交付。半成品提交会白屏——`income is not defined` 事故：store return 引用未定义变量，Vite build 静默打包、运行时整树崩溃。
 2. **版本号纪律**：`desktop/package.json` 的 `version` 每次发版必须 bump，且同步 `desktop/site/index.html` 的 `data-version` 与 `desktop/site/version.json`（老版本客户端靠它发现新版本）。
 3. **codex 调用三条铁律**（`providers/codex.py`，违反就翻车）：
    - prompt 必须单行（多行经 codex.cmd 会让 `-i` 参考图静默丢失 → 模型自创角色）
@@ -58,6 +59,11 @@ cd desktop && PYTHONPATH=../sticker_engine npx electron . --remote-debugging-por
   `PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright python -m playwright install chromium`（2026-08-29 实测镜像 1 分钟装完）。
 - venv 装依赖后注意 playwright 版本是否被顺带升级（版本变→浏览器目录号变→
   `Executable doesn't exist` 秒失败），重装浏览器即可。
+- **资源库引擎四坑（2026-09-08 真实迁移实测，2.5 万文件/2GB）**：
+  1. **锁**：所有 `library_*` 命令共抢一把进程锁，status 轮询（每 8s、持锁 1~3s）会与用户命令撞车。已修：面板 busy 时停轮询 + 引擎锁排队 3s。新加 library 命令的硬性要求：凡会扫描或复制超过 100 个文件，必须逐 100 条发一次 progress 事件（含 scanned 或 completed/total），否则用户以为死了。
+  2. **plan 持久化 O(n²)**：plan JSON 含全部条目明细（万级文件=37MB），复制循环每文件重写一次 = 2GB 迁移要 3 小时。已节流（每 50 文件/5 秒，循环后强制保存）；改 `transfer.py` 循环时别改回每条目保存。清理循环的全库重校验同理，已改 per-source 缓存，单文件删除前快照校验保留。
+  3. **设置物化死锁**：`settings.py apply()` 曾把「本地实体未物化（fingerprint=None）」判为本地修改冲突 → 切库/新设备后全部设置冲突死锁。已修；动三方指纹判定（库/本地/marker）时保持 None=待物化语义。
+  4. **幽灵冲突**：resolve 选用版本后 marker 与合并头错位，status 永远报 1 个 settings_conflict 但 heads=1。解法：对齐 marker（state 的 settings_versions）+ `refresh(capture=False)`。诊断冲突真假看 catalog 的 heads 数，别只信 status。
 - **平台素材上传（2026-09-02，71-89 批量全败事故，三层坑叠加）**：
   1. **过滤键名两套写法**：`_step_upload_assets(only=["banner",...])` 英文键 vs 内部中文标签 `("横幅",...)` 不匹配 → 上传整体空转且零告警 → 提交红字「横幅不能为空」。61-69 全过只因发布早于该 bug 引入。`_ASSET_ONLY_ALIAS` 做了映射，动 only 逻辑必须跑 `test_step_upload_assets_only_english_keys`。
   2. **上传顺序**：16 张表情图批量 set 会占满平台异步上传通道，素材 set 紧随其后容易不落地（老项目 skill 降级经验：素材图先传、表情图后传）。publisher 新建模式已按「赞赏→横幅/封面/图标→表情图→文本→分类」排序，别改回去。
