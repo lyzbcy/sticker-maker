@@ -20,6 +20,15 @@
         <span class="slider"></span>
       </label>
       <label for="transparent" class="check-label">生成后自动去背景（透明底）</label>
+      <div class="bg-mode-row">
+        <span class="bg-mode-label">背景：</span>
+        <label class="bg-opt" :class="{ on: store.prefs.background_mode !== 'solid' }">
+          <input type="radio" value="transparent" v-model="store.prefs.background_mode" />透明底（自动抠图）
+        </label>
+        <label class="bg-opt" :class="{ on: store.prefs.background_mode === 'solid' }">
+          <input type="radio" value="solid" v-model="store.prefs.background_mode" />实底白（不抠图）
+        </label>
+      </div>
     </div>
     <div class="field check">
       <label class="switch">
@@ -194,4 +203,9 @@ select:focus { outline: none; border-color: var(--sage); box-shadow: 0 0 0 4px r
 .btn-reset:hover { background: var(--paper); color: var(--ink); }
 
 .hint { color: var(--muted-soft); font-size: 12px; margin-top: 6px; }
+.bg-mode-row { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; flex-wrap: wrap; }
+.bg-mode-label { font-size: 13px; font-weight: 600; }
+.bg-opt { font-size: 12.5px; padding: 5px 12px; border: 1.5px solid var(--line, #ddd);
+  border-radius: 999px; cursor: pointer; }
+.bg-opt.on { border-color: var(--forest, #2e4a34); color: var(--forest, #2e4a34); font-weight: 700; }
 </style>

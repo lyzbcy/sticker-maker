@@ -70,6 +70,18 @@ class GenerationMode(enum.Enum):
 _LAST_THEME_KEY = None
 
 
+def _apply_background_mode(prompt_text: str, mode: str) -> str:
+    """背景模式（2026-09-08 用户实验）：solid=纯白实底（No.6 同款，4711
+    发送验证过审），替换共享约束里的品红行；transparent=现状不动。"""
+    if mode != "solid":
+        return prompt_text
+    return prompt_text.replace(
+        "- Background: solid magenta (#ff00ff), completely flat — no shadows, "
+        "no gradients, no scenery",
+        "- Background: pure white (#FFFFFF), completely flat — no shadows, "
+        "no gradients, no scenery")
+
+
 class GenerateStage:
     """S1：三模式分派 → 拼 prompt → 调 codex → 捞图。"""
 
@@ -150,7 +162,9 @@ class GenerateStage:
             "# mode: " + mode.value + nl +
             "# prompt_set: " + ps.id + " (" + ps.name + ")" + nl)
         (ctx.episode_dir / "原图" / "prompt.txt").write_text(
-            prompt_header + prompt, encoding="utf-8")
+            prompt_header + _apply_background_mode(
+                prompt, str(getattr(ctx.config.prefs, "background_mode",
+                                    "transparent"))), encoding="utf-8")
         # 参考图=弹药：成功后把用过的库图归档（复用会产出雷同贴纸，2026-08-27 产品定型）
         if mode == GenerationMode.REF_LIBRARY and getattr(ctx.config.prefs, "ref_consume", True):
             self._archive_used_refs(ctx, refs, bases)

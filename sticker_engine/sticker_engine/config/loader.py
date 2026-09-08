@@ -34,6 +34,7 @@ def load_prefs_from_file(prefs_path: Path) -> Optional[Prefs]:
         vision_calls=data.get("vision_calls", False),
         browser_headless=data.get("browser_headless", False),
         sticker_price=int(data.get("sticker_price", 0) or 0),
+        background_mode=str(data.get("background_mode") or "transparent"),
     )
 
 
@@ -55,6 +56,7 @@ def save_prefs(prefs: Prefs, prefs_path: Path) -> None:
         "vision_calls": prefs.vision_calls,
         "browser_headless": prefs.browser_headless,
         "sticker_price": prefs.sticker_price,
+        "background_mode": prefs.background_mode,
     }
     if yaml is None:
         raise RuntimeError("PyYAML 未安装")

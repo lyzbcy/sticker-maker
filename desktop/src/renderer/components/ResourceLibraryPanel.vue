@@ -85,14 +85,28 @@
       <div class="section-heading">
         <div>
           <h4>设置版本冲突</h4>
-          <p class="hint">共享设置存在多个版本；先确认设备版本，再继续使用或另存本机设置。</p>
+          <p class="hint">同一项共享设置存在多个设备版本；选择一个版本继续，其余分支会归档合并。设置只能选用版本，不支持另存为草稿。</p>
         </div>
       </div>
-      <ul class="status-list">
-        <li v-for="(conflict, index) in settingsConflicts" :key="`${conflictLabel(conflict)}-${index}`">
-          {{ conflictLabel(conflict) }}
-        </li>
-      </ul>
+      <article v-for="conflict in settingsConflicts" :key="conflict.work_id" class="conflict-row">
+        <div class="conflict-title">
+          <strong>共享设置：{{ conflict.setting_type || conflict.logical_path || '未知类型' }}</strong>
+          <span>{{ conflict.work_id }}</span>
+        </div>
+        <div v-for="head in conflict.heads || []" :key="head.revision_id" class="head-row">
+          <span>版本 {{ String(head.revision_id || '').slice(0, 8) }} · {{ settingsHeadSummary(head) }}</span>
+          <div class="button-row">
+            <button class="btn secondary" :data-test="`choose-${head.revision_id}`"
+                    :disabled="!!resolvingRevision" @click="resolveConflict(conflict, head, 'choose')">
+              {{ resolvingRevision === head.revision_id ? '处理中…' : '选用此版本' }}
+            </button>
+          </div>
+        </div>
+        <p v-if="!(conflict.heads || []).length" class="hint">
+          <span v-if="conflictDetail(conflict)">{{ conflictDetail(conflict) }} · </span>该冲突由本机诊断记录发现；点击上方「↻ 刷新资源」核对后，若仍冲突会显示各设备版本供选择。
+        </p>
+        <p v-if="resolveMessage" class="resolve-message" data-test="resolve-message">{{ resolveMessage }}</p>
+      </article>
     </section>
 
     <section class="library-card">
@@ -142,10 +156,15 @@
         </label>
         <button class="btn secondary" data-test="export-target" type="button" @click="chooseExportTarget">选择文件夹…</button>
       </div>
+      <p class="hint target-hint">建议选择全新的空文件夹作为目标；复制到已有文件的目录时，同名但内容不同的文件会被判为冲突。</p>
       <label class="check-line cleanup-line">
         <input v-model="cleanupOld" data-test="cleanup" type="checkbox" :disabled="exportMode !== 'migration'" />
         <span>迁移成功后清理旧位置中已确认复制的作品文件（默认关闭）</span>
       </label>
+      <p v-if="conflictBlockCount" class="conflict-block-warning" data-test="migration-blocked-warning">
+        ⚠ 当前存在 {{ conflictBlockCount }} 个版本冲突（作品或共享设置），生成迁移预览会被阻止。
+        请先处理上方「版本冲突 / 设置版本冲突」卡片后再试；备份导出不受影响。
+      </p>
       <div class="button-row transfer-actions">
         <button class="btn primary" data-test="preview-export" :disabled="previewing || !exportTarget" @click="previewExport">
           {{ previewing ? '扫描中…' : exportMode === 'migration' ? '生成迁移预览' : '生成备份预览' }}
@@ -274,10 +293,13 @@
         <div v-for="head in conflict.heads || []" :key="head.revision_id" class="head-row">
           <span>{{ head.metadata?.device_label || head.metadata?.device_id || '另一台电脑' }} · {{ head.revision_id }}</span>
           <div class="button-row">
-            <button class="btn secondary" :data-test="`choose-${head.revision_id}`" @click="resolveConflict(conflict, head, 'choose')">选用此版本</button>
-            <button class="btn text-btn" :data-test="`draft-${head.revision_id}`" @click="resolveConflict(conflict, head, 'draft')">另存为草稿</button>
+            <button class="btn secondary" :data-test="`choose-${head.revision_id}`"
+                    :disabled="!!resolvingRevision" @click="resolveConflict(conflict, head, 'choose')">选用此版本</button>
+            <button class="btn text-btn" :data-test="`draft-${head.revision_id}`"
+                    :disabled="!!resolvingRevision" @click="resolveConflict(conflict, head, 'draft')">另存为草稿</button>
           </div>
         </div>
+        <p v-if="resolveMessage" class="resolve-message" data-test="resolve-message">{{ resolveMessage }}</p>
       </article>
     </section>
 
@@ -379,6 +401,7 @@ const handingOff = ref(false)
 const handoffMessage = ref('')
 const executionResult = ref(null)
 const progressInfo = ref(null)
+const progressStage = ref('')
 const elapsedSeconds = ref(0)
 let elapsedTimer = null
 const transferTipClass = ref('transfer-success')
@@ -435,13 +458,22 @@ const executeDisabledReason = computed(() => {
   return ''
 })
 const transferBusy = computed(() => previewing.value || executing.value)
+const conflictBlockCount = computed(() => conflicts.value.length + settingsConflicts.value.length)
 const progressPercent = computed(() => {
   if (previewing.value) return null
   const n = Number(progressInfo.value?.percent)
   return Number.isFinite(n) && n >= 0 ? Math.min(100, Math.round(n)) : null
 })
 const progressText = computed(() => {
-  if (previewing.value) return '正在扫描资源库并校验文件清单，文件多时可能需要几分钟…'
+  if (previewing.value) {
+    const info = progressInfo.value
+    if (info?.phase === 'scan' && Number.isFinite(info.scanned)) {
+      return info.done
+        ? `扫描完成：共检查 ${info.scanned} 个文件，正在汇总清单…`
+        : `正在扫描资源库并校验文件哈希：已检查 ${info.scanned} 个文件…`
+    }
+    return progressStage.value || '正在扫描资源库并校验文件清单，文件多时可能需要几分钟…'
+  }
   const info = progressInfo.value
   if (!info) return '正在校验清单并准备复制…'
   const label = info.phase === 'cleanup' ? '清理旧位置文件' : '复制到目标位置'
@@ -449,6 +481,9 @@ const progressText = computed(() => {
 })
 function acceptProgress(ev) {
   if (!mounted.value || ev?.stage !== 'library' || !transferBusy.value) return
+  if (previewing.value && typeof ev.message === 'string' && !ev.scanned) {
+    progressStage.value = ev.message
+  }
   let completed = Number(ev.completed)
   let total = Number(ev.total)
   let phase = ev.phase
@@ -458,7 +493,10 @@ function acceptProgress(ev) {
       ? ev.message.match(/'completed':\s*(\d+),?\s*'total':\s*(\d+)/) : null
     if (match) { completed = Number(match[1]); total = Number(match[2]) }
   }
-  if (!phase && typeof ev.message === 'string' && ev.message.includes("'phase': 'cleanup'")) phase = 'cleanup'
+  if (!phase && typeof ev.message === 'string') {
+    if (ev.message.includes("'phase': 'cleanup'")) phase = 'cleanup'
+    else if (ev.message.includes("'phase': 'scan'")) phase = 'scan'
+  }
   if (Number.isFinite(completed) && Number.isFinite(total) && total > 0) {
     progressInfo.value = {
       phase: phase || 'copy',
@@ -466,12 +504,18 @@ function acceptProgress(ev) {
       total,
       percent: Math.min(100, Math.round((completed / total) * 100)),
     }
+    return
+  }
+  const scanned = Number(ev.scanned)
+  if (Number.isFinite(scanned)) {
+    progressInfo.value = { phase: phase || 'scan', scanned, done: Boolean(ev.done) }
   }
 }
 watch(transferBusy, (busy) => {
   if (busy) {
     elapsedSeconds.value = 0
     progressInfo.value = null
+    progressStage.value = ''
     if (!elapsedTimer) elapsedTimer = setInterval(() => { if (mounted.value) elapsedSeconds.value += 1 }, 1000)
   } else if (elapsedTimer) {
     clearInterval(elapsedTimer)
@@ -641,14 +685,29 @@ async function importLibrary() {
 async function openLibrary() {
   if (library.value.root && api()?.send) await send('open_in_finder', { path: library.value.root })
 }
+const resolvingRevision = ref('')
+const resolveMessage = ref('')
 async function resolveConflict(conflict, head, action) {
+  const revisionId = head?.revision_id
+  if (!conflict?.work_id || !revisionId || resolvingRevision.value) return
+  resolvingRevision.value = revisionId
+  resolveMessage.value = ''
   try {
-    const res = await send('library_resolve', {
-      work_id: conflict.work_id, revision_id: head.revision_id, action,
-    })
-    if (res?.status === 'ok') await refreshStatus({ quiet: true })
-    else setError(res, '处理版本冲突失败')
-  } catch (err) { errorMessage.value = exceptionError(err, '处理版本冲突失败') }
+    const res = await send('library_resolve', { work_id: conflict.work_id, revision_id: revisionId, action })
+    if (res?.status === 'ok') {
+      resolveMessage.value = `✓ 已选用版本 ${String(revisionId).slice(0, 8)}，正在刷新资源库状态（可能需要十几秒）…`
+      await refreshStatus({ quiet: true })
+      // 竞态兜底：resolve 返回时若 8 秒轮询正在跑，上面的刷新会被跳过，
+      // 稍后强制再拉一次，确保冲突卡片真正消失
+      setTimeout(() => { if (mounted.value) refreshStatus({ quiet: true }) }, 1500)
+    } else {
+      setError(res, '处理版本冲突失败')
+      resolveMessage.value = `✗ ${responseError(res, '处理版本冲突失败')}`
+    }
+  } catch (err) {
+    errorMessage.value = exceptionError(err, '处理版本冲突失败')
+    resolveMessage.value = `✗ ${exceptionError(err, '处理版本冲突失败')}`
+  } finally { resolvingRevision.value = '' }
 }
 const reconcilingOperation = ref('')
 async function reconcileOperation(operation, outcome) {
@@ -711,6 +770,22 @@ function conflictLabel(item) {
     ? item
     : item?.message || item?.detail || item?.setting_type || item?.name || JSON.stringify(item)
 }
+// 设置冲突各版本的内容摘要：帮助用户分辨两台设备改了什么
+function conflictDetail(item) {
+  if (typeof item === 'string') return item
+  return item?.message || item?.detail || ''
+}
+function settingsHeadSummary(head) {
+  const payload = head?.metadata?.payload || {}
+  const bits = []
+  if (payload.sticker_price != null) bits.push(`价格 ${payload.sticker_price}`)
+  if (payload.grid_size != null) bits.push(`宫格 ${payload.grid_size}`)
+  if (payload.story_mode != null) bits.push(payload.story_mode ? '剧情模式' : '普通模式')
+  if (payload.default_series_id) bits.push(`默认系列 ${String(payload.default_series_id).slice(0, 8)}`)
+  if (payload.reference_lib_path) bits.push(`参考图库 ${payload.reference_lib_path}`)
+  if (payload.transparent_default != null) bits.push(payload.transparent_default ? '默认透明底' : '默认白底')
+  return bits.length ? bits.join(' · ') : '（无差异摘要，可按版本号选用）'
+}
 function sourcePathLabel(source) {
   return source?.path || source?.source_root || source?.source_path || source?.name || '来源目录待核对'
 }
@@ -766,7 +841,9 @@ onMounted(async () => {
   await refreshStatus()
   if (!mounted.value) return
   pollTimer = setInterval(() => {
-    if (mounted.value) refreshStatus({ quiet: true })
+    // 扫描/执行期间暂停轮询：status 轮询与预览抢同一把引擎锁，
+    // 撞车会让预览被"资源任务正在进行"秒拒
+    if (mounted.value && !transferBusy.value) refreshStatus({ quiet: true })
   }, 8000)
 })
 onBeforeUnmount(() => {
@@ -837,6 +914,9 @@ input[type="text"]:focus { outline: none; border-color: var(--sage); }
 .purpose-option strong { color: var(--ink); font-size: 12.5px; }
 .purpose-option small { margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 .cleanup-line { margin-top: 12px; }
+.conflict-block-warning { margin: 10px 0 0; padding: 9px 12px; border-radius: var(--r-md); background: rgba(181, 72, 42, .08); color: var(--brick); font-size: 12px; line-height: 1.6; }
+.resolve-message { margin: 10px 0 0; color: var(--muted); font-size: 12px; font-weight: 600; }
+.target-hint { margin: 8px 0 0; }
 .transfer-actions { margin-top: 13px; }
 .disabled-reason { margin: 8px 0 0; color: #9a6c13; font-size: 11.5px; line-height: 1.6; }
 .progress-line { margin-top: 12px; }

@@ -448,6 +448,7 @@ class TransferManager:
         cleanup: bool = False,
         *,
         library_root: Any = None,
+        progress: Optional[Callable[..., Any]] = None,
     ) -> Dict[str, Any]:
         """Create a plan for copying one or more complete resource libraries.
 
@@ -537,7 +538,7 @@ class TransferManager:
                 )
                 source["state"] = "incomplete"
                 continue
-            self._scan_library_root(source, root, entries, missing)
+            self._scan_library_root(source, root, entries, missing, progress=progress)
             source["snapshot_paths"] = sorted(set(source["managed_paths"]))
             source["snapshot_fingerprint"] = self._source_fingerprint(source, entries)
             source["state"] = "incomplete" if source.get("missing") else "ready"
@@ -628,6 +629,7 @@ class TransferManager:
         root: Path,
         entries: List[Dict[str, Any]],
         missing: List[Dict[str, Any]],
+        progress: Optional[Callable[..., Any]] = None,
     ) -> None:
         """Scan and validate a library root without changing it."""
 
@@ -650,7 +652,10 @@ class TransferManager:
             )
             source_library = None
 
+        scanned = 0
+
         def walk(directory: Path, prefix: str) -> None:
+            nonlocal scanned
             try:
                 children = sorted(os.scandir(directory), key=lambda item: item.name.casefold())
             except OSError as exc:
@@ -764,6 +769,14 @@ class TransferManager:
                         },
                     )
                     continue
+                scanned += 1
+                if scanned % 100 == 0:
+                    # Preview-time hashing dominates scan time on large
+                    # libraries; periodic counters keep the UI responsive.
+                    _call_progress(
+                        progress,
+                        {"phase": "scan", "scanned": scanned},
+                    )
                 library_kind = (
                     "library_metadata"
                     if logical == "library.json"
@@ -807,6 +820,7 @@ class TransferManager:
                         )
 
         walk(root, "")
+        _call_progress(progress, {"phase": "scan", "scanned": scanned, "done": True})
         if source_library is None:
             return
         self._validate_library_references(source_library, source, root, missing)
@@ -1758,6 +1772,18 @@ class TransferManager:
         cleaned: List[str] = []
         errors: List[str] = []
         cancelled = False
+        # Same throttling rationale as the copy loop: one plan rewrite per
+        # deleted file would dominate cleanup time on large libraries.
+        import time as _time
+
+        cleanup_save = {"count": 0, "at": _time.monotonic()}
+
+        def save_plan_throttled(force: bool = False) -> None:
+            cleanup_save["count"] += 1
+            if force or cleanup_save["count"] >= 50 or _time.monotonic() - cleanup_save["at"] >= 5.0:
+                self._save_plan(plan)
+                cleanup_save.update(count=0, at=_time.monotonic())
+
         source_by_id = {
             source.get("source_id"): source
             for source in plan.get("library_sources") or []
@@ -1808,7 +1834,7 @@ class TransferManager:
             except Exception as exc:
                 entry["status"] = "cleanup_refused"
                 errors.append(f"{entry.get('logical_path')}: {exc}")
-            self._save_plan(plan)
+            save_plan_throttled()
             if entry.get("status") == "cleaned":
                 try:
                     _call_progress(
@@ -1823,6 +1849,7 @@ class TransferManager:
                 except Exception as exc:
                     errors.append(f"{entry.get('logical_path')}: progress_failed: {exc}")
                     break
+        save_plan_throttled(force=True)
         return cleaned, errors, cancelled
 
     def _execute_library_copy(
@@ -1906,6 +1933,21 @@ class TransferManager:
         total = len(plan.get("entries") or [])
         done = 0
         cancelled = False
+        # Plan persistence is throttled: rewriting the multi-MB plan JSON
+        # after every copied file dominated total transfer time on large
+        # libraries (~37MB x 12k files).  Resume stays safe because an
+        # interrupted pass re-verifies existing destination files and
+        # skips them, so a lost tail of in-memory status is rebuilt.
+        import time as _time
+
+        plan_save = {"count": 0, "at": _time.monotonic()}
+
+        def save_plan_throttled(force: bool = False) -> None:
+            plan_save["count"] += 1
+            if force or plan_save["count"] >= 50 or _time.monotonic() - plan_save["at"] >= 5.0:
+                self._save_plan(plan)
+                plan_save.update(count=0, at=_time.monotonic())
+
         for entry in plan.get("entries") or []:
             if entry.get("status") == "cleaned":
                 continue
@@ -1969,7 +2011,9 @@ class TransferManager:
                 entry["status"] = "error"
                 entry["error"] = str(exc)
                 errors.append(str(exc))
-            self._save_plan(plan)
+            save_plan_throttled()
+
+        save_plan_throttled(force=True)
 
         if cancelled:
             plan["state"] = "cancelled"

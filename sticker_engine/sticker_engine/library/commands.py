@@ -12,6 +12,27 @@ COMMANDS = ('status', 'bind_account', 'preview', 'execute', 'connect', 'import',
 LOCK = threading.RLock()
 
 
+def _progress_emitter(cli, req_id):
+    """Build a progress callback that keeps the flat log message but also
+    forwards structured counters (completed/total/scanned) to the UI."""
+    def progress(*items):
+        event = {'id': req_id, 'type': 'progress', 'stage': 'library',
+                 'message': ' '.join(str(i) for i in items), 'percent': None}
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            for key in ('phase', 'entry', 'scanned', 'done'):
+                if key in item:
+                    event[key] = item[key]
+            completed, total = item.get('completed'), item.get('total')
+            if isinstance(completed, int) and isinstance(total, int) and total > 0:
+                event['completed'] = completed
+                event['total'] = total
+                event['percent'] = round(completed * 100.0 / total, 1)
+        cli._emit(event)
+    return progress
+
+
 def dispatch(cli, name, req_id, args):
     rt = LibraryRuntime(cli._ensure_engine().config.paths.user_data)
     manager = TransferManager(rt.local / 'transfers')
@@ -44,14 +65,19 @@ def dispatch(cli, name, req_id, args):
         rt.require_account()
         if not args.get('target'):
             raise ValueError('请选择目标目录')
+        emit = _progress_emitter(cli, req_id)
+        emit('正在保存本机作品快照…')
         rt.capture_all()
+        emit('正在扫描资源库文件清单（文件多时需要几分钟，期间请勿关闭应用）…')
         status = rt.status()
         if (args.get('mode', 'backup') == 'migration' and args.get('cleanup')
                 and status.get('settings_missing')):
             raise ValueError('共享设置仍有缺失资源，已阻止迁移清理；请先完成同步后重试')
         plan = manager.preview_library([str(rt.library.root)], args['target'],
                                        mode=args.get('mode', 'backup'),
-                                       cleanup=bool(args.get('cleanup')))
+                                       cleanup=bool(args.get('cleanup')),
+                                       progress=emit)
+        emit('扫描完成，正在汇总迁移清单…')
         blocked = []
         for work in rt.library.list_works():
             revision = work.get('revision') or {}
@@ -89,26 +115,9 @@ def dispatch(cli, name, req_id, args):
                 check = cli._ensure_engine()
                 if check.config.paths.output_root != rt.output_root:
                     raise ValueError('新资源库读取位置校验失败')
-            def progress(*items):
-                # Keep the flat message for logs, but also surface the
-                # structured counters so the UI can render a real progress bar.
-                event = {'id': req_id, 'type': 'progress', 'stage': 'library',
-                         'message': ' '.join(str(i) for i in items), 'percent': None}
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    completed, total = item.get('completed'), item.get('total')
-                    if isinstance(completed, int) and isinstance(total, int) and total > 0:
-                        event.update(
-                            phase=str(item.get('phase') or 'copy'),
-                            entry=str(item.get('entry') or ''),
-                            completed=completed,
-                            total=total,
-                            percent=round(completed * 100.0 / total, 1),
-                        )
-                cli._emit(event)
             result = manager.execute(args.get('plan_id'), activate=activate,
-                                     should_stop=stop.is_set, progress=progress)
+                                     should_stop=stop.is_set,
+                                     progress=_progress_emitter(cli, req_id))
             if result.get('state') == 'completed':
                 from .maintenance import cleanup_cache_plan
                 cleanup = cleanup_cache_plan(rt, args['plan_id'])
@@ -168,8 +177,11 @@ def dispatch(cli, name, req_id, args):
 def register(cli):
     def handler(name):
         def call(req_id, args):
-            if not LOCK.acquire(blocking=False):
-                cli._result(req_id, 'fail', errors=[{'message': '资源任务正在进行，请等待完成或先取消'}])
+            # 短暂排队而非立即拒绝：秒级的 status 轮询与预览撞车时，
+            # 用户手动触发的命令应等到锁释放继续执行；
+            # 只有长任务（如全量刷新）持锁超过 3 秒才提示稍后重试
+            if not LOCK.acquire(timeout=3):
+                cli._result(req_id, 'fail', errors=[{'message': '资源任务正在进行（超过 3 秒未释放），请等待当前任务完成后再试'}])
                 return
             try:
                 data = dispatch(cli, name, req_id, args)

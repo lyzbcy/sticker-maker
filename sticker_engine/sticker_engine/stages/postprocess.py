@@ -324,6 +324,10 @@ class PostprocessStage:
         final_dir = ctx.episode_dir / "最终版"
         final_dir.mkdir(exist_ok=True)
         need_key = should_chromakey(gen_mode, transparent)
+        # 2026-09-08 solid 实底模式（用户实验）：纯白整底保留（No.6 白底
+        # 同款，4711 发送验证可过审）——跳过全部抠图/清边环节，零毛边
+        if str(getattr(ctx.config.prefs, "background_mode", "transparent")) == "solid":
+            need_key = False
         seen_names = set()
         for idx, panel in enumerate(panels, start=1):
             img = Image.open(panel).convert("RGBA")

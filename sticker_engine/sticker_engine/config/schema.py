@@ -56,6 +56,10 @@ class Prefs:
     # 表情价格（2026-09-04 用户需求）：0=免费（默认），10=10 微信豆。
     # 提交作品时 _step_select_price 据此选择价格档。
     sticker_price: int = 0
+    # 背景模式（2026-09-08 用户实验）：transparent=品红底+自动抠图（现状
+    # 默认）；solid=纯白实底不抠图——爆款 No.6 即白底上架（4711 发送），
+    # 实底在深色聊天模式下略显块状，但省去抠图环节零毛边。
+    background_mode: str = "transparent"
 
     def __post_init__(self):
         s = self.mode_probs.single + self.mode_probs.duo + self.mode_probs.trio + self.mode_probs.quad

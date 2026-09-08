@@ -2515,6 +2515,7 @@ def _prefs_to_dict(prefs):
             "vision_calls": prefs.vision_calls,
             "browser_headless": prefs.browser_headless,
             "sticker_price": prefs.sticker_price,
+            "background_mode": prefs.background_mode,
             "default_series_id": prefs.default_series_id}
 
 
@@ -2533,7 +2534,8 @@ def _dict_to_prefs(d):
         prompt_set_id=d.get("prompt_set_id"),
         vision_calls=d.get("vision_calls", False),
         browser_headless=d.get("browser_headless", False),
-        sticker_price=int(d.get("sticker_price", 0) or 0))
+        sticker_price=int(d.get("sticker_price", 0) or 0),
+        background_mode=str(d.get("background_mode") or "transparent"))
 
 
 HANDLERS = {
