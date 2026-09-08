@@ -324,14 +324,31 @@ class PostprocessStage:
         final_dir = ctx.episode_dir / "最终版"
         final_dir.mkdir(exist_ok=True)
         need_key = should_chromakey(gen_mode, transparent)
-        # 2026-09-08 solid 实底模式（用户实验）：纯白整底保留（No.6 白底
-        # 同款，4711 发送验证可过审）——跳过全部抠图/清边环节，零毛边
-        if str(getattr(ctx.config.prefs, "background_mode", "transparent")) == "solid":
+        # 2026-09-08 solid 实底模式 v2（用户实测 v1 教训：AI 无视 pastel
+        # 指令照画品红——品红是贴纸训练强先验。v2 改为"品红→柔和彩底
+        # 染色替换"：AI 画它最擅长的品红，S2 把品红像素替换成马卡龙色，
+        # 不透明不抠图，零毛边。每格轮换色，No.6 同款多彩视觉）
+        solid = str(getattr(ctx.config.prefs, "background_mode", "transparent")) == "solid"
+        if solid:
             need_key = False
         seen_names = set()
+        PASTEL = [(255, 214, 224), (255, 240, 199), (206, 232, 255),
+                  (207, 244, 226), (232, 219, 255), (255, 228, 209)]
         for idx, panel in enumerate(panels, start=1):
             img = Image.open(panel).convert("RGBA")
-            if need_key:
+            if solid:
+                import numpy as _np
+                arr = _np.array(img).astype(_np.int16)
+                r, g_, b, al = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2], arr[:, :, 3]
+                # 品红系背景：R/B 高、G 明显低（含抗锯齿边）
+                bgm = (r > 110) & (b > 110) & (g_ < np.minimum(r, b) * 0.72)
+                color = PASTEL[(idx - 1) % len(PASTEL)]
+                arr[bgm, 0] = color[0]
+                arr[bgm, 1] = color[1]
+                arr[bgm, 2] = color[2]
+                arr[bgm, 3] = 255
+                img = Image.fromarray(arr.astype("uint8"), "RGBA")
+            elif need_key:
                 img = self.chromakey.remove_key_auto(img)
                 # P2（62 边框线事故）双层防御：①抠掉与边缘连通的背景色
                 # （黑底/格线，chromakey 漏网时兜底；角色被白描边包裹不

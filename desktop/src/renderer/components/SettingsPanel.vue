@@ -283,11 +283,9 @@ watch(priceProbFree, (v) => {
   }
 })
 watch(priceProbPaid, (v) => {
+  // 只联动数值：拖 10 豆档会改免费档的值，由 free 的 watch 统一保存，
+  // 避免一次拖动触发两次 save_prefs
   priceProbFree.value = 100 - v
-  if (priceMode.value === 'prob' && store.prefs) {
-    store.prefs.price_probs = { '0': priceProbFree.value / 100, '10': v / 100 }
-    savePrefsNow()
-  }
 })
 
 // ---- Prompt 方案管理 ----
