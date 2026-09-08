@@ -203,7 +203,10 @@ class LibraryRuntime:
             self._library_cache_signature = None
             self.save()
             raise
-        return self.status()
+        result = self.status()
+        import time as _time
+        self._refresh_cache = {"at": _time.monotonic(), "status": result}
+        return result
 
     def _identity(self, meta, path=None, stable=False):
         if meta.work_id:
@@ -419,16 +422,40 @@ class LibraryRuntime:
     def capture_all(self):
         if not self.enabled:
             return
+        # 2026-09-05 性能：轻快照（文件名+mtime+size 清单）与上次一致且上次
+        # 捕获成功 → 跳过该目录的逐文件 SHA-256（未变更的 340 单每次 refresh
+        # 被全量哈希两遍是 refresh 140s 的主要构成）。内容变化必然改 mtime。
+        light = self.state.get('capture_light') or {}
+        light_new = {}
         roots = [self.output_root]
         if not self.state.get('root'):
             roots.append(self.user_data / 'episodes')
+        import time as _time
+        deadline = _time.monotonic() + 100   # 硬上限：单轮 capture_all 不超过 ~100s
         for root in roots:
             for path in sorted(root.glob('episode*')):
-                if path.is_dir() and load_meta(path).account_id in ('', self.account_id):
-                    # Old unbound directories require explicit binding first.
-                    if root == self.user_data / 'episodes' and not load_meta(path).account_id:
-                        continue
-                    self.capture(path)
+                if not (path.is_dir() and load_meta(path).account_id in ('', self.account_id)):
+                    continue
+                # Old unbound directories require explicit binding first.
+                if root == self.user_data / 'episodes' and not load_meta(path).account_id:
+                    continue
+                snapshot = sorted(
+                    (f.name, f.stat().st_mtime_ns, f.stat().st_size)
+                    for f in path.rglob('*') if f.is_file()
+                    and not is_private(path / f.relative_to(path)))
+                key = str(path)
+                snapshot_key = json.dumps(snapshot, ensure_ascii=False)
+                if light.get(key, {}).get('snapshot') == snapshot_key                         and light[key].get('captured_at'):
+                    light_new[key] = light[key]
+                    continue   # 未变更：跳过逐文件哈希
+                if _time.monotonic() > deadline:
+                    light_new[key] = light.get(key, {'captured_at': 0})
+                    continue   # 超时预算：本轮跳过，下轮补
+                self.capture(path)
+                light_new[key] = {'snapshot': snapshot_key,
+                                  'captured_at': _time.monotonic()}
+        self.state['capture_light'] = light_new
+        self.save()
         result = SharedSettings(self).capture()
         self._record_settings_result(result)
         return result
@@ -521,7 +548,15 @@ class LibraryRuntime:
         }
         self.save()
 
-    def refresh(self, capture=True):
+    def refresh(self, capture=True, max_age=None):
+        # 2026-09-05 性能根修：refresh 全量跑一次 ~140s（340 单逐文件哈希），
+        # 此前每条命令（含纯读）都持全局锁跑一遍 → 10 个并发请求要 27 分钟。
+        # max_age 秒内的调用直接返回缓存快照（读命令容忍 ≤60s 延迟）。
+        if max_age is not None:
+            cached = getattr(self, "_refresh_cache", None)
+            now = __import__("time").monotonic()
+            if cached and now - cached["at"] <= max_age:
+                return cached["status"]
         if not self.enabled:
             return self.status()
         try:
@@ -546,7 +581,10 @@ class LibraryRuntime:
                 self.save()
                 return self.status()
             raise
-        return self.status()
+        result = self.status()
+        import time as _time
+        self._refresh_cache = {"at": _time.monotonic(), "status": result}
+        return result
 
     def connect(self, path):
         self.require_account()
@@ -566,7 +604,10 @@ class LibraryRuntime:
             self._library_cache_root = None
             self.save()
             raise
-        return self.status()
+        result = self.status()
+        import time as _time
+        self._refresh_cache = {"at": _time.monotonic(), "status": result}
+        return result
 
     def rows(self):
         try:

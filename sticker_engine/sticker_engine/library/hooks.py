@@ -30,8 +30,18 @@ def runtime_for(engine):
     data = getattr(paths, 'user_data', None)
     if not isinstance(data, (str, Path)):
         return None
-    rt = LibraryRuntime(data)
-    return rt if rt.enabled else None
+    # 2026-09-05 性能根修②：runtime 实例挂到 engine 单例复用——此前每条
+    # 命令新建 LibraryRuntime，refresh 的 TTL 缓存随实例丢弃永不命中
+    # （每条读命令都持全局锁跑 ~40s 全量轻快照扫描）。bind/connect 等
+    # 账号变更命令会将 cli._engine 置空，缓存随引擎重建自然失效。
+    cached = getattr(engine, '_library_runtime', None)
+    if cached is not None and str(cached.user_data) == str(Path(data)):
+        return cached if cached.enabled else None
+    rt = LibraryRuntime(Path(data))
+    if not rt.enabled:
+        return None
+    engine._library_runtime = rt
+    return rt
 
 
 def reload_engine_config(engine, runtime):
@@ -109,7 +119,7 @@ def invoke(cli, req_id, cmd, args, handler):
     try:
         rt = runtime_for(cli._ensure_engine())
         if rt:
-            status = rt.refresh()
+            status = rt.refresh(capture=True, max_age=120)
             if cmd in MUTATIONS and isinstance(status, dict) and status.get('offline'):
                 raise ValueError('共享资源库当前不可用，已停止写入；请恢复同步目录后重试')
             # Applying shared prefs/series/bases changes the configuration
@@ -130,7 +140,7 @@ def invoke(cli, req_id, cmd, args, handler):
             # Reload config: an explicit account switch may have changed it.
             current = runtime_for(cli._ensure_engine())
             if current:
-                status = current.refresh()
+                status = current.refresh(capture=True, max_age=120)
                 sync = status.get('settings_sync') if isinstance(status, dict) else None
                 if isinstance(sync, dict) and sync.get('applied'):
                     cli._engine = None

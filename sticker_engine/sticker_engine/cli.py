@@ -760,7 +760,7 @@ def cmd_list_episodes(req_id, args):
     from .library.hooks import runtime_for
     runtime = runtime_for(engine)
     if runtime:
-        runtime.refresh()
+        # refresh 已由 hooks.invoke 带 TTL 缓存执行，此处不再重复全量刷新
         _result(req_id, 'ok', data={'episodes': runtime.rows()})
         return
     root = engine.config.paths.output_root
@@ -1532,7 +1532,6 @@ def cmd_get_episode(req_id, args):
     runtime = runtime_for(_ensure_engine())
     resource = None
     if runtime:
-        runtime.refresh()
         resource = next((r for r in runtime.rows()
                          if (requested_work_id and r.get('work_id') == requested_work_id)
                          or (raw_episode_dir and Path(r['path']).resolve() == episode_dir.resolve())), None)
