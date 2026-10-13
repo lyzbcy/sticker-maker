@@ -15,37 +15,34 @@ const DOWNLOAD_PAGE_URL = 'https://lyzbcy.github.io/sticker-maker/'
 const PRODUCT_NAME = '表情包一键制作'
 
 function versionParts(version) {
-  return String(version || '')
-    .replace(/^v/i, '')
-    .split('.')
-    .map(part => Number.parseInt(part, 10) || 0)
+  const match = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(String(version || ''))
+  return match ? match.slice(1).map(Number) : null
 }
-
 function isNewerVersion(remote, current) {
-  const left = versionParts(remote)
-  const right = versionParts(current)
-  const length = Math.max(left.length, right.length)
-  for (let index = 0; index < length; index += 1) {
-    const a = left[index] || 0
-    const b = right[index] || 0
-    if (a !== b) return a > b
-  }
+  const left = versionParts(remote), right = versionParts(current)
+  if (!left || !right) return false
+  for (let i=0; i<3; i++) { if (left[i] !== right[i]) return left[i] > right[i] }
   return false
 }
-
 function validateDownloadUrl(value) {
-  try {
-    return new URL(value).protocol === 'https:'
-  } catch {
-    return false
-  }
+  try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password }
+  catch { return false }
 }
-
+function validateReleaseAsset(asset, platform) {
+  if (!asset || !validateDownloadUrl(asset.url) || !/^[a-f0-9]{64}$/i.test(asset.sha256 || '')) return false
+  const u = new URL(asset.url)
+  return u.hostname === 'github.com' && u.pathname.startsWith('/lyzbcy/sticker-maker/releases/download/') &&
+    (platform === 'win32' ? u.pathname.endsWith('-setup.exe') : platform === 'darwin' && u.pathname.endsWith('.zip'))
+}
 async function verifyChecksum(filePath, expected) {
-  if (!expected) return true
-  const data = await fs.readFile(filePath)
-  const actual = crypto.createHash('sha256').update(data).digest('hex')
-  return actual.toLowerCase() === String(expected).toLowerCase()
+  if (!/^[a-f0-9]{64}$/i.test(expected || '')) return false
+  const hash = crypto.createHash('sha256')
+  for await (const chunk of require('fs').createReadStream(filePath)) hash.update(chunk)
+  return hash.digest('hex').toLowerCase() === expected.toLowerCase()
+}
+function networkFetch(url, options = {}) {
+  const electron = require('electron')
+  return (electron.net?.fetch || fetch)(url, { ...options, signal: options.signal || AbortSignal.timeout(120000) })
 }
 
 async function findInstaller(extractDir) {
@@ -72,6 +69,7 @@ async function findInstaller(extractDir) {
  * downloadUrl/sha256 即 Mac 包。旧客户端读不到 platforms 字段，直接用顶层字段，互不影响。
  */
 function pickUpdateAsset(data, platform) {
+  if (!['win32', 'darwin'].includes(platform)) return null
   const key = platform === 'win32' ? 'win' : 'mac'
   const fromPlatforms = data && data.platforms && data.platforms[key]
   if (fromPlatforms && fromPlatforms.url) {
@@ -86,30 +84,21 @@ function pickUpdateAsset(data, platform) {
 /** 流式下载：实时回报进度百分比与已下载/总字节数（MB）。
  * 旧实现 fetch→arrayBuffer 一次性进内存，UI 只能假装有进度（0.15/0.65/1 三档）。 */
 async function downloadToFile(url, destPath, onProgress) {
-  const response = await fetch(url, { cache: 'no-store' })
-  if (!response.ok) throw new Error(`下载失败（HTTP ${response.status}）`)
+  const response = await networkFetch(url, { cache: 'no-store' })
+  if (!response.ok || !response.body) throw new Error(`下载失败（HTTP ${response.status}）`)
   const total = Number(response.headers.get('content-length')) || 0
-  if (!response.body) {
-    // 环境不支持流（老 Electron）：退回一次性下载
-    const bytes = Buffer.from(await response.arrayBuffer())
-    await fs.writeFile(destPath, bytes)
-    return bytes.length
-  }
-  const reader = response.body.getReader()
-  const chunks = []
+  const reader = response.body.getReader(), file = await fs.open(destPath, 'wx')
   let received = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    chunks.push(Buffer.from(value))
-    received += value.length
-    if (onProgress) {
-      const percent = total > 0 ? received / total : 0
-      onProgress(percent, received, total)
+  try {
+    for (;;) {
+      const {done, value} = await reader.read(); if (done) break
+      await file.writeFile(Buffer.from(value)); received += value.length
+      if (received > 1024 * 1024 * 1024) throw new Error('更新包大小异常')
+      onProgress?.(total > 0 ? received / total : 0, received, total)
     }
-  }
-  await fs.writeFile(destPath, Buffer.concat(chunks))
-  return received
+    if (!received || (total && received !== total)) throw new Error('下载不完整，请重试')
+    return received
+  } finally { await file.close(); reader.releaseLock() }
 }
 
 function reportProgress(mainWindow, stage, percent, received, total) {
@@ -130,8 +119,8 @@ async function downloadAndInstall(mainWindow, data, { onRetry } = {}) {
   if (!asset) {
     throw new Error('版本信息里没有当前平台的更新包')
   }
-  if (!validateDownloadUrl(asset.url)) {
-    throw new Error('更新地址不是安全的 HTTPS 链接')
+  if (!validateReleaseAsset(asset, process.platform)) {
+    throw new Error('更新地址或校验值无效，请从正式发布页下载')
   }
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sticker-maker-update-'))
   const onProgress = (p, r, t) => reportProgress(mainWindow, 'download', p, r, t)
@@ -145,10 +134,10 @@ async function downloadAndInstall(mainWindow, data, { onRetry } = {}) {
       throw new Error('更新包校验失败，已停止安装')
     }
     mainWindow?.setProgressBar(1)
-    spawn(installerPath, ['/S'], {
-      detached: true,
-      stdio: 'ignore',
-    }).unref()
+    const { launchUpdateHelper } = require('./update-handoff')
+    await launchUpdateHelper({ file: installerPath, sha256: asset.sha256, version: data.version, pid: process.pid,
+      root: path.dirname(process.execPath), oldExe: process.execPath,
+      resultFile: path.join(app.getPath('userData'), 'update-result.json') }, tempDir)
     app.quit()
     return
   }
@@ -175,19 +164,38 @@ async function downloadAndInstall(mainWindow, data, { onRetry } = {}) {
   }
   await fs.chmod(installer, 0o755)
   mainWindow?.setProgressBar(1)
-  spawn('/bin/bash', [installer, '--update'], {
-    detached: true,
-    stdio: 'ignore',
-  }).unref()
+  const ready = path.join(tempDir, 'mac-ready')
+  const currentBundle = path.resolve(process.execPath, '..', '..', '..')
+  const child = spawn('/bin/bash', [installer, '--update', String(process.pid), ready], {
+    detached: true, stdio: 'ignore', env: { ...process.env, STICKER_INSTALL_ROOT: path.dirname(currentBundle) }
+  })
+  let launchError = null
+  child.once('error', error => { launchError = error })
+  const deadline = Date.now() + 15000
+  while (Date.now() < deadline) {
+    if (launchError) throw launchError
+    if ((await fs.readFile(ready, 'utf8').catch(() => '')) === 'ready') break
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+  if ((await fs.readFile(ready, 'utf8').catch(() => '')) !== 'ready') throw new Error('更新助手尚未就绪，旧版保持打开')
+  child.unref()
   app.quit()
 }
 
-async function checkForUpdates(mainWindow, { manual = false } = {}) {
+let checking = false
+async function checkForUpdates(mainWindow, options = {}) {
+  if (checking) return { busy: true }
+  checking = true
+  try { return await performUpdateCheck(mainWindow, options) } finally { checking = false }
+}
+async function performUpdateCheck(mainWindow, { manual = false } = {}) {
   try {
     const currentVersion = require('../../package.json').version
-    const response = await fetch(VERSION_CHECK_URL, { cache: 'no-store' })
+    const response = await networkFetch(VERSION_CHECK_URL + '?t=' + Date.now(), { cache: 'no-store', signal: AbortSignal.timeout(15000) })
     if (!response.ok) throw new Error(`版本服务返回 HTTP ${response.status}`)
     const data = await response.json()
+    if (!versionParts(data.version)) throw new Error('远端不是有效正式版本')
+    require('./update-state').recordSuccess(app.getPath('userData'))
     if (!data.version || !isNewerVersion(data.version, currentVersion)) {
       if (manual) {
         await dialog.showMessageBox(mainWindow, {
@@ -260,4 +268,6 @@ module.exports = {
   pickUpdateAsset,
   validateDownloadUrl,
   verifyChecksum,
+  validateReleaseAsset,
+  downloadToFile,
 }

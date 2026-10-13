@@ -244,3 +244,79 @@ def test_ui_button_words_filtered():
     names = [r.name for r in rows]
     assert "创建形象" not in names
     assert "星星布丁" in names and "周三涵做表情67" in names
+
+
+# ---------------- 同步克隆行修复（2026-09-10）：legacy 库名字兜底 ----------------
+
+def _lib_local(tmp_path, dirname, album, sid="", with_files=True):
+    """构造 _sync_status_legacy 的 locals_ 条目（dir/meta/album_name/name）。"""
+    from sticker_engine.config.series import save_meta, load_meta
+    path = tmp_path / dirname
+    save_meta(path, EpisodeMeta(album_name=album, platform_item_id=sid))
+    if with_files:
+        (path / "最终版").mkdir(parents=True)
+        (path / "最终版" / "1.png").write_bytes(b"x")
+    return {"dir": path, "meta": load_meta(path),
+            "album_name": album, "name": dirname}
+
+
+def test_library_match_item_id_wins_over_name():
+    """已绑 ID 的作品仍按 item_id 精确归属，名字兜底不越权。"""
+    from sticker_engine.publish.status import _match_by_item_then_name
+    from types import SimpleNamespace as NS
+    from pathlib import Path
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        bound = _lib_local(Path(td), "episode_a", "周三涵做表情383", sid="stiker_old")
+        other = _lib_local(Path(td), "episode_b", "周三涵做表情383", sid="")
+        hits = _match_by_item_then_name(NS(name="周三涵做表情383", item_id="stiker_old"),
+                                        [bound, other])
+        assert len(hits) == 1 and hits[0]["dir"] == bound["dir"]
+        assert not other["meta"].platform_item_id
+
+
+def test_library_match_falls_back_to_exact_album_name():
+    """刚发布的作品本地无 ID：按「专辑名完全相等 + 有文件」绑到真身，
+    不再直接走 placeholder 生成 0 文件克隆。"""
+    from sticker_engine.publish.status import _match_by_item_then_name
+    from types import SimpleNamespace as NS
+    from pathlib import Path
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        real = _lib_local(Path(td), "episode_real", "周三涵做表情384", sid="")
+        hits = _match_by_item_then_name(NS(name="周三涵做表情384", item_id="stiker_new"),
+                                        [real])
+        assert len(hits) == 1 and hits[0]["dir"] == real["dir"]
+        assert real["meta"].platform_item_id == "stiker_new"   # ID 绑回真身
+
+
+def test_library_match_requires_exact_name_and_real_files():
+    """前缀名/0 文件占位符都不参与兜底：宁可不匹配也不绑错。"""
+    from sticker_engine.publish.status import _match_by_item_then_name
+    from types import SimpleNamespace as NS
+    from pathlib import Path
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        real = _lib_local(Path(td), "episode_real", "周三涵做表情384", sid="")
+        empty = _lib_local(Path(td), "episode_empty", "周三涵做表情385",
+                           sid="", with_files=False)
+        # 平台行名只是前缀（38 ≠ 384）：拒绝
+        assert _match_by_item_then_name(NS(name="周三涵做表情38", item_id="s1"),
+                                        [real]) == []
+        # 同名但本地是 0 文件占位符：拒绝（不绑占位符）
+        assert _match_by_item_then_name(NS(name="周三涵做表情385", item_id="s2"),
+                                        [empty]) == []
+        assert not empty["meta"].platform_item_id
+
+
+def test_library_match_ambiguous_same_name_not_bound():
+    """多个同名有文件作品=歧义：不绑，交给上层建占位符。"""
+    from sticker_engine.publish.status import _match_by_item_then_name
+    from types import SimpleNamespace as NS
+    from pathlib import Path
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        a = _lib_local(Path(td), "episode_a", "同名", sid="")
+        b = _lib_local(Path(td), "episode_b", "同名", sid="")
+        assert _match_by_item_then_name(NS(name="同名", item_id="s"), [a, b]) == []
+        assert not a["meta"].platform_item_id and not b["meta"].platform_item_id

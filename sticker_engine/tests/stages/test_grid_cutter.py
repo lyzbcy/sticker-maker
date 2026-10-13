@@ -160,3 +160,32 @@ def test_white_background_also_works(tmp_path):
     panels, notes = cut_grid(p, 4, tmp_path / "out")
     assert len(panels) == 16
     assert any("沟中下刀" in n for n in notes)
+
+
+def test_white_gridlines_stripped_no_flat_panel(tmp_path):
+    """白格线粘连回归锁（2026-09-09 panel_09 240×97 事故）。
+
+    codex 偶发在宫格上画白/浅色网格线：白线与贴纸白描边同色相连，
+    把跨行内容连成覆盖整图的巨型连通域（被巨块过滤整块剔除 → 角色
+    丢失只剩装饰碎块 → 切出扁条），同时填平行沟导致等分兜底。
+    锁两件事：格线被清除（note 出现）+ 16 张 panel 无扁条。
+    """
+    img = _canvas(1200, 1200)
+    d = ImageDraw = __import__("PIL.ImageDraw", fromlist=["ImageDraw"]).Draw(img)
+    for r in range(4):
+        for c in range(4):
+            _draw_sticker(img, 40 + c * 300, 40 + r * 300,
+                          260 + c * 300, 260 + r * 300)
+    # 3 横 3 纵白色格线（6px 厚，贯穿整图）——092455 事故同款形态
+    for i in (1, 2, 3):
+        d.rectangle([0, i * 300 - 3, 1200, i * 300 + 3], fill=(255, 255, 255))
+        d.rectangle([i * 300 - 3, 0, i * 300 + 3, 1200], fill=(255, 255, 255))
+    p = tmp_path / "grid.png"; img.save(p)
+    panels, notes = cut_grid(p, 4, tmp_path / "out")
+    assert len(panels) == 16
+    assert any("格线" in n for n in notes)
+    for pan in panels:
+        im = Image.open(pan)
+        # 无扁条：任一维 <55% 格尺寸（660px 的 55%=363）即判坏
+        assert im.width >= 150 and im.height >= 150, \
+            f"{pan.name} {im.size} 疑似切坏"

@@ -15,7 +15,7 @@ from .config.schema import Paths, Prefs, ModeProbsConfig
 from .config.paths import resolve_paths, current_platform
 from .config.loader import load_prefs_from_file, save_prefs, _clean_price_probs
 
-VERSION = "0.3.0"
+VERSION = "0.5.1"
 
 _engine = None
 _stop_events = {}
@@ -146,7 +146,7 @@ def cmd_check_codex(req_id, args):
     status = provider.check()
     _result(req_id, "ok" if status.image_ready else "fail",
             data={"installed": status.installed, "logged_in": status.logged_in,
-                  "image_ready": status.image_ready, "guidance_msg": status.guidance_msg})
+                  "image_ready": status.image_ready, "needs_repair": getattr(status, "needs_repair", False), "guidance_msg": status.guidance_msg})
 
 
 # ---------------- Codex 额度查询 ----------------
@@ -343,6 +343,27 @@ def _stream_install_proc(cmd, env):
                     encoding="utf-8", errors="replace", env=env)
 
 
+def cmd_login_codex(req_id, args):
+    """打开可交互登录窗口；不自动填写账号或读取登录令牌。"""
+    import subprocess as sp
+    import shlex
+    from .providers.codex import CodexProvider
+    resolved = CodexProvider()._resolve_codex_path()
+    if not resolved:
+        _result(req_id, "fail", errors=[{"message": "请先安装 codex，再登录。"}])
+        return
+    if sys.platform == "win32":
+        sp.Popen([resolved, "login"], creationflags=sp.CREATE_NEW_CONSOLE)
+    elif sys.platform == "darwin":
+        command = shlex.join([resolved, "login"])
+        script = 'tell application "Terminal" to do script ' + json.dumps(command)
+        sp.run(["osascript", "-e", script], check=True, timeout=15)
+    else:
+        _result(req_id, "fail", errors=[{"message": "请在终端运行 codex login 后重新检测。"}])
+        return
+    _result(req_id, "ok", data={"opened": True})
+
+
 def cmd_install_codex(req_id, args):
     """一键安装 codex（用户友好，初心第3行）。
 
@@ -361,7 +382,10 @@ def cmd_install_codex(req_id, args):
     engine = _ensure_engine()
     provider = CodexProvider(codex_exec="codex", output_dir=engine.config.paths.codex_output_dir)
     resolved = provider._resolve_codex_path()
-    if resolved:
+    managed = engine.config.paths.user_data / 'tools/codex/codex.exe'
+    helpers = ['codex-code-mode-host.exe','codex-command-runner.exe','codex-windows-sandbox-setup.exe']
+    complete = all((managed.parent/name).is_file() for name in helpers)
+    if resolved and (Path(resolved).resolve() != managed.resolve() or complete):
         _emit({"id": req_id, "type": "progress", "stage": "install",
                "message": f"✅ 已检测到 codex：{resolved}", "percent": 0.9})
         status = provider.check()
@@ -370,6 +394,17 @@ def cmd_install_codex(req_id, args):
                       "guidance_msg": status.guidance_msg,
                       "codex_path": resolved,
                       "log": f"已检测到现有 codex: {resolved}"})
+        return
+
+    if sys.platform == "win32":
+        from .providers.native_installer import install_native
+        try:
+            installed = install_native(engine.config.paths.user_data,
+                lambda message, percent: _emit({"id": req_id, "type": "progress", "stage": "install", "message": message, "percent": percent}))
+            _result(req_id, "ok", data={"installed": True, "codex_path": installed, "image_ready": False})
+        except Exception as error:
+            _result(req_id, "fail", errors=[{"message": "生图工具安装未完成：" + str(error)}],
+                    data={"hint": "请检查网络后重试；国内访问 GitHub 较慢时可使用自己的代理。无需安装 Python 或 Node.js。"})
         return
 
     # 策略2：npm 安装（用 login shell 的 PATH，拿到 nvm 的 node）
@@ -432,6 +467,29 @@ def cmd_install_codex(req_id, args):
     except Exception as e:
         _result(req_id, "fail", errors=[{"message": f"{npm_err}；官方脚本异常: {e}"}],
                 data={"hint": "手动安装：终端运行 npm i -g @openai/codex"})
+
+
+def cmd_export_episode(req_id, args):
+    from .distribution import export_episode
+    engine = _ensure_engine()
+    data = export_episode(args.get("path", ""), args.get("destination", ""), engine.config.paths.output_root)
+    _result(req_id, "ok", data=data)
+
+
+def cmd_runtime_check(req_id, args):
+    """发行包诊断：检查内置依赖并实际启动独立空白浏览器，不访问用户账号。"""
+    import keyring
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            page.set_content("<h1>StickerMaker runtime ready</h1>")
+            title = page.locator("h1").inner_text()
+        finally:
+            browser.close()
+    _result(req_id, "ok", data={"version": VERSION, "browser": title,
+            "credential_backend": type(keyring.get_keyring()).__name__, "frozen": bool(getattr(sys, "frozen", False))})
 
 
 def cmd_get_version(req_id, args):
@@ -643,13 +701,19 @@ def _auto_assign_series_name(ep_dir: Path, engine):
 
 
 def cmd_run_batch(req_id, args):
-    """批量生成：count 组串行；auto_publish 时每组自动命名（默认系列）+提交。
+    """批量生成：生成-发布流水线（2026-09-09 用户需求：发布第 N 弹时
+    生成第 N+1 弹，不再串行等待）。
 
+    生成线程串行预生成（系列取号随之保持串行，不跳号；队列最多缓冲 2
+    弹，发布慢时生成不空转占额度）；主线程串行发布——发布是同账号的
+    浏览器操作，刻意保持单 worker，多页面并发提交是典型机器行为特征，
+    容易触发平台风控。流水线后每弹耗时 ≈ max(生成 ~2 分钟, 发布 ~9
+    分钟)，发布本身变快后（分步计时定位瓶颈）吞吐随之提升。
     每组进度经原有 run 的 progress 通道透传；批量粒度进度用 stage="batch"。
-    stop 可中断（中断前已完成的组保留结果）。
+    stop 可中断（中断前已完成的组保留结果）；连续 3 组失败熔断不变。
     """
-    # 上限 200（2026-09-03 用户需求：自定义大批量；每组 5-8 分钟串行，
-    # 200 组约 20-27 小时，支持随时 stop 中断、已完成组保留）
+    # 上限 200（2026-09-03 用户需求：自定义大批量；支持随时 stop 中断、
+    # 已完成组保留）
     count = max(1, min(200, int(args.get("count") or 1)))
     auto_publish = bool(args.get("auto_publish"))
     engine = _ensure_engine()
@@ -665,15 +729,67 @@ def cmd_run_batch(req_id, args):
                "phase": "batch", "message": msg, "percent": None,
                "eta_seconds": None})
 
+    from queue import Queue
+    gen_workers = max(1, min(4, int(args.get("gen_workers") or 2)))
+    q = Queue(maxsize=gen_workers * 2)
+
+    # 流水线锁豁免：hooks.invoke 在命令线程持 LOCK，生成线程的 engine.run
+    # 抢锁会全军覆没（RLock 跨线程不可重入）。置标志让伙伴线程豁免；
+    # 批量结束（含异常/熔断）必须清理，否则后续单次生成会绕过锁。
+    from .library import commands as _libcmd
+    _libcmd.BATCH_LOCK_HELD = True
+
+    # 2026-09-10 提速：双生图工位（生图 ~2 分钟是每弹的硬底线，一次
+    # 生图仍只花一次额度，总额度不变只是并行花）。工位数可由
+    # args["gen_workers"] 覆盖。取号在 api.py 持 _SERIES_NUMBER_LOCK 串行，
+    # 目录名 prep.py 防同秒碰撞；发布保持单 worker（多页面并发提交是
+    # 机器行为特征，易触发平台风控）。
+    import itertools as _it
+    _next_i = _it.count(1)
+    _i_lock = threading.Lock()
+
+    def gen_worker():
+        try:
+            while not stop.is_set():
+                with _i_lock:
+                    i = next(_next_i)
+                    if i > count:
+                        break
+                _say(f"—— 第 {i}/{count} 组开始生成 ——")
+                try:
+                    episode = engine.run(
+                        progress_callback=lambda ev: _progress(req_id, ev),
+                        stop_event=stop)
+                except Exception as exc:   # noqa: BLE001
+                    # 2026-09-11 额度墙事故：worker 异常原本静默死亡（stderr
+                    # 进 DEVNULL，主循环只见 None），整批提前结束且无原因。
+                    # 上报后继续——下一弹可能是不同失败面，熔断仍兜底。
+                    _say(f"✗ 第 {i} 组生成异常：{type(exc).__name__}: {str(exc)[:100]}")
+                    continue
+                q.put((i, episode))
+        finally:
+            q.put(None)   # 无论正常结束/stop/异常，发布循环都要能退出
+
+    for _w in range(gen_workers):
+        threading.Thread(target=gen_worker, daemon=True, name=f"batch-gen-{_w}").start()
+
+    def _drain_queue():
+        while True:
+            if q.get() is None:
+                return
+
     try:
-        for i in range(1, count + 1):
-            if stop.is_set():
-                _say(f"收到停止请求，批量在完成 {i - 1} 组后中断")
-                break
-            _say(f"—— 第 {i}/{count} 组开始 ——")
-            episode = engine.run(
-                progress_callback=lambda ev: _progress(req_id, ev),
-                stop_event=stop)
+        _workers_done = 0
+        while True:
+            item = q.get()
+            if item is None:
+                # 双工位：每个 worker 收尾各投一个 None，收满 gen_workers
+                # 个才算真结束——否则先完工的工位会提前掐断另一工位的弹
+                _workers_done += 1
+                if _workers_done >= gen_workers:
+                    break
+                continue
+            i, episode = item
             item = {
                 "index": i,
                 "success": bool(episode.success),
@@ -689,6 +805,8 @@ def cmd_run_batch(req_id, args):
                 if consecutive_fails >= 3:
                     _say(f"连续 {consecutive_fails} 组失败——疑似额度耗尽或 codex 异常，"
                          f"批量自动中止（已完成 {len(results)} 组）。请查首页额度卡或稍后重跑。")
+                    stop.set()          # 生成线程停止开新组
+                    _drain_queue()      # 丢弃在途组（与串行版"不开下一组"等价）
                     break
                 if stop.is_set():
                     break
@@ -699,10 +817,17 @@ def cmd_run_batch(req_id, args):
                 # 2026-09-01 图标降级风险：AI 大头照生成失败时 S3 静默退回复用
                 # 封面（缩放形态曾被平台驳回）→ 该单跳过自动发布，详情页
                 # 「重生成素材」补 AI 图标后手动提交。单次手动生成不阻断。
+                # 2026-09-08 封面降级同口径：header 格翻车退回旧缩放（全身像
+                # 头部占比低，与"封面=正面半身像"规范不符）。
                 if getattr(episode, "icon_fallback", False):
                     item["published"] = False
                     item["publish_skip"] = "图标生成失败，未发布（详情页重生成素材后手动提交）"
                     _say(f"第 {i} 组图标生成失败（已退回复用封面，平台易驳回），"
+                         f"跳过自动发布——详情页重生成素材后手动提交")
+                elif getattr(episode, "cover_fallback", False):
+                    item["published"] = False
+                    item["publish_skip"] = "封面大头照生成失败，未发布（详情页重生成素材后手动提交）"
+                    _say(f"第 {i} 组封面大头照失败（退回旧缩放，平台易驳回），"
                          f"跳过自动发布——详情页重生成素材后手动提交")
                 else:
                     # 2026-09-02 修复：engine.run() 成功后已按默认系列自动命名
@@ -721,7 +846,8 @@ def cmd_run_batch(req_id, args):
                             lambda stage, message, percent: _emit({
                                 "id": req_id, "type": "progress", "stage": "publish",
                                 "phase": stage, "message": message,
-                                "percent": percent, "eta_seconds": None}))
+                                "percent": percent, "eta_seconds": None}),
+                            keep_session=True)
                         item["published"] = bool(r.get("success"))
                         if r.get("success"):
                             from .config.series import mark_published
@@ -742,6 +868,12 @@ def cmd_run_batch(req_id, args):
             "generated_ok": ok, "published_ok": pub,
             "stopped": stop.is_set(), "results": results})
     finally:
+        _libcmd.BATCH_LOCK_HELD = False
+        try:
+            from .publish.publisher import close_shared_browser
+            close_shared_browser()   # 批量结束：关闭共享浏览器会话
+        except Exception:   # noqa: BLE001
+            pass
         _stop_events.pop(req_id, None)
 
 
@@ -761,6 +893,19 @@ def cmd_list_episodes(req_id, args):
     runtime = runtime_for(engine)
     if runtime:
         # refresh 已由 hooks.invoke 带 TTL 缓存执行，此处不再重复全量刷新
+        # 首次读取（无盘缓存/缓存过期）要全量索引 1-3 分钟——提前把预期
+        # 告诉用户（2026-09-11 用户反馈"堵着不说话很糟心"）；缓存命中后
+        # 正常秒回，不发这条。
+        try:
+            _lib = runtime.library
+            _lib._ensure_disk_cache()
+            if _lib._disk_dirty == 0 and not _lib._disk_cache:
+                _emit({"id": req_id, "type": "progress", "stage": "list",
+                       "phase": "list", "percent": None, "eta_seconds": None,
+                       "message": "首次读取作品库：正在建立索引（约 1~3 分钟，"
+                                  "仅此一次，之后秒开）…"})
+        except Exception:   # noqa: BLE001 - 提示失败不影响主流程
+            pass
         _result(req_id, 'ok', data={'episodes': runtime.rows()})
         return
     root = engine.config.paths.output_root
@@ -884,7 +1029,8 @@ def _episode_meanings(episode_dir: Path) -> list:
 
 def _regen_episode_assets(episode_dir: Path, meta, series=None) -> list:
     """按 meta 的素材模式重新生成横幅/封面/图标。返回 warnings 列表。"""
-    from .stages.assets import make_banner, resize_save
+    from .stages.assets import (make_banner, resize_save, make_big_head_cover,
+                                _is_head_shot, pick_header_candidates)
     import shutil as _shutil
     episode_dir = Path(episode_dir)
     final = episode_dir / "最终版"
@@ -932,12 +1078,24 @@ def _regen_episode_assets(episode_dir: Path, meta, series=None) -> list:
                 cover_src = paths[idx]
             else:
                 warnings.append(f"封面选图越界（第 {idx + 1} 张不存在），回退第 1 张")
-        if cover_src is None and paths:
-            cover_src = paths[0]
         if cover_src is not None:
             cover_out.parent.mkdir(parents=True, exist_ok=True)
             resize_save(cover_src, cover_out, 240, 240)
-        elif not paths:
+        elif paths:
+            # auto（2026-09-08 封面大头照）：header 格 zoom 裁剪，头部画幅
+            # ≈78%（平台 75% 线）；无 header 格/裁剪失败 → 回退第 1 张旧缩放
+            # （与 S3 同口径；regen 无 ctx，选格读盘 meaning_map）
+            cover_out.parent.mkdir(parents=True, exist_ok=True)
+            for cand in pick_header_candidates(paths, ep_dir=episode_dir):
+                if _is_head_shot(cand) and make_big_head_cover(cand, cover_out):
+                    cover_src = cand
+                    warnings.append(f"封面：header 格大头照（{cand.name}）")
+                    break
+            if cover_src is None:
+                cover_src = paths[0]
+                warnings.append("封面：无 header 格/裁剪失败，回退第 1 张缩放")
+                resize_save(cover_src, cover_out, 240, 240)
+        else:
             warnings.append("无成品图，封面未生成")
 
     # ---- 图标（50×50；custom/role 直接复制，否则优先 AI 大头照，再退封面） ----
@@ -947,24 +1105,18 @@ def _regen_episode_assets(episode_dir: Path, meta, series=None) -> list:
     elif meta.icon_mode == "role" and role_key and role_map[role_key].get("icon"):
         _copy_or_warn(role_map[role_key]["icon"], icon_out, f"角色[{role_key}]图标")
     else:
-        # F1（评审）：管线 S3 生成的 AI 图标原图优先——之前这里无条件用封面源
-        # 覆盖，用户一点「重生成素材」就把合规的头部照静默回滚成不合规形态
-        icon_raw = episode_dir / "图标" / "_icon_raw.png"
-        src = None
-        if icon_raw.exists():
-            src = icon_raw
-            warnings.append("图标沿用 AI 生成的大头照（平台要求纯头部正面像）")
-        elif cover_src is not None:
-            src = cover_src
-            warnings.append("图标退回复用封面（无 AI 大头照；平台可能驳回，建议重生成本组）")
-        elif cover_out.exists():
-            src = cover_out
-            warnings.append("图标退回封面成品（无 AI 大头照；平台可能驳回，建议重生成本组）")
-        if src is not None:
+        # 2026-09-09 用户定稿：图标 = 封面同图（封面已是 header 大头照，
+        # 肩线构图稳定；不再优先 _icon_raw——独立裁头部/AI 图标的构图
+        # 用户实测"选得不好"已废弃）。cover_out 在上方封面段必然已生成
+        # （custom/role 模式为复制或已告警），此处直接缩放。
+        if cover_out.is_file():
             icon_out.parent.mkdir(parents=True, exist_ok=True)
-            resize_save(src, icon_out, 50, 50)
-        elif not paths:
-            warnings.append("无成品图，图标未生成")
+            resize_save(cover_out, icon_out, 50, 50)
+        elif cover_src is not None:
+            icon_out.parent.mkdir(parents=True, exist_ok=True)
+            resize_save(cover_src, icon_out, 50, 50)
+        else:
+            warnings.append("无封面，图标未生成（封面生成后重试重生成素材）")
     return warnings
 
 
@@ -1822,12 +1974,15 @@ def cmd_build_feedback_prompt(req_id, args):
     _result(req_id, "ok", data={"text": text})
 
 
-def cmd_build_all_rejects_prompt(req_id, args):
-    """一键汇总复制**所有**未通过审核作品的驳回理由（喂 AI 分析共性+逐单修改）。"""
-    engine = _ensure_engine()
-    root = Path(engine.config.paths.output_root)
+def collect_reject_records(root: Path) -> list:
+    """扫描 output_root，收集所有未通过审核作品的驳回记录。
+
+    2026-09-11 用户改造：此前把全部理由+prompt 堆成一篇长文复制，单多时
+    内容过长把 AI 上下文压爆。改为导出 JSONL 文件（每行一个作品），剪贴板
+    只复制文件夹路径+简短说明，让 AI 自己去读文件。
+    """
     from .config.series import load_meta
-    blocks = []
+    records = []
     for ep_dir in sorted(root.iterdir()) if root.exists() else []:
         if not (ep_dir.is_dir() and ep_dir.name.startswith("episode")):
             continue
@@ -1842,31 +1997,46 @@ def cmd_build_all_rejects_prompt(req_id, args):
                 prompt_head = pfile.read_text(encoding="utf-8")[:800]
             except OSError:
                 prompt_head = ""
-        blocks.append(
-            f"### 《{meta.album_name or ep_dir.name}》\n"
-            f"平台状态：{meta.platform_status}\n"
-            f"驳回理由（原文）：\n{reason}\n"
-            + (f"当次生图 prompt（截取）：\n{prompt_head}\n" if prompt_head else ""))
-    if not blocks:
+        records.append({
+            "album_name": meta.album_name or ep_dir.name,
+            "platform_status": meta.platform_status,
+            "reject_reason": reason,
+            "episode_dir": str(ep_dir),
+            "prompt_head": prompt_head,
+        })
+    return records
+
+
+def cmd_build_all_rejects_prompt(req_id, args):
+    """一键复制驳回理由：导出 JSONL 到固定文件夹，剪贴板只放路径+说明。
+
+    （2026-09-11 用户改造：旧版把全部理由堆成长文，单多时复制内容过长，
+    AI 上下文会被压缩。现在让 AI 自己读文件。）
+    """
+    engine = _ensure_engine()
+    root = Path(engine.config.paths.output_root)
+    records = collect_reject_records(root)
+    if not records:
         _result(req_id, "fail",
                 errors=[{"message": "没有抓到任何未通过审核的驳回理由：先在作品库点「一键更新」。"}])
         return
-    text = f"""以下是微信表情开放平台**多个作品**的审核驳回记录（{len(blocks)} 个未通过）。请做两件事：
+    folder = Path(engine.config.paths.user_data) / "reject_reasons"
+    folder.mkdir(parents=True, exist_ok=True)
+    jsonl_path = folder / "rejects.jsonl"
+    with jsonl_path.open("w", encoding="utf-8") as fh:
+        for rec in records:
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    text = f"""微信表情包驳回理由已导出为 JSONL：{folder}
+文件 rejects.jsonl，共 {len(records)} 行，每行一个作品的 JSON：
+  album_name（专辑名）/ platform_status（平台状态）/ reject_reason（驳回理由原文）
+  / episode_dir（本地作品目录）/ prompt_head（当次生图 prompt 截取）。
 
-## 任务一：提炼共性问题
-逐条比对驳回理由，指出哪些问题在多个作品中重复出现（如命名规则、图标规格、画面元素），并判断各属于管线哪个环节（生图 prompt / 切图 / 抠图 / 素材生成 / 命名）。
+请用工具读取该文件后做两件事：
+1. 提炼共性问题：哪些驳回理由在多个作品重复出现，各属于管线哪个环节（生图 prompt / 切图 / 抠图 / 素材生成 / 命名）。
+2. 逐单修改清单：每单给出可执行步骤（重新生成一单 / 详情页→重生成素材 / 改名）。
 
-## 任务二：逐单修改清单
-对每个作品给出具体可执行的修改步骤（能重生成的标注"重新生成一单"，能改名的给出新名字，能只改素材的标注"详情页→重生成素材"）。
-
-## 背景知识
-- 表情主图 240×240、聊天页图标 50×50，由 4×4 网格成图自动切图缩放生成；图标已支持单独 AI 生成纯头部正面照。
-- 平台规则示例：表情名称不能含空格；图标要求"只含形象头部的正面图像"；表情图不能有多余边框线。
-
----
-
-""" + "\n".join(blocks)
-    _result(req_id, "ok", data={"text": text, "count": len(blocks)})
+背景规则：表情主图 240×240、聊天页图标 50×50（4×4 网格切图生成）；名称不能含空格；图标须"只含形象头部的正面图像"；表情图不能有多余边框线。"""
+    _result(req_id, "ok", data={"text": text, "count": len(records), "folder": str(folder)})
 
 
 def cmd_build_reject_review_prompt(req_id, args):
@@ -1930,26 +2100,63 @@ def _album_series_number(meta, ep_dir):
 def cmd_list_all_stickers(req_id, args):
     """全部表情视图：跨作品列出每张贴纸（图/含义/所属/现有打分）。
 
-    group 带 series_name/number（前端按系列筛选 + 编号降序）；
-    响应带 series 列表与 default_series（设置里的默认系列）。
+    2026-09-11 修复：①同一作品常有多个投影目录（时间戳名 + work_id 名），
+    此前全列出 → "596 弹有两个"的重复；现按 work_id（meta）去重，优先
+    保留资源库 rows 指向的主目录。②rating.json 此前每单读两遍 JSON，
+    现只读一次。③加进程内 120s 缓存（save_rating 后失效）——全量扫
+    700+ 目录的 IO 风暴是"全部表情很卡"的根因。
     """
     import json as _json
+    import time as _time
     engine = _ensure_engine()
     root = Path(engine.config.paths.output_root)
+
+    cached = globals().get("_ALL_STICKERS_CACHE")
+    if cached and _time.monotonic() - cached["at"] < 120:
+        _result(req_id, "ok", data=cached["data"])
+        return
+
+    # 主目录白名单：state['paths'] 直接构建（不跑 rows()——冷启动省 ~80s；
+    # 与 path_for 同口径：同 wid 多路径时取字典序最小）
+    main_dirs = {}
+    try:
+        from .library.runtime import active_runtime
+        _rt = active_runtime()
+        for _p, _mk in (_rt.state.get("paths") or {}).items():
+            _w = _mk.get("work_id")
+            if _w and Path(_p).is_dir():
+                _cur = main_dirs.get(_w)
+                if _cur is None or _p < _cur:
+                    main_dirs[_w] = _p
+    except Exception:   # noqa: BLE001
+        main_dirs = {}
+
     from .config.series import load_meta
     groups, series_seen = [], []
+    seen = {}   # wid -> [(idx, is_main)]（同 wid 多投影目录全记录，收尾统一裁决）
     for ep_dir in sorted(root.iterdir(), reverse=True) if root.exists() else []:
         if not (ep_dir.is_dir() and ep_dir.name.startswith("episode")):
             continue
         meta = load_meta(ep_dir)
+        wid = getattr(meta, "work_id", "") or ""
+        rp = str(ep_dir.resolve())
+        is_main = (main_dirs.get(wid) == rp) if wid else False
         stickers = _episode_stickers(ep_dir)
         if not stickers:
             continue
+        if wid:
+            seen.setdefault(wid, []).append((len(groups), is_main))
+        elif (meta.album_name or "") and any(
+                g["album_name"] == meta.album_name for g in groups):
+            continue   # 无 work_id 的旧目录按专辑名去重
         rating = {}
+        overall = None
         rf = ep_dir / "rating.json"
         if rf.exists():
             try:
-                rating = _json.loads(rf.read_text(encoding="utf-8")).get("ratings") or {}
+                _r = _json.loads(rf.read_text(encoding="utf-8"))
+                rating = _r.get("ratings") or {}
+                overall = _r.get("overall")
             except Exception:   # noqa: BLE001
                 rating = {}
         series_name, number = _album_series_number(meta, ep_dir)
@@ -1962,8 +2169,17 @@ def cmd_list_all_stickers(req_id, args):
             "number": number,
             "stickers": stickers,
             "ratings": rating,
-            "overall": (rf.exists() and _json.loads(rf.read_text(encoding="utf-8")).get("overall")) or None,
+            "overall": overall or None,
         })
+    # 冗余投影裁决：同 wid 保留主目录（无主标记则保留最完整/第一条）
+    _drop_idx = set()
+    for wid, lst in seen.items():
+        if len(lst) > 1:
+            keep_i = next((i for i, m in lst if m), lst[0][0])
+            for i, _m in lst:
+                if i != keep_i:
+                    _drop_idx.add(i)
+    groups = [g for i, g in enumerate(groups) if i not in _drop_idx]
     # 默认系列（用户在设置里指定的），回落到作品数最多的系列
     default_series = ""
     sid = getattr(engine.config.prefs, "default_series_id", None)
@@ -1977,10 +2193,12 @@ def cmd_list_all_stickers(req_id, args):
             if g["series_name"]:
                 cnt[g["series_name"]] = cnt.get(g["series_name"], 0) + 1
         default_series = max(cnt, key=cnt.get) if cnt else ""
-    _result(req_id, "ok", data={"groups": groups,
-                                "total": sum(len(g["stickers"]) for g in groups),
-                                "series": series_seen,
-                                "default_series": default_series})
+    data = {"groups": groups,
+            "total": sum(len(g["stickers"]) for g in groups),
+            "series": series_seen,
+            "default_series": default_series}
+    globals()["_ALL_STICKERS_CACHE"] = {"at": _time.monotonic(), "data": data}
+    _result(req_id, "ok", data=data)
 
 
 def cmd_build_all_ratings_prompt(req_id, args):
@@ -2002,10 +2220,18 @@ def cmd_build_all_ratings_prompt(req_id, args):
         from_no = to_no = None
     skipped = 0
     blocks = []
+    _seen_wids = set()
     for ep_dir in sorted(root.iterdir(), reverse=True) if root.exists() else []:
         if not (ep_dir.is_dir() and ep_dir.name.startswith("episode")):
             continue
         meta = load_meta(ep_dir)
+        # 双投影去重（同 work_id 只取一个目录；时间戳目录先到但主目录
+        # 后到时以 rows 主目录为准——简化：先跳过重复，首目录即用）
+        _wid = getattr(meta, "work_id", "") or ""
+        if _wid and _wid in _seen_wids:
+            continue
+        if _wid:
+            _seen_wids.add(_wid)
         series_name, number = _album_series_number(meta, ep_dir)
         if series_filter and series_name != series_filter:
             continue
@@ -2026,16 +2252,19 @@ def cmd_build_all_ratings_prompt(req_id, args):
         if not n_rated and not rating.get("overall"):
             continue   # 完全没打分的单不占篇幅
         album = meta.album_name or ep_dir.name
-        nl = chr(10)
-        blocks.append(
-            f"### 《{album}》（{n_rated} 张已打分）" + nl +
-            f"- 打分数据库：{rf}" + nl +
-            f"- 当次生图 prompt：{ep_dir / '原图' / 'prompt.txt'}" + nl +
-            f"- 含义映射：{ep_dir / 'meaning_map.json'}" + nl +
-            f"- 表情成品目录：{ep_dir / '最终版'}" + nl +
-            f"- 素材目录：横幅 {ep_dir / '横幅' / '横幅.png'} | "
-            f"封面 {ep_dir / '封面' / '封面.png'} | "
-            f"图标 {ep_dir / '图标' / '图标.png'}")
+        blocks.append({
+            "album_name": album,
+            "episode_dir": str(ep_dir),
+            "overall": rating.get("overall"),
+            "note": rating.get("note", ""),
+            "ratings": rating.get("ratings") or {},
+            "prompt_file": str(ep_dir / "原图" / "prompt.txt"),
+            "meaning_map": str(ep_dir / "meaning_map.json"),
+            "stickers_dir": str(ep_dir / "最终版"),
+            "banner": str(ep_dir / "横幅" / "横幅.png"),
+            "cover": str(ep_dir / "封面" / "封面.png"),
+            "icon": str(ep_dir / "图标" / "图标.png"),
+        })
     if not blocks:
         _result(req_id, "fail", errors=[{"message":
             "范围内没有已打分的作品：调整系列/弹数范围，或先去打分。"}])
@@ -2048,25 +2277,29 @@ def cmd_build_all_ratings_prompt(req_id, args):
         scope += f"第 {from_no or '…'}–{to_no or '…'} 弹 "
     if skipped:
         scope += f"（{skipped} 单在范围外/无编号被跳过）"
-    text = f"""你是「表情包一键制作」的批量优化助手。以下是{(" " + scope) if scope else ""}共 {len(blocks)} 个已打分作品的**数据库文件路径**（打分明细不内联，请用文件工具逐个读取 rating.json——含每张表情的 1-5 分与用户备注）。
+    # 2026-09-11 用户改造：多单路径清单也过长（89 单×6 行），改为导出
+    # JSONL——每行一单（album/episode_dir/overall/note/ratings/素材路径），
+    # 剪贴板只复制文件夹路径 + 任务说明，AI 自己读文件。
+    folder = Path(engine.config.paths.user_data) / "rating_export"
+    folder.mkdir(parents=True, exist_ok=True)
+    jsonl_path = folder / "ratings.jsonl"
+    with jsonl_path.open("w", encoding="utf-8") as fh:
+        for rec in blocks:
+            fh.write(_json.dumps(rec, ensure_ascii=False) + "\n")
+    text = f"""你是「表情包一键制作」的批量优化助手。{scope}共 {len(blocks)} 个已打分作品的打分数据已导出为 JSONL：
+{folder}
+文件 ratings.jsonl，每行一个作品：album_name（专辑名）/ overall+note（总评）/ ratings（每张表情的 1-5 分与备注）/ 各素材文件路径（prompt.txt / meaning_map.json / 最终版 / 横幅 / 封面 / 图标）。
 
 ## 评分语义（重要）
 - 有分数 = 用户有明确感受：高分（4-5）= 亮点，低分（1-2）= 有问题（配合备注看）。
 - 没打分 ≠ 差：可能没来得及打，也可能平平常常。有问题的用户一般都会打分。
-- 备注是用户原话，指出具体问题（如"脸歪了""边框线""不萌"），是最高优先级信号。
 
 ## 你的任务（跨作品全局优化，不是逐单流水账）
-1. **通读全部 rating.json**，聚类共性问题（同类备注跨作品重复出现 = 系统性问题）。
-2. **优化方向（用户指定，按需扩展）**：
-   a. 参考图库（{reflib}，生成表情的素材仓库）：哪些参考图产出的单普遍低分？建议淘汰/补充什么风格的参考图？
-   b. 横幅/封面美观度：横幅是 4 张拼贴（750x400），用户觉得不好看——分析低分单的横幅共性，给出新的横幅生成方案（构图/底色/间距/是否用 AI 整图生成）。
-   c. 生图 prompt（各单 prompt.txt）：低分集中的指令模式是什么？
-3. 产出可执行修改清单：能改参考图库的列具体文件操作；能改管线的指出代码/方案；能改 prompt 的给出修改后的文本。
-4. 如果你在用户本机运行（ZCode 等代理）：可直接读取上述路径的文件、修改参考图库与 %APPDATA%/StickerEngine/prompts/*.json 方案文件。
-
-## 已打分作品清单（{len(blocks)} 个）
-""" + chr(10).join(blocks)
-    _result(req_id, "ok", data={"text": text, "count": len(blocks)})
+1. 用工具读取 ratings.jsonl，聚类共性问题（同类备注跨作品重复 = 系统性问题）；需要看原始数据时按行内路径深入读取。
+2. 优化方向：a. 参考图库（{reflib}）：低分单的参考图共性，建议淘汰/补充；b. 横幅/封面美观度（横幅=4 张拼贴 750x400）：低分共性 → 新生成方案；c. 生图 prompt（各单 prompt.txt）：低分集中的指令模式。
+3. 产出可执行修改清单（参考图库文件操作 / 管线代码方案 / 修改后的 prompt 文本）。"""
+    _result(req_id, "ok", data={"text": text, "count": len(blocks),
+                                "folder": str(folder)})
 
 
 def cmd_save_rating(req_id, args):
@@ -2114,6 +2347,8 @@ def cmd_save_rating(req_id, args):
         _json.dumps(rating, ensure_ascii=False, indent=2), encoding="utf-8")
     _result(req_id, "ok", data={"path": str(ep_dir / "rating.json"),
                                 "rated": len(rating["ratings"])})
+    # 打分变了：全部表情视图的缓存立即失效
+    globals()["_ALL_STICKERS_CACHE"] = None
 
 
 def cmd_get_rating(req_id, args):
@@ -2247,12 +2482,16 @@ def cmd_clear_logs(req_id, args):
     _result(req_id, "ok")
 
 
-def _publish_episode(episode_dir, progress):
-    """运行现有微信 Publisher，给桌面层返回结构化结果。"""
+def _publish_episode(episode_dir, progress, keep_session=False):
+    """运行现有微信 Publisher，给桌面层返回结构化结果。
+
+    keep_session=True（批量流水线）：发布成功后保留浏览器与登录态给
+    下一弹，省去每弹 ~150s 的重新登录；批量结束由调用方统一 close。
+    """
     try:
         from .publish.browser import BrowserSession
         from .publish.config import PublishConfig
-        from .publish.publisher import Publisher
+        from .publish.publisher import Publisher, close_shared_browser
     except ImportError as exc:
         # 发布组件缺失时给出可操作的指引，而不是裸 ModuleNotFoundError
         return {"success": False, "step": "browser", "error":
@@ -2263,9 +2502,11 @@ def _publish_episode(episode_dir, progress):
     episode_dir = Path(episode_dir)
     progress("prepare", "正在检查发布素材…", 0.05)
     config = PublishConfig.from_env()
+    if not keep_session:
+        close_shared_browser()   # 单发/失败路径：不复用上一批的会话
     publisher = Publisher(config, BrowserSession(config), progress=progress)
     progress("browser", "正在打开微信表情开放平台…", 0.15)
-    result = publisher.publish(episode_dir)
+    result = publisher.publish(episode_dir, keep_session=keep_session)
     screenshot = episode_dir / "_publish_error.png"
     if screenshot.exists():
         result["screenshot"] = str(screenshot)
@@ -2541,9 +2782,9 @@ def _dict_to_prefs(d):
 
 
 HANDLERS = {
-    "check_codex": cmd_check_codex, "install_codex": cmd_install_codex,
+    "login_codex": cmd_login_codex, "check_codex": cmd_check_codex, "install_codex": cmd_install_codex,
     "codex_usage": cmd_codex_usage,
-    "get_version": cmd_get_version,
+    "get_version": cmd_get_version, "runtime_check": cmd_runtime_check, "export_episode": cmd_export_episode,
     "load_prefs": cmd_load_prefs, "save_prefs": cmd_save_prefs,
     "list_characters": cmd_list_characters, "generate_base": cmd_generate_base,
     "add_base": cmd_add_base, "remove_base": cmd_remove_base,
@@ -2619,6 +2860,59 @@ def _force_utf8_stdio():
             pass   # 流被替换/关闭时静默跳过
 
 
+_ENGINE_LOCK = None   # 跨进程单实例锁（模块级持有句柄，进程退出自动释放）
+
+
+def _acquire_single_instance():
+    """跨进程引擎单实例锁（2026-09-09 事故：两个应用实例各挂一个引擎并发
+    capture 同一个库，12 秒内 308 个作品全部 fork 出平行版本头，全部显示
+    版本冲突。进程内 LOCK 管不住跨进程并发，这里用独占文件锁兜底）。
+
+    engine.lock 只做互斥（内容无关）；持有者 PID 写在旁边的 .pid 文件，
+    锁定区域不包含它——否则拒绝提示里读不到 PID（实测踩坑：msvcrt 锁
+    [0,1) 后其他进程连读这 1 字节都会 PermissionError）。
+    测试设置 STICKER_ENGINE_NO_LOCK=1 跳过（pytest spawn 的 cli 子进程
+    不应被生产环境的锁误杀）。
+    """
+    global _ENGINE_LOCK
+    import os
+    # 测试豁免：STICKER_ENGINE_NO_LOCK=1 显式跳过；PYTEST_CURRENT_TEST 由
+    # pytest 设置并随 subprocess 传入 cli 子进程——测试 spawn 的引擎天然
+    # 跳锁，不被真实运行中的引擎误杀（2026-09-09：30 个后端测试被误伤）
+    if os.environ.get("STICKER_ENGINE_NO_LOCK") == "1" or os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    lock_path = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"),
+                             "StickerEngine", "engine.lock")
+    os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+    _ENGINE_LOCK = open(lock_path, "a+", encoding="utf-8")
+    try:
+        # 锁区间固定为 [0,1)：a+ 模式打开时指针在末尾，不 seek 的话
+        # 两个实例会锁到不同字节区间，互不冲突（2026-09-09 实测踩坑）
+        _ENGINE_LOCK.seek(0)
+        if sys.platform == "win32":
+            import msvcrt
+            msvcrt.locking(_ENGINE_LOCK.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(_ENGINE_LOCK.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, ImportError):
+        holder = ""
+        try:
+            with open(lock_path + ".pid", encoding="utf-8") as r:
+                holder = r.read().strip()
+        except OSError:
+            pass
+        print(f"[sticker-engine-cli] 引擎已在运行（PID {holder or '未知'}）。"
+              f"请先关闭其他「表情包一键制作」窗口再启动——多实例并发写库会导致版本冲突。",
+              file=sys.stderr)
+        sys.exit(3)
+    try:
+        with open(lock_path + ".pid", "w", encoding="utf-8") as w:
+            w.write(str(os.getpid()))
+    except OSError:
+        pass
+
+
 def main():
     """常驻读 stdin，每行一个命令 JSON。
 
@@ -2626,6 +2920,7 @@ def main():
     这样 run（分钟级长任务）期间仍能读取 stop 命令并置位 stop_event。
     """
     _force_utf8_stdio()
+    _acquire_single_instance()
     print(f"[sticker-engine-cli] v{VERSION} 等待命令...", file=sys.stderr)
     active_threads = []
     for line in sys.stdin:

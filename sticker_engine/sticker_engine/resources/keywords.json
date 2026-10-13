@@ -95,6 +95,101 @@
     "en": "sit and chat",
     "desc": "sitting on a tiny bench patting the seat beside, inviting gentle smile",
     "zh": "坐下聊聊嘛"
+   },
+   {
+    "en": "are you busy",
+    "desc": "tilting head with one paw near the ear like holding a phone",
+    "zh": "在忙吗"
+   },
+   {
+    "en": "come chat",
+    "desc": "patting the seat beside with a huge welcoming smile",
+    "zh": "来聊天"
+   },
+   {
+    "en": "reply me",
+    "desc": "puffing cheeks cross-eyed staring at a phone",
+    "zh": "回我呀"
+   },
+   {
+    "en": "ignored me",
+    "desc": "sitting in a corner drawing circles on the ground sulking",
+    "zh": "没理我"
+   },
+   {
+    "en": "popping in",
+    "desc": "half emerging from a teacup with wide curious eyes",
+    "zh": "闪现"
+   },
+   {
+    "en": "checking in",
+    "desc": "stamping a tiny card proudly with a star badge",
+    "zh": "签到"
+   },
+   {
+    "en": "online now",
+    "desc": "jumping out of a computer screen waving happily",
+    "zh": "上线了"
+   },
+   {
+    "en": "logging off",
+    "desc": "tiptoeing away with a shy goodbye wave",
+    "zh": "退下了"
+   },
+   {
+    "en": "sorry to keep you",
+    "desc": "bowing apologetically holding a tardy slip",
+    "zh": "久等了"
+   },
+   {
+    "en": "night night",
+    "desc": "hugging a moon plush about to doze off",
+    "zh": "晚安嘛"
+   },
+   {
+    "en": "on mute",
+    "desc": "peaceful face with a small mute icon floating beside",
+    "zh": "静音中"
+   },
+   {
+    "en": "slacking off",
+    "desc": "peeking over a laptop screen, relaxed slacker smile",
+    "zh": "摸鱼中"
+   },
+   {
+    "en": "got gossip",
+    "desc": "leaning in with paws cupping a whisper",
+    "zh": "有八卦"
+   },
+   {
+    "en": "tell me more",
+    "desc": "pulling up a tiny stool, popcorn ready, eyes glowing",
+    "zh": "细说"
+   },
+   {
+    "en": "waiting for more",
+    "desc": "sitting on a tiny toilet staring at phone eagerly",
+    "zh": "蹲后续"
+   },
+   {
+    "en": "seen",
+    "desc": "stamping a document with a royal seal, monocle on",
+    "zh": "已阅"
+   },
+   {
+    "en": "you are right",
+    "desc": "nodding hard with hands clasped in agreement",
+    "zh": "你说得对"
+   },
+   {
+    "en": "plus one",
+    "desc": "holding up a plus-one sign eagerly",
+    "zh": "+1"
+   },
+   {
+    "en": "same question",
+    "desc": "raising a paw like in class, question mark above",
+    "zh": "同问"
    }
   ],
   "打工人": [
@@ -207,6 +302,81 @@
     "en": "desk stretch break",
     "desc": "doing tiny seated stretches in a swivel chair, refreshed closing-eye smile",
     "zh": "工位拉伸一下"
+   },
+   {
+    "en": "paid break",
+    "desc": "reading newspaper on a tiny throne, feet up",
+    "zh": "带薪拉屎"
+   },
+   {
+    "en": "wanna quit",
+    "desc": "drafting a resignation letter, quill dramatic",
+    "zh": "想辞职"
+   },
+   {
+    "en": "clocking out",
+    "desc": "sprinting out the door at 6pm, papers flying",
+    "zh": "打卡下班"
+   },
+   {
+    "en": "fake busy",
+    "desc": "typing fast while sneaking a game peek, sweat drop",
+    "zh": "装忙"
+   },
+   {
+    "en": "blame shift",
+    "desc": "tossing a pot like a frisbee to the side",
+    "zh": "甩锅"
+   },
+   {
+    "en": "corporate slave",
+    "desc": "office worker with tie, typing with determination",
+    "zh": "社畜"
+   },
+   {
+    "en": "screen zombie",
+    "desc": "face glued to monitor, glasses reflecting code",
+    "zh": "盯屏幕"
+   },
+   {
+    "en": "deadline dash",
+    "desc": "running with a briefcase on fire",
+    "zh": "赶方案"
+   },
+   {
+    "en": "nudge them",
+    "desc": "poking a giant slow turtle with a stick",
+    "zh": "催一下"
+   },
+   {
+    "en": "got the brief",
+    "desc": "catching a falling anvil labeled work",
+    "zh": "收到需求"
+   },
+   {
+    "en": "too many meetings",
+    "desc": "calendar on fire, tiny figure extinguishing",
+    "zh": "会议太多"
+   },
+   {
+    "en": "off work",
+    "desc": "happily skipping out of an office door with a bag",
+    "zh": "下班了"
+   },
+   {
+    "en": "need vacation",
+    "desc": "staring longingly at a beach poster",
+    "zh": "好想放假"
+   },
+   {
+    "en": "counting days",
+    "desc": "crossing days off calendar, star eyes",
+    "zh": "数日子"
+   },
+   {
+    "en": "monday",
+    "desc": "deflated balloon figure dragging a rock",
+    "zh": "周一"
    }
   ],
   "学习考试": [
@@ -249,11 +419,6 @@
     "en": "teaching you",
     "desc": "standing at a tiny chalkboard holding a pointer, proud teacher smile",
     "zh": "我来教你"
-   },
-   {
-    "en": "lost in formulas",
-    "desc": "head surrounded by floating math symbol doodles, big lost round eyes",
-    "zh": "这题好难"
    },
    {
     "en": "exam passed",
@@ -358,11 +523,6 @@
     "zh": "早餐打卡"
    },
    {
-    "en": "snack stash",
-    "desc": "peeking into a tiny drawer overflowing with snacks, glowing happy eyes",
-    "zh": "零食宝藏"
-   },
-   {
     "en": "cooked for you",
     "desc": "offering a steaming bowl with both paws, warm expectant smile",
     "zh": "给你做了饭"
@@ -371,11 +531,6 @@
     "en": "dessert first",
     "desc": "holding a tiny cake with a cherry on top, blissful closed eyes",
     "zh": "甜点优先"
-   },
-   {
-    "en": "chopstick master",
-    "desc": "picking up a dumpling with chopsticks high in the air, proud narrowed eyes",
-    "zh": "筷子功"
    },
    {
     "en": "one more cup",
@@ -406,6 +561,111 @@
     "en": "hot soup slurp",
     "desc": "sipping soup from a tiny ladle with closed blissful eyes, steam swirls around",
     "zh": "喝口热汤"
+   },
+   {
+    "en": "inhaling food",
+    "desc": "tornado eating noodles, chopsticks a blur",
+    "zh": "炫饭"
+   },
+   {
+    "en": "so hungry",
+    "desc": "biting a chopstick staring at food pictures",
+    "zh": "饿了呀"
+   },
+   {
+    "en": "extra pearls",
+    "desc": "guarding pearls pile fiercely, hissing",
+    "zh": "多加珍珠"
+   },
+   {
+    "en": "calorie bomb",
+    "desc": "tiny figure hugging a giant burger with fireworks behind",
+    "zh": "热量爆炸"
+   },
+   {
+    "en": "eat more",
+    "desc": "opening mouth like a baby bird, insatiable",
+    "zh": "还吃"
+   },
+   {
+    "en": "food porn",
+    "desc": "holding up a phone glowing with delicious food photos, drooling",
+    "zh": "深夜放毒"
+   },
+   {
+    "en": "feed me",
+    "desc": "mouth wide open expecting treats, puppy eyes",
+    "zh": "投喂"
+   },
+   {
+    "en": "hunger alarm",
+    "desc": "red alarm bell ringing over empty bowl",
+    "zh": "饿了告警"
+   },
+   {
+    "en": "waiting delivery",
+    "desc": "staring at the door, drool puddle forming",
+    "zh": "等外卖"
+   },
+   {
+    "en": "eat all yummy",
+    "desc": "happily gobbling rice with sparkling satisfied eyes",
+    "zh": "吃嘛嘛香"
+   },
+   {
+    "en": "smells good",
+    "desc": "nose stretched toward food, floating",
+    "zh": "好香啊"
+   },
+   {
+    "en": "save me some",
+    "desc": "protecting a plate with arms crossed",
+    "zh": "给我留"
+   },
+   {
+    "en": "mine",
+    "desc": "hugging a drumstick glaring sideways",
+    "zh": "别抢"
+   },
+   {
+    "en": "tiny bites",
+    "desc": "rabbit nibbling a cookie politely",
+    "zh": "小口吃"
+   },
+   {
+    "en": "big bites",
+    "desc": "mouth wide open catching a dropped snack, joyful",
+    "zh": "大口吃"
+   },
+   {
+    "en": "crying eating",
+    "desc": "tears streaming while shoveling rice",
+    "zh": "吃哭了"
+   },
+   {
+    "en": "too spicy",
+    "desc": "fire breathing, fanning mouth, tears",
+    "zh": "辣到了"
+   },
+   {
+    "en": "clean plate",
+    "desc": "shining empty bowl, sparkle clean",
+    "zh": "光盘行动"
+   },
+   {
+    "en": "diet failed",
+    "desc": "crying while biting a burger, shrugging",
+    "zh": "忌口失败"
+   },
+   {
+    "en": "just a bite",
+    "desc": "pinching a crumb, giant cake behind",
+    "zh": "就吃一点"
+   },
+   {
+    "en": "treat you",
+    "desc": "presenting a menu with a bow",
+    "zh": "想请你吃"
    }
   ],
   "睡觉休息": [
@@ -470,11 +730,6 @@
     "zh": "再睡五分钟"
    },
    {
-    "en": "sleepwalk snack",
-    "desc": "walking with closed eyes holding a cookie, dreamy floating smile",
-    "zh": "梦游觅食"
-   },
-   {
     "en": "blanket burrito",
     "desc": "rolled tightly in a blanket like a spring roll, only face peeking out",
     "zh": "裹成春卷"
@@ -498,6 +753,101 @@
     "en": "sunbeam doze",
     "desc": "dozing in a warm sunbeam patch on the floor, curled up with tail wrapped",
     "zh": "晒着太阳打盹"
+   },
+   {
+    "en": "cultivating",
+    "desc": "meditating cross-legged floating slightly, zzz bubbles",
+    "zh": "修仙中"
+   },
+   {
+    "en": "3am sleep",
+    "desc": "clock showing 3am, figure collapsing",
+    "zh": "凌晨睡"
+   },
+   {
+    "en": "get up failed",
+    "desc": "tangled in blanket like a sushi roll",
+    "zh": "起床失败"
+   },
+   {
+    "en": "instant sleep",
+    "desc": "fell asleep mid-sentence, face in book",
+    "zh": "秒睡"
+   },
+   {
+    "en": "wild sleeper",
+    "desc": "upside down starfish on bed",
+    "zh": "睡姿百态"
+   },
+   {
+    "en": "sleepwalking",
+    "desc": "eyes closed walking with arms out, zzz",
+    "zh": "梦游中"
+   },
+   {
+    "en": "sweet dream",
+    "desc": "smiling in sleep, dream bubble with sweets",
+    "zh": "做美梦"
+   },
+   {
+    "en": "woken up",
+    "desc": "grumpy explosion from blanket volcano",
+    "zh": "被吵醒"
+   },
+   {
+    "en": "hug to sleep",
+    "desc": "hugging a giant plush, drooling",
+    "zh": "抱着睡"
+   },
+   {
+    "en": "cannot wake",
+    "desc": "buried under blanket, only zzz visible",
+    "zh": "睡不醒"
+   },
+   {
+    "en": "wanna go home",
+    "desc": "staring at a house-shaped thought bubble",
+    "zh": "想回家睡"
+   },
+   {
+    "en": "nap time",
+    "desc": "sleeping on a desk over a pillow",
+    "zh": "午睡时间"
+   },
+   {
+    "en": "peaceful sleep",
+    "desc": "angelic sleeping face, halo",
+    "zh": "睡颜安详"
+   },
+   {
+    "en": "self hypnosis",
+    "desc": "half-closed sleepy eyes with a swinging pocket watch",
+    "zh": "催眠自己"
+   },
+   {
+    "en": "insomnia",
+    "desc": "tossing in bed, moon watching tiredly",
+    "zh": "失眠中"
+   },
+   {
+    "en": "tossing",
+    "desc": "rotating like a rotisserie in blanket",
+    "zh": "翻来覆去"
+   },
+   {
+    "en": "early riser",
+    "desc": "zombie walking with coffee drip",
+    "zh": "早起傻一天"
+   },
+   {
+    "en": "natural wake",
+    "desc": "stretching luxuriously in sunbeam",
+    "zh": "睡到自然醒"
+   },
+   {
+    "en": "no get up",
+    "desc": "deadweight on bed, gravity increased",
+    "zh": "不想起"
    }
   ],
   "恋爱贴贴": [
@@ -552,11 +902,6 @@
     "zh": "脸红心跳"
    },
    {
-    "en": "pinky promise",
-    "desc": "linking a pinky with a floating soft paw, serious cute nod",
-    "zh": "拉钩约定"
-   },
-   {
     "en": "heart balloon",
     "desc": "floating off the ground holding a heart-shaped balloon, dreamy smile",
     "zh": "心形气球"
@@ -595,6 +940,86 @@
     "en": "phone cheek hug",
     "desc": "curled on a tiny bed hugging a glowing phone to cheek, soft loving eyes",
     "zh": "贴着脸想你了"
+   },
+   {
+    "en": "cuddle me",
+    "desc": "arms reaching out, puppy eyes sparkling",
+    "zh": "求贴贴"
+   },
+   {
+    "en": "finger heart",
+    "desc": "making heart with fingers, winking",
+    "zh": "比心心"
+   },
+   {
+    "en": "too heavy",
+    "desc": "arms wobbling holding tiny weight, sweat",
+    "zh": "举不动了"
+   },
+   {
+    "en": "head pat",
+    "desc": "gentle pat on head, sparkles, blushing smile",
+    "zh": "摸头杀"
+   },
+   {
+    "en": "cheek pinch",
+    "desc": "pinching round cheeks, squish effect",
+    "zh": "捏脸脸"
+   },
+   {
+    "en": "shoulder lean",
+    "desc": "leaning head on shoulder, sleepy smile",
+    "zh": "靠肩上"
+   },
+   {
+    "en": "hands linked",
+    "desc": "hands linked with success banner above",
+    "zh": "牵手成功"
+   },
+   {
+    "en": "unsend regret",
+    "desc": "panicking over a message being unsent",
+    "zh": "对方撤回"
+   },
+   {
+    "en": "sharing urge",
+    "desc": "phone shoved forward, eyes glowing",
+    "zh": "分享欲"
+   },
+   {
+    "en": "full sugar",
+    "desc": "boba cup with heart pearls, love struck",
+    "zh": "全糖去冰"
+   },
+   {
+    "en": "recharge hug",
+    "desc": "warm hug with a small heart-shaped battery icon showing full",
+    "zh": "充电型拥抱"
+   },
+   {
+    "en": "jealous jar",
+    "desc": "tiny figure sitting in a vinegar jar pouting",
+    "zh": "小醋坛"
+   },
+   {
+    "en": "appeased",
+    "desc": "lollipop given, smile returning",
+    "zh": "哄好了"
+   },
+   {
+    "en": "kiss resist",
+    "desc": "blocking with hands, blush anyway",
+    "zh": "亲亲抵抗"
+   },
+   {
+    "en": "tight hug policy",
+    "desc": "warm tight hug with happy squished cheeks, hearts",
+    "zh": "抱紧处理"
+   },
+   {
+    "en": "the one",
+    "desc": "figure standing on a giant heart throne",
+    "zh": "心上人"
    }
   ],
   "友谊互动": [
@@ -687,6 +1112,101 @@
     "en": "late reply sprint",
     "desc": "typing rapidly with an apologetic wobbly smile, one tiny sweat drop",
     "zh": "回消息晚了对不起"
+   },
+   {
+    "en": "frenemies",
+    "desc": "fake smiles with hidden knife behind back",
+    "zh": "塑料姐妹"
+   },
+   {
+    "en": "troll friend",
+    "desc": "two figures laughing together with arms on shoulders",
+    "zh": "损友"
+   },
+   {
+    "en": "game squad",
+    "desc": "holding controllers, war paint on face",
+    "zh": "开黑吗"
+   },
+   {
+    "en": "split order",
+    "desc": "calculator and coins, scheming together",
+    "zh": "拼单吗"
+   },
+   {
+    "en": "whatever works",
+    "desc": "floating carefree, arms behind head",
+    "zh": "我就随便"
+   },
+   {
+    "en": "anything fine",
+    "desc": "shrugging with a rainbow of options",
+    "zh": "都行啊"
+   },
+   {
+    "en": "fat together",
+    "desc": "sharing giant cake, both round",
+    "zh": "一起胖"
+   },
+   {
+    "en": "girls dinner",
+    "desc": "two figures sharing hotpot, steam forming hearts",
+    "zh": "姐妹聚餐"
+   },
+   {
+    "en": "bro moment",
+    "desc": "aggressive handshake, mutual respect",
+    "zh": "兄弟一下"
+   },
+   {
+    "en": "reliable",
+    "desc": "salute with trustworthy squared shoulders",
+    "zh": "靠谱"
+   },
+   {
+    "en": "unreliable",
+    "desc": "leaning figure falling over, oops",
+    "zh": "靠不住"
+   },
+   {
+    "en": "carry me",
+    "desc": "holding onto a rocket, hair blown",
+    "zh": "求带飞"
+   },
+   {
+    "en": "duo queue",
+    "desc": "two walking into battlefield back to back",
+    "zh": "双排走起"
+   },
+   {
+    "en": "borrow shoulder",
+    "desc": "napping on friend shoulder, zzz",
+    "zh": "借个肩膀"
+   },
+   {
+    "en": "secret sharing",
+    "desc": "whispering with hands cupped, gossip",
+    "zh": "秘密分享"
+   },
+   {
+    "en": "promise kept",
+    "desc": "pinky swear with sparkle contract",
+    "zh": "守约"
+   },
+   {
+    "en": "pinky promise",
+    "desc": "pinky fingers linked, solemn face",
+    "zh": "拉钩上吊"
+   },
+   {
+    "en": "cheer up",
+    "desc": "cheerleading with pom-poms for friend",
+    "zh": "加油打气"
+   },
+   {
+    "en": "got your back",
+    "desc": "standing behind like bodyguard, sunglasses",
+    "zh": "挺你"
    }
   ],
   "天气季节": [
@@ -935,11 +1455,6 @@
     "zh": "桌游必胜"
    },
    {
-    "en": "kite run",
-    "desc": "running with a tiny kite trailing while looking back joyful",
-    "zh": "放风筝"
-   },
-   {
     "en": "on your marks",
     "desc": "crouched at a tiny start line with determined narrowed eyes",
     "zh": "预备备跑"
@@ -975,11 +1490,6 @@
     "en": "mic performance",
     "desc": "singing into a tiny microphone with mouth wide open, shining eyes",
     "zh": "麦霸上线"
-   },
-   {
-    "en": "air guitar",
-    "desc": "strumming an air guitar with a rockstar squint grin",
-    "zh": "空气吉他"
    },
    {
     "en": "piano focus",
@@ -1030,11 +1540,6 @@
     "en": "violin gentle hold",
     "desc": "tucking a tiny violin under chin with closed gentle eyes, music notes floating",
     "zh": "拉小提琴"
-   },
-   {
-    "en": "playlist scroll bob",
-    "desc": "scrolling a tiny music player with one earcup on, head bobbing",
-    "zh": "翻歌单摇摇头"
    },
    {
     "en": "hands free whistle",
@@ -1273,11 +1778,6 @@
     "zh": "美味主厨"
    },
    {
-    "en": "space float",
-    "desc": "wearing a tiny fishbowl helmet floating with zero-gravity paws",
-    "zh": "太空漫步"
-   },
-   {
     "en": "dino onesie",
     "desc": "wearing a tiny dino-kigurumi doing a small playful roar",
     "zh": "小恐龙嗷呜"
@@ -1334,11 +1834,6 @@
    }
   ],
   "科技上网": [
-   {
-    "en": "typing storm",
-    "desc": "paws flying over a tiny keyboard with focused narrowed eyes",
-    "zh": "键盘敲得飞起"
-   },
    {
     "en": "wifi begging",
     "desc": "hugging a tiny router with pleading upward eyes",
@@ -1400,11 +1895,6 @@
     "zh": "角落找信号"
    },
    {
-    "en": "code squint type",
-    "desc": "typing a code with tongue out and one eye shut in deep focus",
-    "zh": "输验证码"
-   },
-   {
     "en": "cable nest untangle",
     "desc": "untangling a nest of tiny cables with a patient strained smile",
     "zh": "理线理到怀疑"
@@ -1445,11 +1935,6 @@
     "en": "piggy bank hug",
     "desc": "hugging a tiny piggy bank protectively with wary cute eyes",
     "zh": "抱紧存钱罐"
-   },
-   {
-    "en": "bargain win",
-    "desc": "holding a tiny sale tag overhead with a triumphant grin",
-    "zh": "抢到折扣"
    },
    {
     "en": "treat myself",
@@ -1867,11 +2352,6 @@
     "zh": "找找角度"
    },
    {
-    "en": "group squeeze frame",
-    "desc": "squeezing into a tiny frame with cheeks pressed together, everyone grinning",
-    "zh": "挤进自拍"
-   },
-   {
     "en": "polaroid flap wait",
     "desc": "gently flapping a tiny instant photo with held-breath anticipation",
     "zh": "等拍立得显影"
@@ -2021,11 +2501,6 @@
     "zh": "帐篷杆怎么装"
    },
    {
-    "en": "marshmallow roast",
-    "desc": "roasting a tiny marshmallow on a stick with a fire-glow warm smile",
-    "zh": "烤棉花糖"
-   },
-   {
     "en": "picnic mat pat",
     "desc": "patting down a tiny checkered mat with an inviting host smile",
     "zh": "铺好野餐垫"
@@ -2066,24 +2541,9 @@
     "zh": "勒紧背包带"
    },
    {
-    "en": "camp pot stir",
-    "desc": "stirring a tiny hanging pot with a ladle, camp-chef pride smile",
-    "zh": "营地炖锅"
-   },
-   {
     "en": "binocular hill scan",
     "desc": "scanning the hills with tiny binoculars, adventurous hum",
     "zh": "举着望远镜看"
-   },
-   {
-    "en": "stone skip windup",
-    "desc": "winding up to skip a tiny flat stone, focused tongue-out",
-    "zh": "打个水漂"
-   },
-   {
-    "en": "wildflower crown wear",
-    "desc": "wearing a freshly woven tiny flower crown, twirling happily",
-    "zh": "野花编环"
    },
    {
     "en": "tent sunset sit",
@@ -2320,11 +2780,6 @@
     "en": "doorway reunion hug",
     "desc": "hugging at a tiny home doorway with luggage dropped, teary happy grin",
     "zh": "到家啦抱抱"
-   },
-   {
-    "en": "temple fair windmill",
-    "desc": "strolling a tiny festive fair holding a spinning windmill toy, wide-eyed wonder",
-    "zh": "逛庙会"
    }
   ],
   "万圣圣诞": [
@@ -3137,11 +3592,6 @@
     "zh": "么么"
    },
    {
-    "en": "muah cute kisses",
-    "desc": "muah cute kisses",
-    "zh": "么么哒"
-   },
-   {
     "en": "give one muah",
     "desc": "give one muah",
     "zh": "么一个"
@@ -3160,11 +3610,6 @@
     "en": "sending air hug",
     "desc": "sending air hug",
     "zh": "隔空抱抱"
-   },
-   {
-    "en": "hug hug comfort",
-    "desc": "hug hug comfort",
-    "zh": "抱抱"
    },
    {
     "en": "give me a hug",
@@ -3380,11 +3825,6 @@
     "en": "snuggling into your chest",
     "desc": "snuggling into your chest",
     "zh": "靠怀里"
-   },
-   {
-    "en": "melting into your embrace",
-    "desc": "melting into your embrace",
-    "zh": "瘫你怀里"
    },
    {
     "en": "pillowing on your arm",
@@ -3917,11 +4357,6 @@
     "zh": "心动"
    },
    {
-    "en": "my heart moved",
-    "desc": "my heart moved",
-    "zh": "心动了"
-   },
-   {
     "en": "heartbeat alert warning",
     "desc": "heartbeat alert warning",
     "zh": "心动预警"
@@ -3972,11 +4407,6 @@
     "zh": "耳朵红了"
    },
    {
-    "en": "shy and flustered",
-    "desc": "shy and flustered",
-    "zh": "害羞"
-   },
-   {
     "en": "got all shy now",
     "desc": "got all shy now",
     "zh": "害羞了"
@@ -4002,11 +4432,6 @@
     "zh": "撩到了"
    },
    {
-    "en": "sparks flying between us",
-    "desc": "sparks flying between us",
-    "zh": "来电"
-   },
-   {
     "en": "electricity sparking now",
     "desc": "electricity sparking now",
     "zh": "来电了"
@@ -4030,26 +4455,6 @@
     "en": "tingly all over",
     "desc": "tingly all over",
     "zh": "酥麻了"
-   },
-   {
-    "en": "melting from sweetness",
-    "desc": "melting from sweetness",
-    "zh": "化了"
-   },
-   {
-    "en": "completely melted now",
-    "desc": "completely melted now",
-    "zh": "融化了"
-   },
-   {
-    "en": "melted from sweetness",
-    "desc": "melted from sweetness",
-    "zh": "甜化了"
-   },
-   {
-    "en": "heart melted away",
-    "desc": "heart melted away",
-    "zh": "心都化了"
    },
    {
     "en": "sweetness overload choke",
@@ -4617,11 +5022,6 @@
     "zh": "嫁给我"
    },
    {
-    "en": "marry me short",
-    "desc": "marry me short",
-    "zh": "嫁我"
-   },
-   {
     "en": "marry me girl version",
     "desc": "marry me girl version",
     "zh": "娶我"
@@ -4880,11 +5280,6 @@
     "en": "little crybaby mine",
     "desc": "little crybaby mine",
     "zh": "小哭包"
-   },
-   {
-    "en": "little stingy ghost",
-    "desc": "little stingy ghost",
-    "zh": "小气鬼"
    },
    {
     "en": "annoying little rascal",
@@ -5367,11 +5762,6 @@
     "zh": "哭包"
    },
    {
-    "en": "crybaby ghost me",
-    "desc": "crybaby ghost me",
-    "zh": "爱哭鬼"
-   },
-   {
     "en": "acting cute for you",
     "desc": "acting cute for you",
     "zh": "卖萌"
@@ -5570,11 +5960,6 @@
     "en": "forgive me please beg",
     "desc": "forgive me please beg",
     "zh": "原谅我吧"
-   },
-   {
-    "en": "you are forgiven now",
-    "desc": "you are forgiven now",
-    "zh": "原谅你了"
    },
    {
     "en": "not angry anymore",
@@ -6212,11 +6597,6 @@
     "zh": "帮你按摩"
    },
    {
-    "en": "melting the fatigue",
-    "desc": "melting the fatigue",
-    "zh": "解乏"
-   },
-   {
     "en": "take a little break",
     "desc": "take a little break",
     "zh": "休息一下"
@@ -6767,11 +7147,6 @@
     "zh": "放电"
    },
    {
-    "en": "finger heart posed",
-    "desc": "finger heart posed",
-    "zh": "比心"
-   },
-   {
     "en": "finger heart for you",
     "desc": "finger heart for you",
     "zh": "比心给你"
@@ -6882,11 +7257,6 @@
     "zh": "十指紧扣"
    },
    {
-    "en": "fist bump together",
-    "desc": "fist bump together",
-    "zh": "碰拳"
-   },
-   {
     "en": "palms pressed warm",
     "desc": "palms pressed warm",
     "zh": "贴贴手心"
@@ -6980,11 +7350,6 @@
     "en": "cheek peck kiss",
     "desc": "cheek peck kiss",
     "zh": "脸颊吻"
-   },
-   {
-    "en": "blowing a flying kiss",
-    "desc": "blowing a flying kiss",
-    "zh": "飞吻"
    },
    {
     "en": "finger heart with blow kiss",
@@ -7200,11 +7565,6 @@
     "en": "sharing earbuds split",
     "desc": "sharing earbuds split",
     "zh": "分享耳机"
-   },
-   {
-    "en": "one earbud each",
-    "desc": "one earbud each",
-    "zh": "一人一只"
    },
    {
     "en": "matching couple cups",
@@ -8347,11 +8707,6 @@
     "zh": "含泪卖萌"
    },
    {
-    "en": "star sparkling eyes",
-    "desc": "star sparkling eyes",
-    "zh": "星星眼"
-   },
-   {
     "en": "eyelashes fluttering",
     "desc": "eyelashes fluttering",
     "zh": "扑闪扑闪"
@@ -9112,11 +9467,6 @@
     "zh": "偕老同心"
    },
    {
-    "en": "all the years hereafter",
-    "desc": "all the years hereafter",
-    "zh": "往后余生"
-   },
-   {
     "en": "wind and snow are you",
     "desc": "wind and snow are you",
     "zh": "风雪是你"
@@ -9529,11 +9879,6 @@
     "zh": "来了"
    },
    {
-    "en": "here I arrive happily",
-    "desc": "here I arrive happily",
-    "zh": "我来啦"
-   },
-   {
     "en": "I have arrived, playful",
     "desc": "I have arrived, playful",
     "zh": "我来也"
@@ -9934,11 +10279,6 @@
     "zh": "多多关照"
    },
    {
-    "en": "welcome greeting",
-    "desc": "welcome greeting",
-    "zh": "欢迎"
-   },
-   {
     "en": "welcome the newbie",
     "desc": "welcome the newbie",
     "zh": "欢迎新人"
@@ -10132,16 +10472,6 @@
     "en": "chat again next time",
     "desc": "chat again next time",
     "zh": "下次再聊"
-   },
-   {
-    "en": "good night farewell",
-    "desc": "good night farewell",
-    "zh": "晚安"
-   },
-   {
-    "en": "going to sleep now",
-    "desc": "going to sleep now",
-    "zh": "睡了"
    },
    {
     "en": "heading to bed first",
@@ -10379,11 +10709,6 @@
     "zh": "整挺好"
    },
    {
-    "en": "so good, true fragrant meme",
-    "desc": "so good, true fragrant meme",
-    "zh": "真香"
-   },
-   {
     "en": "fragrance warning meme",
     "desc": "fragrance warning meme",
     "zh": "真香警告"
@@ -10584,11 +10909,6 @@
     "zh": "无趣"
    },
    {
-    "en": "so bored",
-    "desc": "so bored",
-    "zh": "无聊"
-   },
-   {
     "en": "bored to death sigh",
     "desc": "bored to death sigh",
     "zh": "无聊啊"
@@ -10707,11 +11027,6 @@
     "en": "cannot keep watching",
     "desc": "cannot keep watching",
     "zh": "看不下去"
-   },
-   {
-    "en": "looking down disgusted",
-    "desc": "looking down disgusted",
-    "zh": "嫌弃"
    },
    {
     "en": "despising you",
@@ -11284,16 +11599,6 @@
     "zh": "老铁稳"
    },
    {
-    "en": "lying flat, giving up grind",
-    "desc": "lying flat, giving up grind",
-    "zh": "躺平"
-   },
-   {
-    "en": "letting it rot meme",
-    "desc": "letting it rot meme",
-    "zh": "摆烂"
-   },
-   {
     "en": "slacking off at work",
     "desc": "slacking off at work",
     "zh": "摸鱼"
@@ -11569,11 +11874,6 @@
     "zh": "上班"
    },
    {
-    "en": "clocking in at work",
-    "desc": "clocking in at work",
-    "zh": "打卡"
-   },
-   {
     "en": "running late",
     "desc": "running late",
     "zh": "迟到"
@@ -11627,11 +11927,6 @@
     "en": "class dismissed",
     "desc": "class dismissed",
     "zh": "下课"
-   },
-   {
-    "en": "homework deadline panic",
-    "desc": "homework deadline panic",
-    "zh": "交作业"
    },
    {
     "en": "exam time stress",
@@ -11797,11 +12092,6 @@
     "en": "happiness water soda",
     "desc": "happiness water soda",
     "zh": "快乐水"
-   },
-   {
-    "en": "coffee life support",
-    "desc": "coffee life support",
-    "zh": "咖啡续命"
    },
    {
     "en": "dieting again",
@@ -12099,11 +12389,6 @@
     "zh": "潜水"
    },
    {
-    "en": "popping up to say hi",
-    "desc": "popping up to say hi",
-    "zh": "冒个泡"
-   },
-   {
     "en": "roger roger double confirm",
     "desc": "roger roger double confirm",
     "zh": "收到收到"
@@ -12324,11 +12609,6 @@
     "zh": "好热"
    },
    {
-    "en": "melting in the heat",
-    "desc": "melting in the heat",
-    "zh": "热死了"
-   },
-   {
     "en": "sun is finally out",
     "desc": "sun is finally out",
     "zh": "出太阳"
@@ -12469,11 +12749,6 @@
     "zh": "元宵快乐"
    },
    {
-    "en": "eating sweet rice balls",
-    "desc": "eating sweet rice balls",
-    "zh": "吃汤圆"
-   },
-   {
     "en": "dragon boat festival peace",
     "desc": "dragon boat festival peace",
     "zh": "端午安康"
@@ -12569,11 +12844,6 @@
     "zh": "愚人节"
    },
    {
-    "en": "anniversary day memory",
-    "desc": "anniversary day memory",
-    "zh": "纪念日"
-   },
-   {
     "en": "anniversary milestone",
     "desc": "anniversary milestone",
     "zh": "周年"
@@ -12627,11 +12897,6 @@
     "en": "share this post now",
     "desc": "share this post now",
     "zh": "转发这条"
-   },
-   {
-    "en": "giving a thumbs up",
-    "desc": "giving a thumbs up",
-    "zh": "点赞"
    },
    {
     "en": "drop a like please",
@@ -13039,11 +13304,6 @@
     "zh": "跟我来"
    },
    {
-    "en": "look over here",
-    "desc": "look over here",
-    "zh": "看这里"
-   },
-   {
     "en": "look over there",
     "desc": "look over there",
     "zh": "看那边"
@@ -13062,11 +13322,6 @@
     "en": "look at it closely",
     "desc": "look at it closely",
     "zh": "看清楚"
-   },
-   {
-    "en": "watch me do this",
-    "desc": "watch me do this",
-    "zh": "看我的"
    },
    {
     "en": "wait for my show",
@@ -13102,11 +13357,6 @@
     "en": "throwing flower petals",
     "desc": "throwing flower petals",
     "zh": "撒花"
-   },
-   {
-    "en": "time to celebrate",
-    "desc": "time to celebrate",
-    "zh": "庆祝"
    },
    {
     "en": "victory celebration time",
@@ -13687,11 +13937,6 @@
     "en": "speeding up now",
     "desc": "speeding up now",
     "zh": "加速中"
-   },
-   {
-    "en": "taking off now",
-    "desc": "taking off now",
-    "zh": "起飞"
    },
    {
     "en": "ready for takeoff",
@@ -14697,11 +14942,6 @@
     "en": "taking a short break",
     "desc": "taking a short break",
     "zh": "歇会"
-   },
-   {
-    "en": "slacking for a moment",
-    "desc": "slacking for a moment",
-    "zh": "摸会鱼"
    },
    {
     "en": "paid water break",
@@ -16709,11 +16949,6 @@
     "zh": "说定了"
    },
    {
-    "en": "we have a deal now",
-    "desc": "we have a deal now",
-    "zh": "说好了"
-   },
-   {
     "en": "leave it like this",
     "desc": "leave it like this",
     "zh": "先这样"
@@ -16987,11 +17222,6 @@
     "en": "sending in a moment",
     "desc": "sending in a moment",
     "zh": "一会发你"
-   },
-   {
-    "en": "received it thanks",
-    "desc": "received it thanks",
-    "zh": "收到啦"
    },
    {
     "en": "got it received",
@@ -17514,11 +17744,6 @@
     "zh": "大富大贵"
    },
    {
-    "en": "soaring to success",
-    "desc": "soaring to success",
-    "zh": "飞黄腾达"
-   },
-   {
     "en": "rising on the whirlwind",
     "desc": "rising on the whirlwind",
     "zh": "扶摇直上"
@@ -18036,11 +18261,6 @@
     "zh": "狂喜"
    },
    {
-    "en": "cheering loudly joy",
-    "desc": "cheering loudly joy",
-    "zh": "欢呼"
-   },
-   {
     "en": "joy filling heaven earth",
     "desc": "joy filling heaven earth",
     "zh": "欢天喜地"
@@ -18214,11 +18434,6 @@
     "en": "refreshed and clear headed",
     "desc": "refreshed and clear headed",
     "zh": "神清气爽"
-   },
-   {
-    "en": "brimming with vitality",
-    "desc": "brimming with vitality",
-    "zh": "元气满满"
    },
    {
     "en": "full of lively energy",
@@ -18509,11 +18724,6 @@
     "en": "inwardly snickering",
     "desc": "inwardly snickering",
     "zh": "暗笑"
-   },
-   {
-    "en": "goofy silly grinning",
-    "desc": "goofy silly grinning",
-    "zh": "傻笑"
    },
    {
     "en": "simple minded happy",
@@ -19046,11 +19256,6 @@
     "zh": "凉了半截"
    },
    {
-    "en": "tears collapsing dam",
-    "desc": "tears collapsing dam",
-    "zh": "泪崩"
-   },
-   {
     "en": "mentally collapsed now",
     "desc": "mentally collapsed now",
     "zh": "崩了"
@@ -19446,11 +19651,6 @@
     "zh": "捂眼睛"
    },
    {
-    "en": "too scared to look",
-    "desc": "too scared to look",
-    "zh": "不敢看"
-   },
-   {
     "en": "heart still trembling",
     "desc": "heart still trembling",
     "zh": "心有余悸"
@@ -19469,11 +19669,6 @@
     "en": "afraid of the dark",
     "desc": "afraid of the dark",
     "zh": "怕黑"
-   },
-   {
-    "en": "scared of ghosts",
-    "desc": "scared of ghosts",
-    "zh": "怕鬼"
    },
    {
     "en": "afraid of thunder",
@@ -19499,11 +19694,6 @@
     "en": "little scaredy cat",
     "desc": "little scaredy cat",
     "zh": "胆小鬼"
-   },
-   {
-    "en": "shocked taken aback",
-    "desc": "shocked taken aback",
-    "zh": "惊了"
    },
    {
     "en": "got startled now",
@@ -19679,11 +19869,6 @@
     "en": "straight to the soul",
     "desc": "straight to the soul",
     "zh": "直击灵魂"
-   },
-   {
-    "en": "soul leaving the body",
-    "desc": "soul leaving the body",
-    "zh": "灵魂出窍"
    },
    {
     "en": "mind drifting beyond",
@@ -20036,11 +20221,6 @@
     "zh": "累瘫了"
    },
    {
-    "en": "melted into a puddle",
-    "desc": "melted into a puddle",
-    "zh": "瘫了"
-   },
-   {
     "en": "weary exhausted state",
     "desc": "weary exhausted state",
     "zh": "疲惫"
@@ -20129,11 +20309,6 @@
     "en": "yawns chaining endlessly",
     "desc": "yawns chaining endlessly",
     "zh": "哈欠连天"
-   },
-   {
-    "en": "sleepy to death dying",
-    "desc": "sleepy to death dying",
-    "zh": "困死了"
    },
    {
     "en": "sleepiness unbearable",
@@ -20291,19 +20466,9 @@
     "zh": "揪心"
    },
    {
-    "en": "nervous tense state",
-    "desc": "nervous tense state",
-    "zh": "紧张"
-   },
-   {
     "en": "so nervous shaky",
     "desc": "so nervous shaky",
     "zh": "好紧张"
-   },
-   {
-    "en": "palms sweating nerves",
-    "desc": "palms sweating nerves",
-    "zh": "手心出汗"
    },
    {
     "en": "sitting on needle mat",
@@ -21109,11 +21274,6 @@
     "en": "blow landing hard",
     "desc": "blow landing hard",
     "zh": "打击"
-   },
-   {
-    "en": "breaking down crying",
-    "desc": "breaking down crying",
-    "zh": "崩溃"
    },
    {
     "en": "heart ash cold gone",
@@ -21981,11 +22141,6 @@
     "zh": "冷成狗"
    },
    {
-    "en": "melting hot like dog",
-    "desc": "melting hot like dog",
-    "zh": "热成狗"
-   },
-   {
     "en": "starving like a dog",
     "desc": "starving like a dog",
     "zh": "饿成狗"
@@ -22029,16 +22184,6 @@
     "en": "cool breeze drafty",
     "desc": "cool breeze drafty",
     "zh": "凉飕飕"
-   },
-   {
-    "en": "melting in the heat",
-    "desc": "melting in the heat",
-    "zh": "热化了"
-   },
-   {
-    "en": "melting from the heat",
-    "desc": "melting from the heat",
-    "zh": "热到融化"
    },
    {
     "en": "sweat soaking the back",
@@ -22436,11 +22581,6 @@
     "zh": "害怕"
    },
    {
-    "en": "shocked stunned",
-    "desc": "shocked stunned",
-    "zh": "震惊"
-   },
-   {
     "en": "haha light laugh",
     "desc": "haha light laugh",
     "zh": "哈哈"
@@ -22456,11 +22596,6 @@
     "zh": "哈哈哈哈"
    },
    {
-    "en": "smug pleased look",
-    "desc": "smug pleased look",
-    "zh": "得意"
-   },
-   {
     "en": "surprised wow face",
     "desc": "surprised wow face",
     "zh": "惊讶"
@@ -22469,11 +22604,6 @@
     "en": "that is really nice",
     "desc": "that is really nice",
     "zh": "真好"
-   },
-   {
-    "en": "boo hoo hoo crying",
-    "desc": "boo hoo hoo crying",
-    "zh": "呜呜呜"
    },
    {
     "en": "ying ying whimpering",
@@ -22489,11 +22619,6 @@
     "en": "hehehe snickering",
     "desc": "hehehe snickering",
     "zh": "嘻嘻嘻"
-   },
-   {
-    "en": "angry mad now",
-    "desc": "angry mad now",
-    "zh": "生气"
    },
    {
     "en": "sleepy duck dozing",
@@ -22589,11 +22714,6 @@
     "en": "gloomy and joyless",
     "desc": "gloomy and joyless",
     "zh": "郁郁寡欢"
-   },
-   {
-    "en": "moping unhappy quiet",
-    "desc": "moping unhappy quiet",
-    "zh": "闷闷不乐"
    },
    {
     "en": "not happy pouting",
@@ -23293,11 +23413,6 @@
     "zh": "戳屏幕"
    },
    {
-    "en": "scrolling phone endless",
-    "desc": "scrolling phone endless",
-    "zh": "刷手机"
-   },
-   {
     "en": "passing tissues over",
     "desc": "passing tissues over",
     "zh": "递纸巾"
@@ -23733,11 +23848,6 @@
     "zh": "开窍了"
    },
    {
-    "en": "spark of wit flashing",
-    "desc": "spark of wit flashing",
-    "zh": "灵光一闪"
-   },
-   {
     "en": "eyeball swiveling scheme",
     "desc": "eyeball swiveling scheme",
     "zh": "眼珠一转"
@@ -23776,11 +23886,6 @@
     "en": "leaving on a whim",
     "desc": "leaving on a whim",
     "zh": "说走就走"
-   },
-   {
-    "en": "departing now forward",
-    "desc": "departing now forward",
-    "zh": "出发"
    },
    {
     "en": "departing right away",
@@ -23826,16 +23931,6 @@
     "en": "locked in place still",
     "desc": "locked in place still",
     "zh": "定住了"
-   },
-   {
-    "en": "turned to stone frozen",
-    "desc": "turned to stone frozen",
-    "zh": "石化"
-   },
-   {
-    "en": "petrified on the spot",
-    "desc": "petrified on the spot",
-    "zh": "当场石化"
    },
    {
     "en": "jammed stuck in place",
@@ -25198,11 +25293,6 @@
     "zh": "逛街"
    },
    {
-    "en": "queuing in the line",
-    "desc": "queuing in the line",
-    "zh": "排队"
-   },
-   {
     "en": "cutting in the line",
     "desc": "cutting in the line",
     "zh": "插队"
@@ -25508,11 +25598,6 @@
     "zh": "王炸"
    },
    {
-    "en": "dropping the joker bomb",
-    "desc": "dropping the joker bomb",
-    "zh": "出王炸"
-   },
-   {
     "en": "landlord card battle",
     "desc": "landlord card battle",
     "zh": "斗地主"
@@ -25631,11 +25716,6 @@
     "en": "watching the livestream",
     "desc": "watching the livestream",
     "zh": "看直播"
-   },
-   {
-    "en": "gaming session on",
-    "desc": "gaming session on",
-    "zh": "打游戏"
    },
    {
     "en": "ranked queuing up",
@@ -26558,11 +26638,6 @@
     "zh": "丢人现场"
    },
    {
-    "en": "hands feet flustered chaos",
-    "desc": "hands feet flustered chaos",
-    "zh": "手忙脚乱"
-   },
-   {
     "en": "many hands scrambling",
     "desc": "many hands scrambling",
     "zh": "七手八脚"
@@ -27056,11 +27131,6 @@
     "en": "headstand balancing act",
     "desc": "headstand balancing act",
     "zh": "拿大顶"
-   },
-   {
-    "en": "back bending bridge",
-    "desc": "back bending bridge",
-    "zh": "下腰"
    },
    {
     "en": "full split legs out",

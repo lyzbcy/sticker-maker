@@ -81,27 +81,32 @@ def test_icon_is_50x50(tmp_path):
     assert (w, h) == (50, 50)
 
 
-# ---------------- 2026-09 图标降级信号（批量发布风险） ----------------
+# ---------------- 2026-09-09 图标 = 封面同图（用户定稿） ----------------
 
-def test_icon_fallback_sets_ctx_flag(tmp_path):
-    """AI 图标失败退回复用封面时，ctx.icon_fallback 置 True（run_batch 据此跳过自动发布）。"""
-    ctx = _ctx_with_stickers(tmp_path)
-    vision = MagicMock()   # codex.generate 返回 MagicMock → 路径不存在 → 走降级
-    stage = AssetsStage(vision=vision)
-    stage.run(ctx)
-    assert ctx.icon_fallback is True
-    warns = [e for e in ctx.production_log
-             if e.stage == "S3" and e.status == "WARN" and "退回复用封面" in e.message]
-    assert warns
-
-
-def test_icon_success_keeps_fallback_flag_false(tmp_path):
-    """AI 图标成功时 ctx.icon_fallback 保持 False（不误伤正常单）。"""
+def test_icon_is_same_image_as_cover(tmp_path):
+    """图标 = 封面同图缩 50×50：非 combo 单封面回退第 1 张，图标应与其同源。"""
     ctx = _ctx_with_stickers(tmp_path)
     stage = AssetsStage(vision=MagicMock())
-    icon_raw = ctx.episode_dir / "图标" / "_icon_raw.png"
-    icon_raw.parent.mkdir(exist_ok=True)
-    Image.new("RGBA", (240, 240), (255, 255, 255, 255)).save(icon_raw)
-    stage._crop_head_icon = lambda paths, out: icon_raw   # 裁剪路径成功
+    stage.run(ctx)
+    cover = Image.open(ctx.episode_dir / "封面" / "封面.png").convert("RGB")
+    icon = Image.open(ctx.episode_dir / "图标" / "图标.png").convert("RGB")
+    assert icon.size == (50, 50)
+    # 同源验证：两者主色应一致（fixture 第 1 张 = (0,100,100)）
+    cover_c = cover.resize((1, 1)).getpixel((0, 0))
+    icon_c = icon.resize((1, 1)).getpixel((0, 0))
+    for a, b in zip(cover_c, icon_c):
+        assert abs(a - b) < 25   # LANCZOS 缩放允许轻微色差
+
+
+def test_icon_follows_cover_no_independent_fallback(tmp_path):
+    """图标无独立降级：封面回退时图标跟随同图；icon_fallback 不再置位
+    （降级信号由 cover_fallback 携带，批量自动发布据此跳过）。"""
+    ctx = _ctx_with_stickers(tmp_path)
+    stage = AssetsStage(vision=MagicMock())
     stage.run(ctx)
     assert ctx.icon_fallback is False
+    assert ctx.cover_fallback is False       # fixture 非 combo 单：只 WARN 不拦截
+    warns = [e for e in ctx.production_log
+             if e.stage == "S3" and e.status == "WARN"]
+    assert warns                             # 非 combo 单提示按旧规则取第 1 张
+    assert (ctx.episode_dir / "图标" / "图标.png").exists()

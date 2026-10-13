@@ -71,6 +71,11 @@ def test_get_episode_uses_name_locked_pairing(tmp_path, monkeypatch):
         cli, "_result",
         lambda req_id, status, data=None, **kw: results.append(
             (status, data if data is not None else kw)))
+    # 2026-09-11 封闭性修复：cmd_get_episode 会查资源库（runtime_for）——
+    # 本机装了真实 %APPDATA% 库时，临时目录的测试弹不在库里 →
+    # "当前账号中未找到该作品"。测试只关心本地配对逻辑，屏蔽 runtime。
+    monkeypatch.setattr(
+        "sticker_engine.library.hooks.runtime_for", lambda *a, **k: None)
     ep = _make_episode(
         tmp_path,
         ["傲娇", "欢呼", "生气", "融化", "震惊"],
@@ -87,6 +92,10 @@ def test_get_episode_keeps_existing_materials_when_shared_editing_is_disabled(tm
     from sticker_engine.cli import cmd_get_episode
     from sticker_engine.config.series import EpisodeMeta, save_meta
     from types import SimpleNamespace
+
+    # 同上：屏蔽真实 %APPDATA% 库的 runtime_for，走测试自带的假 runtime
+    monkeypatch.setattr(
+        "sticker_engine.library.hooks.runtime_for", lambda *a, **k: None)
 
     ep = _make_episode(tmp_path, ["欢呼"], {"1": "欢呼"})
     save_meta(ep, EpisodeMeta(album_name="离线作品"))
@@ -112,8 +121,9 @@ def test_get_episode_keeps_existing_materials_when_shared_editing_is_disabled(tm
     [(status, data)] = results
     assert status == "ok"
     assert data["stickers"]
-    assert data["banner"].endswith("横幅/横幅.png")
-    assert data["intro_file"].endswith("介绍.txt")
+    # Windows 路径是反斜杠，断言前归一化（2026-09-11：本机 CI 全红的根因）
+    assert data["banner"].replace("\\", "/").endswith("横幅/横幅.png")
+    assert data["intro_file"].replace("\\", "/").endswith("介绍.txt")
     assert data["can_edit"] is False
 
 

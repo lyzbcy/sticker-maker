@@ -216,23 +216,22 @@ def test_r1_edge_color_below_threshold_not_background():
     assert out.getpixel((50, 50))[3] == 255        # 身体不被啃
 
 
-def test_f1_regen_keeps_ai_icon(tmp_path):
-    """F1：详情页「重生成素材」不得把 AI 图标静默回滚成封面缩放。"""
+def test_f1_regen_icon_now_uses_cover(tmp_path):
+    """2026-09-09 用户定稿（替代原 F1 锁）：图标 = 封面同图。
+    regen 时即使存在旧 _icon_raw 也不再优先——封面已是 header 大头照。"""
     import sticker_engine.cli as cli
     from sticker_engine.config.series import load_meta, save_meta
-    from sticker_engine.stages.assets import resize_save
     ep = ctx_dir = tmp_path / "episode_x"
     (ep / "最终版").mkdir(parents=True)
     (ep / "图标").mkdir()
     for name in ["a", "b"]:
         Image.new("RGBA", (240, 240), (250, 200, 200, 255)).save(ep / "最终版" / f"{name}.png")
-    # AI 大头照原图（管线 S3 产物）
+    # 遗留 AI 图标原图（旧管线产物）——不应再被优先采用
     Image.new("RGBA", (240, 240), (120, 200, 120, 255)).save(ep / "图标" / "_icon_raw.png")
     meta = load_meta(ep); save_meta(ep, meta)
     warnings = cli._regen_episode_assets(ep, meta)
     icon = Image.open(ep / "图标" / "图标.png").convert("RGB")
-    assert icon.getpixel((25, 25)) == (120, 200, 120)   # 沿用 AI 大头照，非封面色
-    assert any("AI" in w for w in warnings)
+    assert icon.getpixel((25, 25)) == (250, 200, 200)   # 封面色（第 1 张），非旧 AI 图标色
 
 
 # ---------------- 迭代抠边（2026-09-01，72 驳回：封闭品红细框） ----------------
@@ -286,69 +285,8 @@ def test_normal_transparent_sticker_untouched_by_inner_round():
 
 
 # ---------------- 图标裁头部（2026-09-03 零生图降本） ----------------
-
-def test_crop_head_icon_basic(tmp_path):
-    """透明底大头照成品 → 裁上部 72% 为头部图标（零生图）。"""
-    from sticker_engine.stages.assets import AssetsStage
-    im = Image.new("RGBA", (240, 240), (0, 0, 0, 0))
-    # 两头身角色：头（大椭圆上部）+ 身（小矩形下部）
-    from PIL import ImageDraw
-    d = ImageDraw.Draw(im)
-    d.ellipse([50, 20, 190, 160], fill=(255, 220, 200, 255))   # 头
-    d.rectangle([100, 160, 140, 230], fill=(120, 150, 255, 255))  # 身
-    src = tmp_path / "呆呆.png"
-    im.save(src)
-    stage = AssetsStage.__new__(AssetsStage)
-    out = tmp_path / "_icon_raw.png"
-    assert stage._crop_head_icon([str(src)], out) is not None
-    r = Image.open(out)
-    assert r.size == (50, 50)
-    # 裁的是上部：头部肤色应为图标主体（72% 裁线允许带少量下巴以下的身体，
-    # 平台要求的是"头部为主"而非零身体）
-    px = r.convert("RGBA")
-    n_head = sum(1 for x in range(50) for y in range(50)
-                 if px.getpixel((x, y))[0] > 230 and px.getpixel((x, y))[1] > 190)
-    n_body = sum(1 for x in range(50) for y in range(50)
-                 if px.getpixel((x, y))[2] > 200 and px.getpixel((x, y))[0] < 180)
-    assert n_head > n_body * 3, f"头部应占绝对主体: 头{n_head} 身{n_body}"
-
-
-def test_crop_head_icon_prefers_calm_face(tmp_path):
-    """选片偏好：含'看/呆/笑'等词的成品优先。"""
-    from sticker_engine.stages.assets import AssetsStage
-    for name in ("蹦跳", "静静看"):
-        im = Image.new("RGBA", (240, 240), (0, 0, 0, 0))   # 透明底
-        from PIL import ImageDraw
-        ImageDraw.Draw(im).ellipse([60, 30, 180, 170],
-                                   fill=(255, 200, 200, 255))
-        im.save(tmp_path / f"{name}.png")
-    stage = AssetsStage.__new__(AssetsStage)
-    # 只验证选片逻辑：直接跑裁剪应选"静静看"（不炸即可）
-    out = tmp_path / "i.png"
-    assert stage._crop_head_icon(
-        [str(tmp_path / "蹦跳.png"), str(tmp_path / "静静看.png")], out) is not None
-
-
-def test_crop_head_icon_opaque_bg_separates_subject(tmp_path):
-    """非透明底（ref 库保留背景）：背景色差定位主体 → 同样能裁（用户指令：
-    绝不为此花生图机会，先上传再说）。"""
-    from sticker_engine.stages.assets import AssetsStage
-    im = Image.new("RGB", (240, 240), (255, 0, 255))       # 品红底
-    from PIL import ImageDraw
-    d = ImageDraw.Draw(im)
-    d.ellipse([60, 30, 180, 170], fill=(255, 220, 200))    # 头
-    d.rectangle([100, 170, 140, 235], fill=(120, 150, 255))  # 身
-    src = tmp_path / "x.png"
-    im.save(src)
-    stage = AssetsStage.__new__(AssetsStage)
-    out = tmp_path / "o.png"
-    assert stage._crop_head_icon([str(src)], out) is not None
-    r = Image.open(out).convert("RGB")
-    assert r.size == (50, 50)
-    # 50% 裁线：头部肤色为主体
-    n_head = sum(1 for x in range(50) for y in range(50)
-                 if r.getpixel((x, y))[0] > 230 and r.getpixel((x, y))[1] > 180)
-    assert n_head > 400
+# 2026-09-09 已废弃：_crop_head_icon 随"图标 = 封面同图"定稿删除，
+# 旧裁头测试一并移除（新语义锁在 test_assets.py 的 icon 用例）。
 
 
 # ---------------- 0 token 模式（2026-09-03：文本调用把周额度吃光事故） ----------------

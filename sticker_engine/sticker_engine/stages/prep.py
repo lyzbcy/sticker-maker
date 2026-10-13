@@ -72,10 +72,15 @@ class PrepStage:
         ]
         # 兼容旧调用方：selected_base 仍指第一张。
         ctx.selected_base = ctx.selected_bases[0] if ctx.selected_bases else None
-        # 4) 建 episode 目录
+        # 4) 建 episode 目录（秒级时间戳在双生图工位下会同秒碰撞，
+        # 存在即追加序号——投影/资源库只认目录内容，改名无副作用）
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         episode_dir = ctx.config.paths.output_root / f"episode_{ts}"
-        episode_dir.mkdir(parents=True, exist_ok=True)
+        _uniq = 1
+        while episode_dir.exists():
+            _uniq += 1
+            episode_dir = ctx.config.paths.output_root / f"episode_{ts}_{_uniq}"
+        episode_dir.mkdir(parents=True, exist_ok=False)
         for sub in ["原图", "最终版", "参考图"]:
             (episode_dir / sub).mkdir(exist_ok=True)
         ctx.episode_dir = episode_dir

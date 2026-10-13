@@ -54,6 +54,40 @@ def fingerprint(metadata, files):
                                     ensure_ascii=False).encode()).hexdigest()
 
 
+def _content_fingerprint(metadata, files):
+    """Directory-name-agnostic fingerprint: identical episode content must
+    compare equal after a materialization renamed episode_<timestamp> to
+    episode_<work_id> (legacy_name is a projection detail, not content)."""
+    normalized = {k: v for k, v in (metadata or {}).items() if k != 'legacy_name'}
+    return fingerprint(normalized, files)
+
+
+def _content_equivalent_in_history(library, account_id, work_id, head, metadata, files):
+    """True when the local capture has no substantive divergence from the
+    current head or any of its ancestors (identical files and metadata except
+    legacy_name).  Single-head works only: a conflicted work stays visible."""
+    local = _content_fingerprint(metadata, files)
+
+    def _fp(revision):
+        return _content_fingerprint(revision.get('metadata') or {},
+                                    revision.get('files') or {})
+
+    if _fp(head) == local:
+        return True
+    by_id = {r['revision_id']: r for r in library.revisions(account_id, work_id)}
+    stack, seen = list(head.get('parents') or []), set()
+    while stack:
+        revision_id = stack.pop()
+        if revision_id in seen or revision_id not in by_id:
+            continue
+        seen.add(revision_id)
+        revision = by_id[revision_id]
+        if _fp(revision) == local:
+            return True
+        stack.extend(revision.get('parents') or [])
+    return False
+
+
 def is_private(path):
     names = {p.casefold() for p in Path(path).parts}
     return bool(names & {'.env', 'auth.json', 'publish_storage.json',
@@ -319,6 +353,16 @@ class LibraryRuntime:
             m = load_meta(p)
             if m.account_id == self.account_id and m.platform_item_id == sid:
                 return p
+            # 2026-09-12 修复：同 work 的投影目录常缺 platform_item_id
+            # （旧投影生成时不带），复用前先补上——否则每次同步都把该
+            # 平台行当"未匹配"重走 placeholder（created 虚高 218）
+            if (m.account_id == self.account_id and not m.platform_item_id
+                    and m.album_name == str(row.get('Name') or '')
+                    and self.library.read_work(self.account_id, m.work_id or '')
+                    .get('revision', {}).get('metadata', {}).get('platform_item_id') == sid):
+                m.platform_item_id = sid
+                save_meta(p, m)
+                return p
         meta = EpisodeMeta(album_name=str(row.get('Name') or ''),
                            platform_item_id=sid, account_id=self.account_id,
                            account_label=self.account_label, resource_placeholder=True)
@@ -403,8 +447,36 @@ class LibraryRuntime:
         marker = self.state['paths'].get(str(path), {})
         if marker.get('fingerprint') == digest and marker.get('revision_id'):
             return {'work_id': meta.work_id, 'revision_id': marker['revision_id']}
-        parents = [marker['revision_id']] if marker.get('revision_id') else []
         current = library.read_work(self.account_id, meta.work_id)
+        # 2026-09-09 分叉根修：本地内容若已包含在当前任一 head 里（head
+        # 被 resolve/合并推进而本地没再改），直接跟随该 head 并更新
+        # marker——旧实现拿过期 marker 当父会写出平行分支（一次同步
+        # 281 个作品全冲突）。指纹与所有 head 都不同 = 本地与远端真实
+        # 分歧，仍走显式分支让用户选（不静默合并覆盖，测试保障的语义）。
+        for head in (current.get('heads') or []):
+            if fingerprint(head.get('metadata') or {}, head.get('files') or {}) == digest:
+                self.state['paths'][str(path)] = {'work_id': meta.work_id,
+                    'account_id': self.account_id, 'revision_id': head['revision_id'],
+                    'fingerprint': digest, 'legacy_name': metadata['legacy_name']}
+                self.save()
+                return {'work_id': meta.work_id, 'revision_id': head['revision_id']}
+        # 2026-09-10 批量发布 40 作品分叉根因：fingerprint 把 legacy_name
+        # （目录名，非内容）算进哈希——作品目录从时间戳名（生成流水线产出）
+        # 物化为 episode_<work_id> 名后，同一内容的指纹必然漂移；并发实例
+        # （发布进程与引擎单例各持内存 state）中缺少该路径 marker 的一方
+        # 走到下面就会 write_revision(parents=[]) 写出内容等价的孤儿根，
+        # 双 head 冲突。本地内容与库无实质分歧（剔除 legacy_name 后与当前
+        # head 或其祖先完全一致）时跟随现有 head 并 fast-forward marker，
+        # 绝不写平行修订；文件或实质字段不同 = 真实分歧，仍走显式分支。
+        heads = current.get('heads') or []
+        if len(heads) == 1 and _content_equivalent_in_history(
+                library, self.account_id, meta.work_id, heads[0], metadata, files):
+            self.state['paths'][str(path)] = {'work_id': meta.work_id,
+                'account_id': self.account_id, 'revision_id': heads[0]['revision_id'],
+                'fingerprint': digest, 'legacy_name': metadata['legacy_name']}
+            self.save()
+            return {'work_id': meta.work_id, 'revision_id': heads[0]['revision_id']}
+        parents = [marker['revision_id']] if marker.get('revision_id') else []
         # A new local resource may replace only a sole resource-free placeholder.
         if not parents and current.get('revision') and current['state'] == 'placeholder':
             parents = [current['revision']['revision_id']]
@@ -417,6 +489,7 @@ class LibraryRuntime:
             'account_id': self.account_id, 'revision_id': rev['revision_id'],
             'fingerprint': digest, 'legacy_name': metadata['legacy_name']}
         self.save()
+        self._rows_at = 0   # 新作品/新内容入库：rows 快照立即失效
         return {'work_id': meta.work_id, 'revision_id': rev['revision_id']}
 
     def capture_all(self):
@@ -425,35 +498,52 @@ class LibraryRuntime:
         # 2026-09-05 性能：轻快照（文件名+mtime+size 清单）与上次一致且上次
         # 捕获成功 → 跳过该目录的逐文件 SHA-256（未变更的 340 单每次 refresh
         # 被全量哈希两遍是 refresh 140s 的主要构成）。内容变化必然改 mtime。
+        # 2026-09-11 性能：快照扫描改线程池并行——450 目录×60 文件的 ~3 万次
+        # stat 是批量发布每弹 hooks 前后刷新里最大的隐形耗时（实测 ~74s/弹），
+        # stat 是 IO 型，8 线程立省大半。shared 状态只读，各目录独立。
         light = self.state.get('capture_light') or {}
-        light_new = {}
-        roots = [self.output_root]
-        if not self.state.get('root'):
-            roots.append(self.user_data / 'episodes')
         import time as _time
-        deadline = _time.monotonic() + 100   # 硬上限：单轮 capture_all 不超过 ~100s
-        for root in roots:
-            for path in sorted(root.glob('episode*')):
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _snap_one(path):
+            try:
                 if not (path.is_dir() and load_meta(path).account_id in ('', self.account_id)):
-                    continue
+                    return None
                 # Old unbound directories require explicit binding first.
-                if root == self.user_data / 'episodes' and not load_meta(path).account_id:
-                    continue
+                if path.parent == self.user_data / 'episodes' and not load_meta(path).account_id:
+                    return None
                 snapshot = sorted(
                     (f.name, f.stat().st_mtime_ns, f.stat().st_size)
                     for f in path.rglob('*') if f.is_file()
                     and not is_private(path / f.relative_to(path)))
-                key = str(path)
-                snapshot_key = json.dumps(snapshot, ensure_ascii=False)
-                if light.get(key, {}).get('snapshot') == snapshot_key                         and light[key].get('captured_at'):
-                    light_new[key] = light[key]
-                    continue   # 未变更：跳过逐文件哈希
-                if _time.monotonic() > deadline:
-                    light_new[key] = light.get(key, {'captured_at': 0})
-                    continue   # 超时预算：本轮跳过，下轮补
-                self.capture(path)
-                light_new[key] = {'snapshot': snapshot_key,
-                                  'captured_at': _time.monotonic()}
+                return path, snapshot
+            except OSError:
+                return None
+
+        light_new = {}
+        changed = []   # (path, snapshot_key) 有变更、需要真正 capture 的目录
+        roots = [self.output_root]
+        if not self.state.get('root'):
+            roots.append(self.user_data / 'episodes')
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            for root in roots:
+                for path, snapshot in pool.map(_snap_one, sorted(root.glob('episode*'))):
+                    if path is None:
+                        continue
+                    key = str(path)
+                    snapshot_key = json.dumps(snapshot, ensure_ascii=False)
+                    if light.get(key, {}).get('snapshot') == snapshot_key                         and light[key].get('captured_at'):
+                        light_new[key] = light[key]
+                        continue   # 未变更：跳过逐文件哈希
+                    changed.append((path, snapshot_key))
+        deadline = _time.monotonic() + 100   # 硬上限：真正哈希的总量不超过 ~100s
+        for path, snapshot_key in changed:
+            if _time.monotonic() > deadline:
+                light_new[str(path)] = light.get(str(path), {'captured_at': 0})
+                continue   # 超时预算：本轮跳过，下轮补
+            self.capture(path)
+            light_new[str(path)] = {'snapshot': snapshot_key,
+                                    'captured_at': _time.monotonic()}
         self.state['capture_light'] = light_new
         self.save()
         result = SharedSettings(self).capture()
@@ -467,13 +557,29 @@ class LibraryRuntime:
                  and Path(p).is_dir()]
         return sorted(known)[0] if known else root / ('episode_' + work_id)
 
-    def _materialize(self, work):
+    def _work_path_map(self):
+        """work_id → 本地已物化目录（str）。rows()/materialize 批量循环用：
+        一趟索引替代每作品全表扫描（431 作品 × 500 路径的 Path 解析是
+        refresh 26s 的构成，2026-09-10）。语义与 path_for 一致：同名取
+        字典序最小、只认 output_root 直下、必须真实存在。"""
+        root = self.output_root
+        mapping = {}
+        for p, marker in (self.state.get('paths') or {}).items():
+            wid = marker.get('work_id')
+            if not wid or Path(p).parent != root or not Path(p).is_dir():
+                continue
+            cur = mapping.get(wid)
+            if cur is None or p < cur:
+                mapping[wid] = p
+        return mapping
+
+    def _materialize(self, work, path=None):
         revision = work.get('revision')
         if (not revision or work['state'] not in ('available', 'placeholder')
                 or work.get('sync_conflicts')):
             return
         wid = work['work_id']
-        target = self.path_for(wid)
+        target = Path(path) if path else self.path_for(wid)
         marker = self.state['paths'].get(str(target), {})
         if marker.get('revision_id') == revision['revision_id'] and target.is_dir():
             return
@@ -566,8 +672,9 @@ class LibraryRuntime:
             if capture:
                 self.capture_all()
             self._reconcile_platform_identities()
+            path_map = self._work_path_map()
             for work in self.works():
-                self._materialize(work)
+                self._materialize(work, path_map.get(work['work_id']))
             settings_result = SharedSettings(self).apply()
             self._record_settings_result(settings_result)
             self.state.pop('offline_error', None)
@@ -612,8 +719,11 @@ class LibraryRuntime:
     def rows(self):
         # 2026-09-05 性能：rows 全量扫库 + 306 个作品目录 glob，冷跑 ~20s。
         # 30s 内的重复调用直接用快照（runtime 实例已挂 engine 单例复用）。
+        # 2026-09-11 用户反馈"每次切换都卡"：TTL 30s→120s；delete/resolve/
+        # capture 处已同步打穿（capture 新作品/改动入口，delete/resolve 改
+        # 变可见性），发布等校验路径有 hooks 前 refresh 兜底新鲜度。
         import time as _time
-        if _time.monotonic() - getattr(self, '_rows_at', 0) < 30:
+        if _time.monotonic() - getattr(self, '_rows_at', 0) < 120:
             cached = self.state.get('last_rows')
             if cached is not None:
                 return cached
@@ -627,12 +737,13 @@ class LibraryRuntime:
                            warning=f'资源库当前不可用：{exc}')
             return cached
         rows = []
+        path_map = self._work_path_map()
         for work in self.works():
             if work['state'] == 'deleted' or work['work_id'] in self.state['hidden']:
                 continue
             revision = work.get('revision') or (work.get('heads') or [{}])[0]
             metadata = revision.get('metadata', {})
-            path = self.path_for(work['work_id'])
+            path = Path(path_map.get(work['work_id']) or self.path_for(work['work_id']))
             has_sync_conflicts = bool(work.get('sync_conflicts'))
             has_identity_conflict = work['work_id'] in set(self.state.get('identity_conflicts') or [])
             ready = (work['state'] == 'available' and not has_sync_conflicts
@@ -804,6 +915,9 @@ class LibraryRuntime:
                 self.state['hidden'].remove(work_id); self.save()
         else:
             raise ValueError('不支持的删除操作')
+        # 2026-09-10：hide/delete/restore 改变作品可见性，必须打穿 rows 的
+        # 30s 快照缓存，否则删除后列表 30 秒内仍显示该作品（用户重复点删）。
+        self._rows_at = 0
         return self.refresh(capture=False)
 
     def resolve(self, work_id, revision_id, action='choose'):
@@ -827,12 +941,52 @@ class LibraryRuntime:
         elif action == 'choose':
             if not selected:
                 raise ValueError('请选择有效冲突版本')
-            self.library.resolve(self.account_id, work_id, revision_id)
+            merged = self.library.resolve(self.account_id, work_id, revision_id)
+            if is_settings:
+                # resolve 后立即把选定的设置版本物化到本地：本地旧内容 +
+                # 过期 marker 会让下一次 apply 误判（unchanged 跳过或再次
+                # 冲突），"resolve→同步→又冲突"死循环的另一半（2026-09-09）
+                try:
+                    from .settings import SharedSettings
+                    SharedSettings(self).force_apply_entity(work_id, revision_id)
+                except Exception:   # noqa: BLE001
+                    pass   # 物化失败不阻断 resolve 本身，冲突卡仍在可重试
+            else:
+                # episode 同款对齐（2026-09-12 "清了又长"根因）：resolve
+                # 合并了头，但 state['paths'] 的 marker 若仍指向被合并的旧
+                # 支，下一次 capture 又从旧支分叉——冲突立即复活（skill
+                # 第 4 条教训的 episode 版；settings 走 force_apply_entity，
+                # episode 走这里对齐 revision_id，fingerprint 不动——本地
+                # 内容没变）。
+                if merged and merged.get('revision_id'):
+                    new_id = merged['revision_id']
+                    for p, mk in (self.state.get('paths') or {}).items():
+                        if isinstance(mk, dict) and mk.get('work_id') == work_id:
+                            mk['revision_id'] = new_id
+                    self.save()
         else:
             raise ValueError('未知版本处理方式')
+        # 同 delete：resolve 改变冲突/head 状态，rows 快照立即失效
+        self._rows_at = 0
         return self.refresh(capture=False)
 
 
+_ACTIVE_RUNTIME_CACHE = {}
+
+
 def active_runtime():
+    """2026-09-11 性能根修：进程内按 user_data 记忆化 runtime 单例。
+
+    此前每次调用 new 一个实例——catalog 解析缓存（_work_cache）、rows
+    30s 快照、refresh TTL 全部随实例丢弃，批量发布路径每弹都要付
+    ~80s 冷解析（runtime_for 在 2026-09-05 已做同款修复，这里补齐）。
+    账号变更命令走 cli._engine=None → hooks.runtime_for 重建，本缓存
+    服务的是发布/补发等直接调用方，进程生命周期内账号不变。
+    """
     from ..config.paths import resolve_paths, current_platform
-    return LibraryRuntime(resolve_paths(current_platform()).user_data)
+    ud = str(Path(resolve_paths(current_platform()).user_data))
+    rt = _ACTIVE_RUNTIME_CACHE.get(ud)
+    if rt is None:
+        rt = LibraryRuntime(ud)
+        _ACTIVE_RUNTIME_CACHE[ud] = rt
+    return rt

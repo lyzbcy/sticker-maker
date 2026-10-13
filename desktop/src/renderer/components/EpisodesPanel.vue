@@ -20,8 +20,8 @@
       <span v-if="shelfTip" class="reject-copy-tip">{{ shelfTip }}</span>
       <button v-if="rejectCount > 0" class="copy-all-rejects-btn"
               :disabled="copyingAllRejects" @click="copyAllRejects"
-              :title="`把 ${rejectCount} 个未通过作品的驳回理由汇总成一份分析提示词`">
-        {{ copyingAllRejects ? '生成中…' : `📋 复制全部驳回理由（${rejectCount} 单）` }}
+              :title="`导出 ${rejectCount} 个未通过作品的驳回理由为 JSONL 文件，复制文件夹路径给 AI 自行读取`">
+        {{ copyingAllRejects ? '导出中…' : `📋 一键复制驳回理由（${rejectCount} 单）` }}
       </button>
       <span v-if="allRejectsTip" class="reject-copy-tip">{{ allRejectsTip }}</span>
     </header>
@@ -232,7 +232,7 @@ async function copyAllRejects() {
     if (res?.status === 'ok' && res.data && res.data.text) {
       const clip = await window.api.copyText(res.data.text)
       allRejectsTip.value = (clip && clip.ok)
-        ? `✓ 已复制 ${res.data.count} 单的汇总（${clip.length} 字），粘贴给 AI 即可`
+        ? `✓ 已导出 ${res.data.count} 单到 ${res.data.folder || 'reject_reasons'}，路径已复制，粘贴给 AI 即可`
         : '复制失败：剪贴板不可用'
     } else {
       allRejectsTip.value = '生成失败：' + (res?.errors?.[0]?.message || '返回为空')

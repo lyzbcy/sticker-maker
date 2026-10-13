@@ -14,10 +14,12 @@ hiddenimports = (
     + collect_submodules('flask')
     + collect_submodules('apscheduler')
     + collect_submodules('playwright')
+    + collect_submodules('keyring.backends')
 )
 
 datas = [
     ('sticker_engine/resources', 'resources'),
+    ('build/browsers', 'browsers'),
     ('sticker_engine/agent/AGENT_PROMPT.md', 'sticker_engine/agent'),
 ] + collect_data_files('playwright')
 
@@ -30,7 +32,6 @@ a = Analysis(
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
-    cipher=block_cipher,
 )
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
@@ -56,7 +57,6 @@ exe = EXE(
 coll = COLLECT(
     exe,
     a.binaries,
-    a.zipfiles,
     a.datas,
     strip=False,
     upx=True,

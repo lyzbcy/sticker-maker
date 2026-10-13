@@ -38,6 +38,7 @@ def test_safe_unlink_verified_keeps_source_when_content_changes(tmp_path: Path) 
     assert source.read_bytes() == b"changed"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX fd hook; Windows uses handle deletion")
 def test_safe_unlink_verified_keeps_a_replacement_after_hashing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -80,6 +81,7 @@ def test_safe_unlink_verified_rejects_a_leaf_symlink(tmp_path: Path) -> None:
     assert outside.read_bytes() == b"outside"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX fd hook; Windows uses handle deletion")
 def test_safe_unlink_verified_rejects_a_replaced_parent_symlink(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

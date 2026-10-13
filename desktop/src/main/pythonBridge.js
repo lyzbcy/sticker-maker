@@ -61,9 +61,14 @@ class PythonBridge extends EventEmitter {
       cmd = this.cliPath
       args = []
     }
-    this.proc = spawn(cmd, args, { cwd: path.dirname(cmd) || undefined })
+    this.proc = spawn(cmd, args, { cwd: path.dirname(cmd) || undefined, windowsHide: true })
     this.proc.on('error', (err) => {
       console.error('[pythonBridge] spawn ERROR:', err.message, err.code)
+      this._stopped = true
+      for (const [, pending] of this.pending) pending.reject(new Error('制作引擎启动失败，请重新安装完整软件：' + err.message))
+      this.pending.clear()
+      this.proc = null
+      this.emit('exit', -1)
     })
     this.proc.stdout.setEncoding('utf-8')
     this.proc.stdout.on('data', (data) => {
@@ -82,6 +87,14 @@ class PythonBridge extends EventEmitter {
       this.pending.clear()
       this.currentRunId = null
       this.cancelableIds.clear()
+      // exit 3 = 引擎单实例锁被占（2026-09-09 事故：多实例并发写库导致
+      // 308 作品版本冲突）。重启只会继续被拒，不自动重启，由 UI 提示
+      // 用户关闭其他实例。
+      if (code === 3) {
+        console.error('[pythonBridge] 引擎单实例锁被占用（另一实例正在运行），停止自动重启')
+        this.emit('locked')
+        return
+      }
       // C3 修复：崩溃（非主动关闭）自动重启
       if (!this._stopped) {
         console.error('[pythonBridge] CLI 崩溃，3 秒后自动重启...')

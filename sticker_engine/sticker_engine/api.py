@@ -31,6 +31,8 @@ class Episode:
     aborted_reason: str = ""   # 非空表示被取消/异常中止的原因
     # S3 图标降级（AI 大头照失败退回复用封面）：批量自动发布路径据此跳过该单
     icon_fallback: bool = False
+    # S3 封面降级（header 格缺失/裁剪失败退回旧缩放）：批量自动发布据此跳过
+    cover_fallback: bool = False
 
 
 class _FailingCodex:
@@ -43,6 +45,11 @@ class _FailingCodex:
 
     def generate(self, *a, **kw):
         return None
+
+
+# 系列取号互斥（2026-09-10 批量双生图工位）：occupied 扫描→take_number→
+# save_series 必须原子，否则双工位并发会重号/漏号。
+_SERIES_NUMBER_LOCK = threading.Lock()
 
 
 class StickerEngine:
@@ -113,14 +120,20 @@ class StickerEngine:
     def run(self, progress_callback=None, stop_event=None) -> Episode:
         """Persist every generated item, including direct scheduler/agent calls."""
         from .library.hooks import runtime_for
-        from .library.commands import LOCK
+        from .library.commands import LOCK, batch_lock_held
         runtime = runtime_for(self)
         if runtime is None:
             return self._run_impl(progress_callback=progress_callback, stop_event=stop_event)
-        if not LOCK.acquire(blocking=False):
-            return Episode(success=False, aborted_reason="资源任务正在进行，请稍后重试")
+        # 批量流水线的工作线程豁免：锁由 run_batch 命令线程持有（RLock
+        # 跨线程不可重入，2026-09-09 流水线事故）。max_age 让批量内连续
+        # 多弹共享 refresh 缓存，不再每弹冷跑全量扫描（此前每弹多 ~100s）
+        need_release = False
+        if not batch_lock_held():
+            if not LOCK.acquire(blocking=False):
+                return Episode(success=False, aborted_reason="资源任务正在进行，请稍后重试")
+            need_release = True
         try:
-            status = runtime.refresh()
+            status = runtime.refresh(max_age=600)
             if isinstance(status, dict) and status.get('offline'):
                 return Episode(success=False,
                                aborted_reason='共享资源库当前不可用，已停止生成；请恢复同步目录后重试')
@@ -137,7 +150,8 @@ class StickerEngine:
                     episode.aborted_reason = f"作品保留在本机，但写入资源库失败：{exc}"
             return episode
         finally:
-            LOCK.release()
+            if need_release:
+                LOCK.release()
 
     def _run_impl(
         self,
@@ -184,27 +198,34 @@ class StickerEngine:
                 sid = getattr(self.config.prefs, "default_series_id", None)
                 target = find_series(sid) if sid else None
                 if target is not None:
-                    # 跳过已占号（历史偶数空缺自动补齐；occupied=本地全部
-                    # 已用编号。批量双重取号事故的补救能力）
-                    _occupied = set()
-                    try:
-                        _root = self.config.paths.output_root
-                        from pathlib import Path as _P
-                        from .config.series import load_meta as _lm0
-                        for _d in _P(_root).iterdir() if _P(_root).exists() else []:
-                            if _d.is_dir() and _d.name.startswith("episode"):
-                                _m = _lm0(_d)
-                                if _m.number:
-                                    _occupied.add(_m.number)
-                    except Exception:
+                    # 2026-09-10 批量双生图工位：取号段全程持锁——occupied
+                    # 扫描/take_number/save_series 三步在两线程并发时会
+                    # 互相覆盖 next_number（重号）或漏扫对方（同号）。锁只
+                    # 包命名段（~1s），生图主体仍在双工位并行。
+                    with _SERIES_NUMBER_LOCK:
+                        # 跳过已占号（历史偶数空缺自动补齐；occupied=本地全部
+                        # 已用编号。批量双重取号事故的补救能力）
                         _occupied = set()
-                    assign_to_series(ctx.episode_dir, target,
-                                     occupied=_occupied)
-                    all_series = load_series()
-                    for s in all_series:
-                        if s.id == target.id:
-                            s.next_number = target.next_number
-                    save_series(all_series)
+                        try:
+                            _root = self.config.paths.output_root
+                            from pathlib import Path as _P
+                            from .config.series import load_meta as _lm0
+                            for _d in _P(_root).iterdir() if _P(_root).exists() else []:
+                                if _d.is_dir() and _d.name.startswith("episode"):
+                                    _m = _lm0(_d)
+                                    if _m.number:
+                                        _occupied.add(_m.number)
+                        except Exception:
+                            _occupied = set()
+                        target = find_series(sid) if sid else None
+                        if target is not None:
+                            assign_to_series(ctx.episode_dir, target,
+                                             occupied=_occupied)
+                            all_series = load_series()
+                            for s in all_series:
+                                if s.id == target.id:
+                                    s.next_number = target.next_number
+                            save_series(all_series)
             except Exception:
                 pass   # 命名失败不影响作品产出
             # 命名后重写介绍（2026-09-04：S3 生成介绍在命名之前，《》里
@@ -223,7 +244,8 @@ class StickerEngine:
             episode_dir=ctx.episode_dir, stickers=ctx.stickers,
             meaning_map=ctx.meaning_map, assets=ctx.assets,
             success=success, errors=list(ctx.errors), aborted_reason=aborted_reason,
-            icon_fallback=bool(getattr(ctx, "icon_fallback", False)))
+            icon_fallback=bool(getattr(ctx, "icon_fallback", False)),
+            cover_fallback=bool(getattr(ctx, "cover_fallback", False)))
         ep.production_log = list(ctx.production_log)
         return ep
 

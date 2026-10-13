@@ -57,6 +57,22 @@ _SINGLE_PANEL_HINTS = (
     "a few panels", "one cell", "a cell", "one frame", "个别", "其中一格",
 )
 
+# ---- 头部特写格（2026-09-05 图标驳回根修；2026-09-08 封面大头照复用）----
+# keyword_combo 单固定格 13-16 为 HEAD SHOT（头肩占画面 ≥60%，纯情绪脸，
+# 无道具无装饰）。模块级常量：S3 assets 选封面/图标源与这里必须同源，
+# 拆两处会漂移（曾经这就是封面/图标各写一份词表的根）。
+HEADER_SLOTS = (13, 14, 15, 16)
+HEADER_EMOS = [
+    ("laughing hard", "eyes squeezed shut, mouth wide open in a big happy laugh", "笑死"),
+    ("teary upset", "big watery eyes and a wobbly pout, about to cry", "呜呜呜"),
+    ("sulky pout", "puffing cheeks with a grumpy little pout", "生气气"),
+    ("lovestruck", "sparkling heart-shaped eyes, blushing hard", "心动了"),
+    ("sleepy", "heavy droopy eyes and a tiny yawn", "困死了"),
+    ("shocked", "jaw dropped and both paws on cheeks", "惊了"),
+    ("shy", "hiding half of the face behind paws, blushing", "害羞"),
+    ("smug", "smug little smirk with one brow raised", "得意"),
+]
+
 
 class GenerationMode(enum.Enum):
     REF_LIBRARY = "ref_library"
@@ -71,19 +87,38 @@ _LAST_THEME_KEY = None
 
 
 def _apply_background_mode(prompt_text: str, mode: str) -> str:
-    """背景模式（2026-09-08 用户实验）：solid=纯白实底（No.6 同款，4711
-    发送验证过审），替换共享约束里的品红行；transparent=现状不动。"""
+    """背景模式（2026-09-13 v4 用户定稿，分段式组合）：
+
+    solid=生图时就让 AI 直接画合适的环境背景（不再是品红+后期染色）：
+    每格自选柔和环境/彩底，与角色和场景语义匹配（例：睡觉→夜色星空、
+    干饭→暖黄餐桌光），底部 18% 留白带配字。S2 不抠图不碰底色。
+    transparent=品红底（S2 洋红抠图），现状不动。
+    v3 教训：v3 让 AI 自选彩底但模板正文仍写品红——4 千字 prompt 里
+    单点替换+末尾加强仍被"贴纸=品红"训练先验压过（AI 照画品红，靠 S2
+    染色兜底）。v4 直接改写共享样式块正文行，先验源头上消灭品红。
+    """
     if mode != "solid":
         return prompt_text
-    # 2026-09-08 用户修正：No.6 是柔和彩色底不是纯白——每格一个
-    # 柔和马卡龙色纯色底（浅粉/奶油黄/淡蓝/薄荷绿等），整底保留
-    return prompt_text.replace(
+    replaced = prompt_text.replace(
         "- Background: solid magenta (#ff00ff), completely flat — no shadows, "
         "no gradients, no scenery",
-        "- Background: one soft pastel solid color per panel (light pink, "
-        "cream yellow, baby blue, mint green, lavender — pick ONE gentle "
-        "pastel per panel), completely flat — no shadows, no gradients, "
-        "no scenery, never white")
+        "- Background: EACH panel gets its OWN background that MATCHES the "
+        "scene — either a soft solid pastel color OR a gentle simple "
+        "environment fitting the action (e.g. sleepy panel -> soft night-blue "
+        "with tiny stars; eating panel -> warm cream with tiny hearts; "
+        "working panel -> light desk beige), chosen to complement the "
+        "character; keep it soft, clean and low-detail so the character "
+        "stays the clear focus; neighboring panels use DIFFERENT backgrounds; "
+        "NEVER magenta, never purple, never pure white; keep the bottom 18% "
+        "of every panel as empty background of that same style (reserved "
+        "space for caption text)")
+    return replaced + (
+        "\nREMINDER (background, high priority): every panel background is a "
+        "soft pastel solid color OR a simple gentle environment that fits the "
+        "panel's scene, always different between neighboring panels, with the "
+        "bottom 18% of the panel left empty for caption text. NEVER fill any "
+        "panel with magenta or purple. Absolutely no text, letters, numbers "
+        "or watermarks in any panel")
 
 
 class GenerateStage:
@@ -411,7 +446,8 @@ class GenerateStage:
 
         themes = self._normalize_themes(kws.get("themes"))
         if themes:
-            picked, main_key, main_n = self._pick_themed_entries(themes, n)
+            picked, main_key, main_n = self._pick_themed_entries(
+                themes, n, avoid=set(self._RECENT_WORDS))
             self._emit(ctx, f"本单主题：「{main_key}」——主题内抽 {min(main_n, len(themes[main_key]))} 格"
                             f" + 跨主题点缀 {n - main_n} 格（词条库 {len(themes)} 个主题）")
         else:
@@ -443,6 +479,12 @@ class GenerateStage:
             used_zh.add(zh)
             new_picked.append(e)
         picked = new_picked
+        # 跨单记忆登记（2026-09-13）：本单最终用词进 _RECENT_WORDS，
+        # 容量按 3 单 × 16 词左右滚动截断
+        for e in picked:
+            self._RECENT_WORDS[str(e.get("zh") or "")] = 1
+        if len(self._RECENT_WORDS) > 60:
+            self._RECENT_WORDS = dict(list(self._RECENT_WORDS.items())[-48:])
         if replaced:
             self._emit(ctx, f"含义词修正 {len(replaced)} 条（超长/重复换词条）："
                             + "、".join(replaced[:5]) + ("…" if len(replaced) > 5 else ""))
@@ -451,17 +493,8 @@ class GenerateStage:
         # 为头部特写格（HEAD SHOT：头肩占画面 ≥60%，纯情绪脸，无道具无
         # 装饰），图标只从这 4 格裁（零 token）。用户口径：头部画幅
         # 占比超 60% 即安全，纯情绪大头是聊天表情经典形态。
-        HEADER_SLOTS = (13, 14, 15, 16)
-        HEADER_EMOS = [
-            ("laughing hard", "eyes squeezed shut, mouth wide open in a big happy laugh", "笑死"),
-            ("teary upset", "big watery eyes and a wobbly pout, about to cry", "呜呜呜"),
-            ("sulky pout", "puffing cheeks with a grumpy little pout", "生气气"),
-            ("lovestruck", "sparkling heart-shaped eyes, blushing hard", "心动了"),
-            ("sleepy", "heavy droopy eyes and a tiny yawn", "困死了"),
-            ("shocked", "jaw dropped and both paws on cheeks", "惊了"),
-            ("shy", "hiding half of the face behind paws, blushing", "害羞"),
-            ("smug", "smug little smirk with one brow raised", "得意"),
-        ]
+        # 2026-09-08：常量提升到模块级（HEADER_SLOTS/HEADER_EMOS），
+        # S3 封面大头照复用同一洞（见 assets.py）。
         header_emos = self.rng.sample(HEADER_EMOS, 4)
         picked = picked[: n - 4]   # 场景格 12 个，尾部 4 格留给头部特写
 
@@ -480,6 +513,12 @@ class GenerateStage:
             seen[w] = cnt + 1
         try:
             ctx.preset_meanings = deduped
+        except AttributeError:
+            pass
+        # S3 封面/图标选源信号（2026-09-08）：尾部 4 格即 header 特写格。
+        # regen 场景无 ctx 时由 assets 读 meaning_map 尾部序号兜底。
+        try:
+            ctx.header_slots = list(HEADER_SLOTS)
         except AttributeError:
             pass
         lines = []
@@ -537,12 +576,15 @@ class GenerateStage:
                 themes[str(key)] = norm
         return themes
 
-    def _draw_without_repeat(self, pool: list, n: int) -> list:
+    def _draw_without_repeat(self, pool: list, n: int, avoid=None) -> list:
         """无重复抽取 n 个（按 en 去重；同词条多次出现=权重累加，
         2026-09-04 打分反哺的高频词加权靠这个生效）。池不足 n 时重新
-        装填，允许跨装填重复。"""
+        装填，允许跨装填重复。avoid：跨单去重集合——命中的词权重
+        ×0.15（近 3 单用过的不优先再用，词表穷尽仍可落回）。"""
         def _en(e):
             return e.get("en") if isinstance(e, dict) else str(e)
+        def _zh(e):
+            return str(e.get("zh") or "").strip() if isinstance(e, dict) else ""
         uniq, wmap = [], {}
         for e in pool or []:
             en = _en(e)
@@ -551,7 +593,9 @@ class GenerateStage:
                 uniq.append(e)
             wmap[en] += 1.0
         picked = []
-        bag, ws = list(uniq), [wmap[_en(e)] for e in uniq]
+        bag = list(uniq)
+        ws = [wmap[_en(e)] * (0.15 if avoid and _zh(e) in avoid else 1.0)
+              for e in bag]
         for _ in range(n):
             if not bag:
                 bag, ws = list(uniq), [wmap[_en(e)] for e in uniq]
@@ -564,6 +608,9 @@ class GenerateStage:
     # 全部来自冷门叙事主题的词条——挂袜/烘焙/量尺寸/太空漫游/修网络这类
     # "看图讲故事"场景在聊天里几乎用不上。高频主题主抽+点缀权重加倍，
     # 冷门主题仍会出现（多样性保留）但占比下降）
+    # 2026-09-13 用户实测"前后几代词全一样"：跨单去重记忆——近 3 单
+    # 用过的 zh 词在抽取时降权 ×0.15（不硬禁，词表穷尽时仍可用）。
+    _RECENT_WORDS = {}   # zh -> 最后使用的单调号（用长度近似容量控制）
     _CHAT_FIRST_THEMES = {
         "日常寒暄", "打工人", "干饭", "睡觉休息", "恋爱贴贴", "友谊互动",
     }
@@ -573,7 +620,7 @@ class GenerateStage:
     _HERO_THEME = "情侣日常"
     _HERO_WEIGHT = 6
 
-    def _pick_themed_entries(self, themes: dict, n: int):
+    def _pick_themed_entries(self, themes: dict, n: int, avoid=None):
         """主题抽取：主主题抽 ~70% + 其他主题补足，返回 (词条列表, 主题名, 主题内个数)。
 
         - 主主题加权随机（高频聊天主题 ×3 权重）；若与上一单相同且有得换则避开
@@ -595,7 +642,13 @@ class GenerateStage:
         _LAST_THEME_KEY = main_key
 
         main_n = max(1, min(int(round(n * 0.7)), n))
-        picked = self._draw_without_repeat(themes[main_key], main_n)
+        # 2026-09-13 用户实测根因：小主题池（日常寒暄 19 词）被 70% 配额
+        # 抽穿 → 装填重抽 → 近 20 单 14 单都在用同批词。小池配额按池容
+        # 封顶（至少留 2 词轮换），不足部分并入跨主题点缀（大池补给）。
+        pool_size = len(themes[main_key])
+        capped = min(main_n, max(1, pool_size - 2)) if pool_size >= 4 else min(main_n, pool_size)
+        main_n = capped
+        picked = self._draw_without_repeat(themes[main_key], main_n, avoid=avoid)
         # 跨主题点缀：其余主题的词条合并抽（已按 en 全库去重，无重复风险）；
         # 高频主题词条出现两次（权重×2）
         rest_pool = []
@@ -611,6 +664,6 @@ class GenerateStage:
         if not rest_pool:
             rest_pool = themes[main_key]
         if n > len(picked):
-            picked += self._draw_without_repeat(rest_pool, n - len(picked))
+            picked += self._draw_without_repeat(rest_pool, n - len(picked), avoid=avoid)
         self.rng.shuffle(picked)
         return picked, main_key, main_n

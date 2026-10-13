@@ -1,3 +1,4 @@
+import pytest
 from sticker_engine.library.runtime import LibraryRuntime
 from sticker_engine.library.catalog import ResourceLibrary
 from sticker_engine.library.maintenance import record_cache_plan, cleanup_cache_plan
@@ -41,6 +42,7 @@ def test_cleanup_preserves_source_if_target_corrupt(tmp_path):
     assert result['errors']
 
 
+@pytest.mark.skipif(__import__("os").name == "nt", reason="directory symlinks need Windows developer mode")
 def test_cleanup_rejects_symlinked_ancestor_even_inside_root(tmp_path):
     rt, source, _ = setup_plan(tmp_path)
     moved = source.parent.with_name('moved-settings')

@@ -1,5 +1,6 @@
 <template>
   <div class="app">
+    <div class="window-drag" aria-hidden="true"></div>
     <div v-if="store.phase === 'launch'" class="center">
       <div class="launch-pill">启动中…</div>
     </div>
@@ -11,6 +12,8 @@
     <SettingsPanel v-else-if="store.phase === 'settings'" class="page-fade" />
     <ToolsPanel v-else-if="store.phase === 'tools'" class="page-fade" />
     <AboutPanel v-else-if="store.phase === 'about'" class="page-fade" @back="store.phase = 'main'" />
+    <FeedbackPanel v-else-if="store.phase === 'feedback'" @back="store.phase = 'main'" />
+    <button v-if="store.phase !== 'feedback' && store.phase !== 'main'" class="feedback-entry" @click="store.phase = 'feedback'">遇到问题反馈</button>
     <StatusBar />
     <!-- 求好评小弹窗（发布≥2次触发，15 天不打扰） -->
     <ReviewAskModal :visible="store.reviewAskVisible" @dismiss="store.dismissReviewAsk()" />
@@ -29,6 +32,7 @@ import SettingsPanel from './components/SettingsPanel.vue'
 import ToolsPanel from './components/ToolsPanel.vue'
 import AboutPanel from './components/AboutPanel.vue'
 import StatusBar from './components/StatusBar.vue'
+import FeedbackPanel from './components/FeedbackPanel.vue'
 import ReviewAskModal from './components/ReviewAskModal.vue'
 
 const store = useEngineStore()
@@ -94,6 +98,7 @@ onMounted(() => store.init())
   --font-fun: "ZCOOL KuaiLe", "Noto Sans SC", "PingFang SC", sans-serif;
 }
 
+.feedback-entry { position: fixed; top: 40px; right: 12px; z-index: 30; background: var(--paper); color: var(--forest); border: 1px solid var(--sage); border-radius: 20px; padding: 7px 12px; cursor: pointer; }
 /* ============ Body 重置 ============ */
 body {
   margin: 0;
@@ -106,7 +111,8 @@ body {
 
 * { box-sizing: border-box; }
 
-.app { min-height: 100vh; padding-bottom: 40px; }  /* 底部留出状态栏高度 */
+.app { min-height: 100vh; padding-top: 32px; padding-bottom: 40px; }
+.window-drag { position: fixed; top: 0; left: 0; right: 0; height: 32px; background: var(--bg-cream); -webkit-app-region: drag; z-index: 90; }  /* 底部留出状态栏高度 */
 
 .center {
   display: flex;

@@ -4,6 +4,7 @@
     <div v-if="expanded" class="activity-panel">
       <div class="panel-head">
         <span>实时活动（做什么 · 输入 · 输出 · 在等什么）</span>
+        <button class="clear-btn" @click="copyLogs">{{ copied ? '已复制' : '复制日志' }}</button>
         <button class="clear-btn" @click="store.activity = []">清空</button>
       </div>
       <div class="activity-list" ref="listEl">
@@ -32,6 +33,12 @@ import { useEngineStore } from '../store/engine'
 
 const store = useEngineStore()
 const expanded = ref(false)
+const copied = ref(false)
+async function copyLogs() {
+  const text = store.activity.map(a => `${fmtTime(a.t)} [${a.stage}] ${a.message}`).join('\n')
+  const result = await window.api?.copyText(text)
+  copied.value = !!result?.ok
+}
 const listEl = ref(null)
 const nowTick = ref(Date.now())
 let timer = null

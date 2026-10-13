@@ -20,19 +20,24 @@
         <div class="state-icon fail">!</div>
         <div class="state-text">
           <p class="state-title fail-title">{{ store.codexStatus.guidance_msg || 'codex 不可用' }}</p>
-          <p class="hint">别担心，下面一键就能装好。</p>
+          <p class="hint">{{ store.codexStatus.needs_repair ? '请修复缺失的生图组件，再重新检测。' : store.codexStatus.installed ? '已经安装，只需登录后重新检测。' : '先安装生图工具，再登录自己的账号。' }}</p>
         </div>
       </div>
 
       <!-- 一键安装 -->
-      <div class="install-section" v-if="!store.installing">
+      <div class="install-section" v-if="!store.installing && (!store.codexStatus.installed || store.codexStatus.needs_repair)">
         <p class="install-desc">codex 是生图引擎，需要先安装。点下面按钮一键安装（全自动）：</p>
-        <button class="btn btn-install" @click="store.installCodex">📦 一键安装 codex</button>
-        <p class="hint">安装约需 1-3 分钟，会下载官方安装包。请保持网络畅通。</p>
+        <button class="btn btn-install" @click="store.installCodex">{{ store.codexStatus.needs_repair ? '修复生图工具' : '📦 一键安装 codex' }}</button>
+        <p class="hint">会下载官方压缩安装包，耗时取决于网络；下面显示真实下载进度。请保持网络畅通。</p>
       </div>
 
+      <div v-if="store.codexStatus.installed && !store.codexStatus.needs_repair && !store.installing" class="install-section">
+        <button class="btn" @click="loginCodex">打开登录窗口</button>
+        <p class="hint">请在新打开的窗口完成登录，再点「我已登录，重新检测」。生成需要可用的账号额度。</p>
+        <p v-if="loginError" role="alert">{{ loginError }}</p>
+      </div>
       <!-- 安装中：实时日志 -->
-      <div class="installing" v-else>
+      <div class="installing" v-if="store.installing">
         <p class="installing-title">⏳ 正在安装，请稍候…</p>
         <div class="log-box">
           <p v-for="(line, i) in store.installLog" :key="i" class="log-line">{{ line }}</p>
@@ -44,8 +49,8 @@
       <details class="manual-guide" v-if="!store.installing">
         <summary>安装遇到问题？看手动安装步骤</summary>
         <div class="guide" v-if="isWindows">
-          <p>先安装 Node.js 22+（<a href="https://nodejs.org" target="_blank" rel="noopener" style="color:var(--forest)">nodejs.org</a> 下载 LTS 安装包），然后打开命令行（cmd 或 PowerShell），运行：</p>
-          <pre><code>npm i -g @openai/codex</code></pre>
+          <p>推荐使用官方 Windows 安装器（<a href="https://chatgpt.com/codex/install.ps1" target="_blank" rel="noopener" style="color:var(--forest)">chatgpt.com/codex/install.ps1</a>），或在 PowerShell 中运行：</p>
+          <pre><code>powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"</code></pre>
           <p>然后运行 <code>codex</code> 按提示登录。</p>
           <p>完成后回来点 [重新检测]。</p>
         </div>
@@ -59,7 +64,7 @@
         </div>
       </details>
 
-      <button class="btn-ghost" v-if="!store.installing" @click="store.checkCodex">我已安装，重新检测</button>
+      <button class="btn-ghost" v-if="!store.installing" @click="store.checkCodex">我已登录，重新检测</button>
 
       <!-- 安装失败的提示 -->
       <div class="install-error" v-if="store.lastError && !store.installing && !store.codexStatus.image_ready">
@@ -69,9 +74,18 @@
   </div>
 </template>
 <script setup>
-import { onMounted } from 'vue'
+defineEmits(['skip-check'])
+import { onMounted, ref } from 'vue'
 import { useEngineStore } from '../store/engine'
 const store = useEngineStore()
+const loginError = ref('')
+async function loginCodex() {
+  loginError.value = ''
+  try {
+    const res = await window.api?.send('login_codex')
+    if (res?.status !== 'ok') loginError.value = res?.errors?.[0]?.message || '请在终端运行 codex login，再回来重新检测。'
+  } catch (e) { loginError.value = e.message }
+}
 // 平台检测（渲染层）：Windows 显示 npm 指引，Mac 显示官方脚本指引
 const isWindows = typeof navigator !== 'undefined' &&
   (navigator.userAgentData?.platform?.toLowerCase().includes('win') ||

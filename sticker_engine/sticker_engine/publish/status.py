@@ -202,6 +202,46 @@ def normalize_name(name: str) -> str:
     return re.sub(r"[\W_]+", "", folded).lower()
 
 
+def episode_has_files(path) -> bool:
+    """本地作品目录里是否有实际资源文件（meta.json 不算）——0 文件占位符不算。"""
+    try:
+        return any(f.is_file() and f.name != "meta.json" for f in Path(path).rglob("*"))
+    except OSError:
+        return False
+
+
+def _match_by_item_then_name(row: "PlatformRow", locals_: List[dict]) -> List[dict]:
+    """library 模式的行→本地作品匹配：platform_item_id 优先，失败时精确专辑名兜底。
+
+    2026-09-10 同步克隆行修复：刚发布的作品本地还没记 platform_item_id，
+    此前只认 ID 会直接给平台行建 0 文件占位符，同一专辑在作品列表里长出
+    「真身 + 克隆」两行，克隆抢走状态与统计。兜底规则：专辑名完全相等 +
+    本地有文件的唯一真身才绑（命中即把 ID 写回 meta，随调用方统一落盘）；
+    多个同名=歧义不绑（宁可不匹配也不绑错）；0 文件占位符不参与。
+    """
+    hits = [c for c in locals_ if row.item_id and c['meta'].platform_item_id == row.item_id]
+    if not hits:
+        # 同一作品可能有多个投影目录（时间戳名 + work_id 名）——先按
+        # work_id 去重再判唯一，否则双目录把真身误判成同名歧义 →
+        # 不绑定 → 给平台行建 0 文件壳（2026-09-11 半成品根因）
+        seen = set()
+        candidates = []
+        for c in locals_:
+            wid = getattr(c['meta'], 'work_id', '') or str(c['dir'])
+            if wid in seen:
+                continue
+            if (not c['meta'].platform_item_id
+                    and c['meta'].album_name == row.name
+                    and episode_has_files(c['dir'])):
+                seen.add(wid)
+                candidates.append(c)
+        if len(candidates) == 1:
+            if row.item_id:
+                candidates[0]['meta'].platform_item_id = row.item_id
+            hits = candidates
+    return hits
+
+
 def match_episode(row_name: str, candidates: List[dict]) -> Optional[dict]:
     """把平台行名匹配到本地 episode（candidates 含 album_name/name 键）。
 
@@ -526,7 +566,7 @@ def _sync_status_legacy(engine, on_status: Optional[Callable[[str], None]] = Non
     now = time.strftime("%Y-%m-%d %H:%M:%S")
     for r in all_rows:
         if library_runtime:
-            hits = [c for c in locals_ if r.item_id and c['meta'].platform_item_id == r.item_id]
+            hits = _match_by_item_then_name(r, locals_)
             if not hits and r.item_id:
                 path = library_runtime.placeholder({'StikerID': r.item_id, 'Name': r.name})
                 hits = [{'dir': path, 'meta': load_meta(path)}]
@@ -551,7 +591,7 @@ def _sync_status_legacy(engine, on_status: Optional[Callable[[str], None]] = Non
         matched += 1
     say(f"同步完成：匹配 {matched} 个作品，平台未匹配 {len(unmatched)} 条")
     if library_runtime:
-        library_runtime.refresh()
+        library_runtime.refresh(capture=False)   # 2026-09-12: 入库由后置 hooks 兜底
     return {"matched": matched, "unmatched_platform": unmatched,
             "updated": matched, "pages": pages, "source": "page",
             "complete": False, "list_complete": False, "cancelled": cancelled,
@@ -643,7 +683,7 @@ def sync_status(engine, on_status=None, fetch_reasons=True, force_reasons=False,
         candidate = LibraryRuntime(engine.config.paths.user_data)
         if candidate.enabled:
             library_runtime = candidate
-            candidate.refresh()
+            candidate.refresh(capture=False)   # 2026-09-12: 平台读前置无需全量捕获
     say('正在读取平台全部作品状态…')
     fallback = False
     with sync_playwright() as pw:
@@ -669,7 +709,7 @@ def sync_status(engine, on_status=None, fetch_reasons=True, force_reasons=False,
                 result['income'] = fetch_income(
                     page, say, output_root=engine.config.paths.output_root)
                 if library_runtime:
-                    library_runtime.refresh()
+                    library_runtime.refresh(capture=False)   # 2026-09-12: 同上，后置 hooks 已带 capture
                 return result
         finally:
             session.close()

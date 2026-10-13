@@ -7,6 +7,7 @@
         <h1 class="brand-name">表情包一键制作</h1>
       </div>
       <nav class="nav-group">
+        <button class="nav-btn" @click="store.phase = 'feedback'">遇到问题反馈</button>
         <button class="nav-btn" title="发布与 AI 工具" @click="store.phase = 'tools'">
           <span class="nav-ico">↗</span>发布与AI工具
         </button>
@@ -95,6 +96,7 @@
             <p class="income-note">热度÷10=付费总额，平台抽10%后×0.9=预计到手 · 每月15日结算 · 「一键更新」刷新</p>
           </div>
 
+          <p class="first-use-tip">第一次建议只做 1 组。生成后可保存图片；提交微信是独立操作，不会自动发布。</p>
           <div class="cta-row">
             <button class="start-btn" @click="store.runGenerate">
               <span class="start-emoji">🎨</span>开始生图
@@ -116,7 +118,7 @@
                 {{ store.running ? '运行中…' : '🚀 批量生成' }}
               </button>
             </div>
-            <p class="cta-hint">点一下就好 ✨ 单组几分钟；批量时每组完成后自动命名并提交（需在设置里配好默认系列）</p>
+            <p class="cta-hint">点一下就好 ✨ 单组几分钟；批量时逐组生成；仅勾选「完成后自动发布」才会提交微信</p>
           </div>
           <p v-if="store.batchInfo" class="batch-summary">
             上次批量：生成 {{ store.batchInfo.generated_ok }}/{{ store.batchInfo.requested }} 组，
@@ -175,8 +177,14 @@
           </article>
         </div>
 
+        <!-- 加载态：大库冷跑 list_episodes 可能要 1 分钟，不能误显示成"没有作品" -->
+        <div v-if="store.episodesLoading && !store.episodes.length" class="empty-box" data-test="episodes-loading">
+          <span class="empty-emoji">⏳</span>
+          <p class="empty-hint">正在读取作品库…资源库较大时首次可能需要 1 分钟，作品数据都在，请稍候 ✨</p>
+        </div>
+
         <!-- 空态：还没做过作品，用自家表情打个招呼（润物细无声） -->
-        <div v-else class="empty-box">
+        <div v-else-if="!store.episodes.length" class="empty-box">
           <span class="empty-emoji">🧺</span>
           <p class="empty-hint">还没有作品——点上面的「开始生图」，几分钟后就有一整套表情啦 ✨</p>
         </div>
@@ -216,8 +224,8 @@ import FeaturedShowcase from './FeaturedShowcase.vue'
 const store = useEngineStore()
 
 // 批量生成（组数 + 完成后自动发布）
-const batchCount = ref(5)
-const batchAutoPublish = ref(true)
+const batchCount = ref(1)
+const batchAutoPublish = ref(false)
 const quotaWindows = computed(() => {
   const cu = store.codexUsage
   if (!cu?.usage) return []

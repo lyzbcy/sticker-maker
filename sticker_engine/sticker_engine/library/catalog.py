@@ -63,6 +63,21 @@ class ResourceLibrary:
     def __init__(self, root: Union[str, Path], create: bool = False):
         self._root = Path(root).expanduser()
         self._verified_objects: Dict[str, Tuple[Path, int, int, int, int, int]] = {}
+        # 2026-09-10 性能根修：list_works 每次全量重解析 570 作品的修订
+        # JSON 要 ~77s，而一次 refresh 内 works()/reconcile/rows/settings-apply
+        # 各调一遍 → 单个操作 200s+。修订目录 append-only（write_revision
+        # 只新增 uuid 文件，永不原地改写），目录 mtime 变化 ⇔ 目录内容变化，
+        # 以 (account, work) 为键、revisions 目录 mtime_ns 为戳缓存解析结果。
+        # 写入路径显式失效；Syncthing 落盘/删除都会改目录 mtime，自动失效。
+        # 调用方契约不变：read_work/revisions 返回深拷贝，其余调用只读。
+        self._work_cache: Dict[Tuple[str, str], Tuple[int, Any, Any, Any]] = {}
+        # 2026-09-11 用户"最近作品每次都堵两三分钟"根修：进程内缓存随引擎
+        # 重启清零（works() 冷 164s/834 作品）。把 _work_cache 持久化到
+        # %APPDATA%/StickerEngine/catalog_cache/<library_id>.json（本机私有，
+        # 不进 Syncthing 同步目录），启动时命中即秒开；mtime 键控失效与
+        # 内存缓存同一套，Syncthing 落盘自动失配。
+        self._disk_cache: Optional[dict] = None   # 惰性加载
+        self._disk_dirty = 0
         library_file = self._root / "library.json"
         if create:
             self._root.mkdir(parents=True, exist_ok=True)
@@ -184,6 +199,8 @@ class ResourceLibrary:
         if destination.exists() or destination.is_symlink():
             raise LibraryCollisionError(f"revision already exists: {revision['revision_id']}")
         atomic_write_bytes(destination, self._json_bytes(revision))
+        self._work_cache.pop((account_id, work_id), None)
+        self._disk_cache_drop(account_id, work_id)
         return copy.deepcopy(revision)
 
     def read_work(self, account_id: str, work_id: str) -> Work:
@@ -191,6 +208,13 @@ class ResourceLibrary:
         work_id = self._safe_id(work_id, "work_id")
         snapshot, _parsed, _complete = self._analyze_work(account_id, work_id)
         return copy.deepcopy(snapshot)
+
+    def revisions(self, account_id: str, work_id: str) -> List[Revision]:
+        """Return every revision manifest of a work (read-only history walk)."""
+        account_id = self._safe_id(account_id, "account_id")
+        work_id = self._safe_id(work_id, "work_id")
+        _snapshot, parsed, _complete = self._analyze_work(account_id, work_id)
+        return copy.deepcopy(list(parsed.values()))
 
     def list_works(self, account_id: Optional[str] = None) -> List[Work]:
         if account_id is not None:
@@ -231,6 +255,7 @@ class ResourceLibrary:
                 work_names.append(current_work)
                 result.append(self.read_work(current_account, current_work))
             self._ensure_case_unique(work_names, "work ids")
+        self.save_disk_cache()   # 全量扫收尾：把新解析的作品落盘缓存
         return result
 
     def materialize(
@@ -325,6 +350,9 @@ class ResourceLibrary:
                 summary["revisions"] += 1
             else:
                 summary["existing_revisions"] += 1
+        self._work_cache.clear()
+        self._disk_cache = {}   # 合并进来的作品 mtime 未知，整体重建
+        self.save_disk_cache()
         return summary
 
     def resolve(self, account_id: str, work_id: str, revision_id: str) -> Revision:
@@ -353,6 +381,105 @@ class ResourceLibrary:
     # Catalog validation and graph analysis
     # ------------------------------------------------------------------
     def _analyze_work(
+        self, account_id: str, work_id: str
+    ) -> Tuple[Work, Dict[str, Revision], Dict[str, Tuple[bool, Tuple[str, ...]]]]:
+        # 缓存层：命中（目录 mtime 未变）直接复用解析结果。返回的是共享
+        # 对象——read_work/revisions 负责深拷贝，其余调用点只读（契约见
+        # __init__ 注释）。修订目录不存在时不缓存（新建即用即弃）。
+        revisions_dir = self._revision_dir(account_id, work_id)
+        try:
+            stamp = revisions_dir.stat().st_mtime_ns
+        except OSError:
+            self._work_cache.pop((account_id, work_id), None)
+            return self._analyze_work_uncached(account_id, work_id)
+        cached = self._work_cache.get((account_id, work_id))
+        if cached is not None and cached[0] == stamp:
+            return cached[1], cached[2], cached[3]
+        hit = self._disk_cache_get(account_id, work_id, stamp)
+        if hit is not None:
+            self._work_cache[(account_id, work_id)] = (stamp, *hit)
+            return hit
+        analyzed = self._analyze_work_uncached(account_id, work_id)
+        self._work_cache[(account_id, work_id)] = (stamp, *analyzed)
+        self._disk_cache_put(account_id, work_id, stamp, analyzed)
+        return analyzed
+
+    # ---- 跨进程盘缓存（2026-09-11）：works() 冷 164s → 命中后秒开 ----
+
+    def _disk_cache_path(self) -> Optional[Path]:
+        import os
+        base = os.environ.get("APPDATA")
+        if not base:
+            return None
+        import hashlib
+        lid = getattr(self, "_library_id", "") or ""
+        if not lid:
+            return None
+        h = hashlib.md5(str(self._root).encode("utf-8")).hexdigest()[:12]
+        d = Path(base) / "StickerEngine" / "catalog_cache"
+        return d / f"{lid[:8]}_{h}.json"
+
+    def _ensure_disk_cache(self):
+        if self._disk_cache is not None:
+            return
+        self._disk_cache = {}
+        p = self._disk_cache_path()
+        if p is None or not p.is_file():
+            return
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            if data.get("v") == 1:
+                self._disk_cache = data.get("works") or {}
+        except Exception:   # noqa: BLE001 - 缓存损坏即弃，重建
+            self._disk_cache = {}
+
+    def _disk_cache_get(self, account_id, work_id, stamp):
+        self._ensure_disk_cache()
+        ent = self._disk_cache.get(f"{account_id}|{work_id}")
+        if not ent or ent.get("stamp") != stamp:
+            return None
+        return ent.get("analyzed")
+
+    def _disk_cache_put(self, account_id, work_id, stamp, analyzed):
+        self._ensure_disk_cache()
+        # complete 的 tuple 值 JSON 序列化成 list；现有用法（[0] 取布尔、
+        # [1] 迭代 extend）tuple/list 等价，不做回转
+        self._disk_cache[f"{account_id}|{work_id}"] = {
+            "stamp": stamp,
+            "analyzed": list(analyzed),
+        }
+        self._disk_dirty += 1
+        if self._disk_dirty >= 200:
+            self.save_disk_cache()
+
+    def save_disk_cache(self):
+        """把盘缓存写回（list_works 收尾/写操作后调用；失败静默——缓存丢了
+        只是下次慢一点，绝不能影响主流程）。"""
+        if self._disk_cache is None:
+            return
+        p = self._disk_cache_path()
+        if p is None:
+            return
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            tmp = p.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"v": 1, "works": self._disk_cache},
+                                      ensure_ascii=False), encoding="utf-8")
+            tmp.replace(p)
+            self._disk_dirty = 0
+        except Exception:   # noqa: BLE001
+            pass
+
+    def _disk_cache_drop(self, account_id, work_id):
+        if self._disk_cache is None:
+            return
+        self._disk_cache.pop(f"{account_id}|{work_id}", None)
+        # 只标脏不落盘：mtime 键控保证崩溃后旧条目自动失配（安全），
+        # 收尾的 list_works/save_disk_cache 统一保存——此前每写一次修订
+        # 就全量重写 80MB 缓存，批量 resolve 252 个要拖 20GB 无效 IO
+        self._disk_dirty += 1
+
+    def _analyze_work_uncached(
         self, account_id: str, work_id: str
     ) -> Tuple[Work, Dict[str, Revision], Dict[str, Tuple[bool, Tuple[str, ...]]]]:
         self._ensure_work_path_components(account_id, work_id)

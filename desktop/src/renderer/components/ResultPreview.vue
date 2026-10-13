@@ -4,10 +4,13 @@
     <div v-if="store.lastError && !store.lastEpisode" class="error-card">
       <div class="state-icon err">!</div>
       <div class="card-body">
-        <h4 class="card-title">生成失败</h4>
+        <h4 class="card-title">操作未完成</h4>
         <p v-for="(e, i) in store.lastError" :key="i" class="err-line">{{ e.message || e.gate }}</p>
         <div class="actions">
-          <button class="btn btn-primary" @click="store.runGenerate">重试</button>
+          <button class="btn btn-primary" @click="store.runGenerate">重试生成</button>
+          <button class="btn btn-ghost" @click="store.clearResult">回到主页</button>
+          <button class="btn btn-ghost" @click="store.phase = 'wizard'">重新检测与配置</button>
+          <button class="btn btn-ghost" @click="store.phase = 'feedback'">遇到问题反馈</button>
         </div>
       </div>
     </div>
@@ -29,6 +32,8 @@
         <p v-if="publishFailed.screenshot" class="publish-fail-shot">现场截图：{{ publishFailed.screenshot }}</p>
       </div>
       <div class="actions">
+        <button class="btn btn-primary" @click="exportZip" :disabled="exporting">{{ exporting ? '保存中…' : '保存表情包 ZIP' }}</button>
+        <p v-if="exportMessage" role="status">{{ exportMessage }}</p>
         <button class="btn btn-ghost" @click="openFinder">在文件夹中显示</button>
         <button
           class="btn btn-publish"
@@ -45,9 +50,20 @@
   </div>
 </template>
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useEngineStore } from '../store/engine'
 const store = useEngineStore()
+const exporting = ref(false), exportMessage = ref('')
+async function exportZip() {
+  if (exporting.value) return
+  exporting.value = true; exportMessage.value = ''
+  try {
+    const res = await window.api?.exportEpisode(store.lastEpisode?.episode_dir)
+    if (res?.canceled) return
+    exportMessage.value = res?.status === 'ok' ? `已保存到：${res.data.path}` : (res?.errors?.[0]?.message || '请从桌面软件打开后保存')
+  } catch (e) { exportMessage.value = `保存未完成：${e.message}` }
+  finally { exporting.value = false }
+}
 
 const publishFailed = computed(() =>
   !store.publishing && store.publishResult && store.publishResult.success === false

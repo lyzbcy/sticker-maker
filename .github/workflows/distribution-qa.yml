@@ -1,0 +1,87 @@
+name: distribution-qa
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  clean-machine:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+          - os: macos-latest
+            platform: mac
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Embed browser
+        shell: bash
+        run: echo "PLAYWRIGHT_BROWSERS_PATH=${{ github.workspace }}/sticker_engine/build/browsers" >> "$GITHUB_ENV"
+      - name: Test and freeze engine
+        working-directory: sticker_engine
+        run: |
+          python -m pip install -e ".[dev]" pyinstaller
+          python -m pytest tests -q
+          python -m playwright install chromium
+          pyinstaller sticker-engine-cli.spec --noconfirm
+      - name: Test and package desktop
+        working-directory: desktop
+        run: |
+          npm ci
+          npm test
+          npm run build
+          npx electron-builder --${{ matrix.platform == 'win' && 'win --x64' || 'mac --arm64' }} --publish never
+      - name: Windows wrapper and real clean installation
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force verification | Out-Null
+          Set-Location desktop
+          node scripts/build-win.cjs
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          $target=Join-Path $env:RUNNER_TEMP 'fan-app'
+          powershell -NoProfile -ExecutionPolicy Bypass -File build/installer/installer-ui.ps1 -InstallerPath "$PWD/release/sticker-maker-win-v0.5.1-backend.exe" -InstallDir $target -Version 0.5.1 -Acceptance -CapturePath "$PWD/../verification/clean-install.png" -ReportPath "$PWD/../verification/clean-install.json"
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          $exe=Join-Path $target '表情包一键制作.exe'
+          if((Get-Item -LiteralPath $exe).VersionInfo.FileVersion -ne '0.5.1'){throw 'wrong installed version'}
+          $env:STICKER_ENGINE_USER_DATA=Join-Path $env:RUNNER_TEMP 'isolated-library'
+          '{"id":"runtime","cmd":"runtime_check","args":{}}' | & "$target/resources/sticker-engine-cli/sticker-engine-cli.exe" | Tee-Object ../verification/installed-runtime.txt
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - name: Mac real clean installation
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verification "$RUNNER_TEMP/mac-package"
+          APP=$(find desktop/release -maxdepth 2 -name '*.app' -type d | head -1)
+          codesign --force --deep --sign - "$APP"
+          ditto "$APP" "$RUNNER_TEMP/mac-package/表情包一键制作.app"
+          cp desktop/install.command "$RUNNER_TEMP/mac-package/install.command"
+          export STICKER_INSTALL_ROOT="$RUNNER_TEMP/fan-apps" STICKER_INSTALL_NO_LAUNCH=1
+          bash "$RUNNER_TEMP/mac-package/install.command"
+          codesign --verify --deep --strict "$STICKER_INSTALL_ROOT/表情包一键制作.app"
+          export STICKER_ENGINE_USER_DATA="$RUNNER_TEMP/isolated-library"
+          printf '%s\n' '{"id":"runtime","cmd":"runtime_check","args":{}}' | "$STICKER_INSTALL_ROOT/表情包一键制作.app/Contents/Resources/sticker-engine-cli/sticker-engine-cli" | tee verification/installed-runtime.txt
+      - name: Ensure runtime actually launched browser
+        shell: bash
+        run: |
+          python -c "import pathlib,json; lines=pathlib.Path('verification/installed-runtime.txt').read_text(encoding='utf-8-sig').splitlines(); result=next(json.loads(x) for x in lines if json.loads(x).get('id')=='runtime' and json.loads(x).get('type')=='result'); assert result['status']=='ok',result; print(result)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: distribution-${{ matrix.platform }}
+          path: |
+            verification/clean-install.*
+            verification/installed-runtime.txt
+            desktop/release/*setup.exe
+            desktop/release/windows-package.json

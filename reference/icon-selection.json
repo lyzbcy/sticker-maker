@@ -1,0 +1,10 @@
+{
+  "id": "sticker-maker",
+  "name": "表情包一键制作",
+  "icon": "assets/products/sticker-maker.png",
+  "sha256": "f77d1c81d63c9dc982b5f3135fda310ccb7092f8b0c6fe3fc556f642793e6ac1",
+  "projectIcon": "E:\\共享\\创业\\sticker-maker\\desktop\\build\\icon.png",
+  "projectIconSha256": "f77d1c81d63c9dc982b5f3135fda310ccb7092f8b0c6fe3fc556f642793e6ac1",
+  "selection": "保留本软件已有原创角色图标，避免与其他产品换用同图标",
+  "updated": "2026-10-13"
+}

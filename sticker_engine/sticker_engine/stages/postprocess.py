@@ -270,6 +270,56 @@ def ensure_size(img, target: int = _TARGET_SIZE):
     return img
 
 
+def draw_caption(img, text: str):
+    """solid 底图配字（2026-09-09 用户需求：配字表达力更强，用户更愿用）。
+
+    样式（2026-09-09 用户定稿 v3）：**华文琥珀粗圆体白字 + 红色标签条**
+    ——条宽随文字（比文字宽一点，全宽被否"太大太长"），圆角贴底，
+    无描边（琥珀自带粗圆，"不要加粗"）。文字=含义词（meaning_map
+    已有，0 token），可换词、零错乱。
+    """
+    from PIL import ImageDraw, ImageFont
+    img = img.convert("RGBA")
+    w, h = img.size
+    text = (text or "").strip()
+    if not text:
+        return img
+    font = None
+    for fp in (r"C:\Windows\Fonts\STHUPO.TTF",    # 华文琥珀（粗圆体，首选）
+               r"C:\Windows\Fonts\SIMYOU.TTF",    # 幼圆
+               r"C:\Windows\Fonts\msyhbd.ttc"):   # 微软雅黑粗体（兜底）
+        if Path(fp).exists():
+            font = ImageFont.truetype(fp, max(18, int(w * 0.14)))
+            break
+    if font is None:
+        return img
+    d = ImageDraw.Draw(img)
+    stroke_w = 0   # 2026-09-09 用户定稿：琥珀自带粗圆，不再描边加粗
+    for _ in range(6):   # 超宽收缩：文字总宽 ≤ 86% 图宽
+        box = d.textbbox((0, 0), text, font=font, stroke_width=stroke_w)
+        if box[2] - box[0] <= w * 0.86:
+            break
+        font = ImageFont.truetype(font.path, max(14, int(font.size * 0.85)))
+    box = d.textbbox((0, 0), text, font=font, stroke_width=stroke_w)
+    tw, th = box[2] - box[0], box[3] - box[1]
+    # 红色标签条（2026-09-09 用户定稿）：宽度随文字（比文字宽一点），
+    # 不再全宽（全宽"太大太长"被否）；圆角贴底，白字居中、无描边
+    bar_h = min(int(h * 0.16), int(font.size * 1.5))
+    pad_x = max(10, int(font.size * 0.35))
+    bar_w = min(w, tw + pad_x * 2)
+    bar_x = (w - bar_w) // 2
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ImageDraw.Draw(overlay).rounded_rectangle(
+        [bar_x, h - bar_h, bar_x + bar_w, h],
+        radius=max(6, bar_h // 5), fill=(232, 58, 48, 255))
+    img = Image.alpha_composite(img, overlay)
+    d = ImageDraw.Draw(img)
+    x = (w - tw) // 2 - box[0]
+    y = (h - bar_h) + (bar_h - th) // 2 - box[1]
+    d.text((x, y), text, font=font, fill=(255, 255, 255, 255))
+    return img
+
+
 class PostprocessStage:
     """S2：裁切 → 含义预检 → 条件抠图 → 重命名 → 写最终版。"""
 
@@ -324,30 +374,49 @@ class PostprocessStage:
         final_dir = ctx.episode_dir / "最终版"
         final_dir.mkdir(exist_ok=True)
         need_key = should_chromakey(gen_mode, transparent)
-        # 2026-09-08 solid 实底模式 v2（用户实测 v1 教训：AI 无视 pastel
-        # 指令照画品红——品红是贴纸训练强先验。v2 改为"品红→柔和彩底
-        # 染色替换"：AI 画它最擅长的品红，S2 把品红像素替换成马卡龙色，
-        # 不透明不抠图，零毛边。每格轮换色，No.6 同款多彩视觉）
+        # 2026-09-13 solid v4（用户定稿"分段式组合"）：solid 模式下生图
+        # prompt 已让 AI 直接画匹配场景的环境底（柔和彩底或简单环境），
+        # S2 完全不抠图不碰底色——v2 的品红→马卡龙染色兜底保留（万一
+        # AI 先验又画品红，仍能救），但预期不再触发。
         solid = str(getattr(ctx.config.prefs, "background_mode", "transparent")) == "solid"
         if solid:
             need_key = False
         seen_names = set()
         PASTEL = [(255, 214, 224), (255, 240, 199), (206, 232, 255),
                   (207, 244, 226), (232, 219, 255), (255, 228, 209)]
+        # solid 配字（2026-09-09 用户需求：底图模式配字表达力更强；
+        # 透明底不配——字会脏图）。文字=含义词（meaning_map 已有，0 token）
+        sticker_text = bool(getattr(ctx.config.prefs, "sticker_text", True))
+        solid_bg = None
         for idx, panel in enumerate(panels, start=1):
             img = Image.open(panel).convert("RGBA")
             if solid:
                 import numpy as _np
                 arr = _np.array(img).astype(_np.int16)
                 r, g_, b, al = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2], arr[:, :, 3]
-                # 品红系背景：R/B 高、G 明显低（含抗锯齿边）
-                bgm = (r > 110) & (b > 110) & (g_ < np.minimum(r, b) * 0.72)
-                color = PASTEL[(idx - 1) % len(PASTEL)]
-                arr[bgm, 0] = color[0]
-                arr[bgm, 1] = color[1]
-                arr[bgm, 2] = color[2]
-                arr[bgm, 3] = 255
-                img = Image.fromarray(arr.astype("uint8"), "RGBA")
+                # v3（2026-09-09 用户定稿）：prompt 让 AI 直接为每格画
+                # 独立柔和彩底（比后期染色好看）——S2 原则上不碰底色。
+                # 兜底：品红系占比按**全图像素**统计——边缘采样不可靠：
+                # 白格线被切刀劈半贴在 panel 边缘（308 单 header 格实测
+                # 边缘全白线、品红占比 0）；角色满格时品红只露角落。
+                # 品红底格全图占比 20%+，AI 直画浅底 ≈0%，阈值 5% 干净。
+                mag_frac = float(((r > 140) & (b > 140) &
+                                  (g_ < _np.minimum(r, b) * 0.62)).mean())
+                if mag_frac > 0.05:
+                    bgm = (r > 110) & (b > 110) & (g_ < _np.minimum(r, b) * 0.72)
+                    from scipy import ndimage as _nd
+                    # 膨胀 3px 吞掉品红×描边的抗锯齿混色带（308 单实测：
+                    # 帽子两侧残留品红角）；角色白描边 6-10px 足以自保
+                    bgm = _nd.binary_dilation(bgm, iterations=3)
+                    color = PASTEL[(idx - 1) % len(PASTEL)]
+                    arr[bgm, 0] = color[0]
+                    arr[bgm, 1] = color[1]
+                    arr[bgm, 2] = color[2]
+                    arr[bgm, 3] = 255
+                    solid_bg = color
+                    img = Image.fromarray(arr.astype("uint8"), "RGBA")
+                else:
+                    solid_bg = None   # AI 的底色原样保留
             elif need_key:
                 img = self.chromakey.remove_key_auto(img)
                 # P2（62 边框线事故）双层防御：①抠掉与边缘连通的背景色
@@ -367,6 +436,16 @@ class PostprocessStage:
                 name = f"{meaning}{i}"
                 i += 1
             seen_names.add(name)
+            # solid 无字版存档（2026-09-09）：封面/图标必须无字（平台对
+            # 图标明文"去除文字信息"，66 单驳回先例），S3 裁剪优先取这里
+            if solid:
+                noword_dir = ctx.episode_dir / "原图" / "_noword"
+                noword_dir.mkdir(parents=True, exist_ok=True)
+                img.save(noword_dir / f"{name}.png")
+            # solid 配字（2026-09-09）：含义词写在底部留白带（生图时已
+            # 要求 AI 预留）；底色由 draw_caption 在文字区就近采样
+            if solid and sticker_text:
+                img = draw_caption(img, meaning)
             # 尺寸校验/缩放（微信要求 240×240）
             img = self._ensure_size(img)
             out = final_dir / f"{name}.png"

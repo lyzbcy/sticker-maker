@@ -305,13 +305,15 @@ async function loadRating() {
   } catch { /* 静默 */ }
 }
 function rate(meaning, score) {
-  if (!canEdit.value) return
+  // 2026-09-11 打分丢失事故：打分是纯本地行为（写 rating.json），此前被
+  // canEdit 门禁拦死——conflict/offline 状态下用户点星星被静默吞掉。
+  if (!ep.value?.path) return
   const cur = (ratings.value[meaning] || {}).score
   ratings.value = { ...ratings.value, [meaning]: { score: cur === score ? 0 : score, note: '' } }
   saveRating()
 }
 function noteRate(meaning, ev) {
-  if (!canEdit.value) return
+  if (!ep.value?.path) return
   const cur = ratings.value[meaning] || {}
   ratings.value = { ...ratings.value, [meaning]: { score: cur.score || 0, note: ev.target.value } }
   saveRating()
@@ -392,21 +394,31 @@ async function copyRejectReview() {
   }
 }
 
-function saveRating() {
-  if (!canEdit.value || !ep.value?.path || !window.api) return
-  clearTimeout(ratingTimer)
-  ratingTimer = setTimeout(async () => {
-    try {
-      const res = await window.api.send('save_rating', {
-        episode_dir: ep.value.path,
-        ratings: JSON.parse(JSON.stringify(ratings.value)),
-        overall: overall.value, note: note.value,
-      })
-      if (res?.status === 'ok') ratingSavedAt.value = '已保存 ' + new Date().toLocaleTimeString()
-      else ratingSavedAt.value = '保存失败：' + (res?.errors?.[0]?.message || '未知')
-    } catch (e) { ratingSavedAt.value = '保存异常：' + (e?.message || e) }
-  }, 400)
+let pendingSnap = null
+async function flushRating() {
+  if (!pendingSnap || !window.api) return
+  const snap = pendingSnap
+  pendingSnap = null
+  try {
+    const res = await window.api.send('save_rating', {
+      episode_dir: snap.episode_dir,
+      ratings: snap.ratings,
+      overall: snap.overall, note: snap.note,
+    })
+    if (res?.status === 'ok') ratingSavedAt.value = '已保存 ' + new Date().toLocaleTimeString()
+    else ratingSavedAt.value = '保存失败：' + (res?.errors?.[0]?.message || '未知')
+  } catch (e) { ratingSavedAt.value = '保存异常：' + (e?.message || e) }
 }
+function saveRating() {
+  if (!ep.value?.path || !window.api) return
+  // 快照进 pending：防抖窗口内切页/关窗时由 flushRating 兜底落盘
+  pendingSnap = { episode_dir: ep.value.path,
+    ratings: JSON.parse(JSON.stringify(ratings.value)),
+    overall: overall.value, note: note.value }
+  clearTimeout(ratingTimer)
+  ratingTimer = setTimeout(flushRating, 400)
+}
+window.addEventListener('beforeunload', () => { if (pendingSnap) flushRating() })
 loadRating()
 watch(ep, (v) => {
   if (v) {

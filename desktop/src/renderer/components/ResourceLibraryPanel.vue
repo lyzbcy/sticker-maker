@@ -844,9 +844,11 @@ onMounted(async () => {
   if (!mounted.value) return
   pollTimer = setInterval(() => {
     // 扫描/执行期间暂停轮询：status 轮询与预览抢同一把引擎锁，
-    // 撞车会让预览被"资源任务正在进行"秒拒
+    // 撞车会让预览被"资源任务正在进行"秒拒。
+    // 间隔 30s：一次 status 全量扫描 12k 文件要 20s+ 持锁，8s 频率会
+    // 把锁占满并与其他命令争 IO（list_episodes 冷跑 50s 的帮凶）
     if (mounted.value && !transferBusy.value) refreshStatus({ quiet: true })
-  }, 8000)
+  }, 30000)
 })
 onBeforeUnmount(() => {
   mounted.value = false

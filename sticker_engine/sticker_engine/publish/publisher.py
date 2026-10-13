@@ -164,6 +164,22 @@ class EpisodeAssets:
 # Publisher：24 步单弹提交
 # ---------------------------------------------------------------------------
 
+# 批量流水线的共享浏览器会话（2026-09-09）：第一弹登录后保留浏览器，
+# 后续弹免启动+免登录（实测每弹省 ~152 秒）。失败即弃（下次干净登录），
+# 批量结束由 cli 调 close_shared_browser() 统一收尾。
+_SHARED_BROWSER = {"session": None, "page": None}
+
+
+def close_shared_browser() -> None:
+    """批量结束时统一关闭共享浏览器会话（幂等）。"""
+    session = _SHARED_BROWSER.get("session")
+    if session is not None:
+        try:
+            session.close()
+        except Exception:   # noqa: BLE001
+            pass
+    _SHARED_BROWSER.update(session=None, page=None)
+
 
 class Publisher:
     """单弹提交（24 步）。
@@ -225,6 +241,22 @@ class Publisher:
     def _report(self, step: str, message: str, percent: float) -> None:
         if self.progress:
             try:
+                # 分步计时（2026-09-09：一弹发布实测 9.3 分钟但不知道花在哪）：
+                # 步骤切换时先报上一步总耗时，底部活动日志直接可见瓶颈步骤
+                if step and step != 'warn':
+                    import time as _time
+                    now = _time.monotonic()
+                    prev_step = getattr(self, '_timing_step', None)
+                    if prev_step and prev_step != step:
+                        took = now - getattr(self, '_timing_at', now)
+                        label = self._STEP_LABELS.get(prev_step, prev_step)
+                        try:
+                            self.progress(prev_step, f"✓ {label}完成，耗时 {took:.1f} 秒", percent)
+                        except Exception:   # noqa: BLE001
+                            pass
+                    if prev_step != step:
+                        self._timing_at = now
+                        self._timing_step = step
                 self.progress(step, message, percent)
             except Exception:
                 pass   # 进度上报失败不产生告警（避免递归）
@@ -232,7 +264,7 @@ class Publisher:
     # ---- 主流程 ----
 
     def publish(self, episode_dir, headless: Optional[bool] = None, edit: bool = False,
-                fix_fields=None) -> dict:
+                fix_fields=None, keep_session: bool = False) -> dict:
         from ..library.runtime import active_runtime
         from ..library.commands import LOCK
         runtime = active_runtime()
@@ -248,11 +280,15 @@ class Publisher:
             work = runtime.library.read_work(runtime.account_id, captured['work_id'])
             if work['state'] != 'available' or work['revision']['metadata'].get('missing_resources'):
                 raise ValueError('原文件未齐或作品存在版本冲突，不能提交')
-            runtime.refresh(capture=False)
+            # max_age=300：批量流水线里 hooks/上一轮刚全量刷新过（周期 ~3 分钟
+            # < 300s），直接复用快照——这弹本身刚被 capture（上一行），can_publish
+            # 校验数据是新鲜的。旧值无缓存时照常全量刷新，单发语义不变。
+            runtime.refresh(capture=False, max_age=300)
             row = next((r for r in runtime.rows() if r['work_id'] == captured['work_id']), None)
             if not row or not row.get('can_publish'):
                 raise ValueError('发布素材不完整或资源身份存在冲突，请补齐素材并处理冲突')
-            result = self._publish_impl(episode_dir, headless, edit, fix_fields)
+            result = self._publish_impl(episode_dir, headless, edit, fix_fields,
+                                        keep_session=keep_session)
             return result
         except Exception as exc:
             result = {'success': False, 'step': 'prepare', 'error': str(exc)}
@@ -271,7 +307,8 @@ class Publisher:
             finally:
                 LOCK.release()
 
-    def _publish_impl(self, episode_dir, headless=None, edit=False, fix_fields=None):
+    def _publish_impl(self, episode_dir, headless=None, edit=False, fix_fields=None,
+                      keep_session=False):
         """发布一弹。edit=True 走「编辑已驳回作品」入口（修改后重新提交审核）。
 
         fix_fields：编辑模式下**只改这些字段**（"album"/"stickers"/"icon"/
@@ -292,7 +329,20 @@ class Publisher:
                     "error": f"赞赏图缺失: {missing_tips}"}
 
         self._report("browser", "正在启动浏览器…", 0.15)
-        page = self.session.start(headless=headless)
+        # 批量流水线：上一弹保留的浏览器会话直接复用（跳过启动+登录 ~150s）
+        shared = _SHARED_BROWSER
+        if shared.get("page") is not None:
+            self._report("browser", "复用批量浏览器会话（免登录）…", 0.2)
+            self.session = shared["session"]
+            page = shared["page"]
+            self.session.ensure_alive = True   # 复用标记（session.close 由批量结束统一调）
+        else:
+            page = self.session.start(headless=headless)
+        # finally 里的会话保留/关闭判定要用这个局部变量（2026-09-10 事故：
+        # 曾误引用外层 publish() 的 result → NameError 吞掉成功结果、还把
+        # 浏览器泄漏在半开状态，下一弹二次启动 playwright 报
+        # "Sync API inside asyncio loop" 连锁失败 4 弹）
+        outcome = None
         try:
             # 步骤1-2：登录（账号密码自动登录，凭据保存在系统凭据库）
             self._report("login", "正在登录（storage_state 缓存有效则直接进，否则自动账号密码登录）…", 0.25)
@@ -301,8 +351,9 @@ class Publisher:
                 self._report("login", message, 0.25)
 
             if not self.session.ensure_login(page, on_status=_login_status):
-                return {"success": False, "step": "login",
-                        "error": self.session.last_login_error or "登录失败（未知原因）"}
+                outcome = {"success": False, "step": "login",
+                           "error": self.session.last_login_error or "登录失败（未知原因）"}
+                return outcome
             if self._library_runtime:
                 from ..library.operations import verify_target
                 edit = verify_target(self._library_runtime, page, Path(episode_dir), edit)
@@ -432,11 +483,12 @@ class Publisher:
                 page.wait_for_timeout(1000)
                 missing = self._verify_form(page)
                 if missing:
-                    return {"success": False, "step": "verify",
-                            "error": "表单必填项未填全：" + "；".join(missing)
-                                     + "。已截图，请到详情页检查素材/名称后重试。",
-                            "album_name": assets.album_name,
-                            "warnings": list(self.warnings)}
+                    outcome = {"success": False, "step": "verify",
+                               "error": "表单必填项未填全：" + "；".join(missing)
+                                        + "。已截图，请到详情页检查素材/名称后重试。",
+                               "album_name": assets.album_name,
+                               "warnings": list(self.warnings)}
+                    return outcome
                 self._report("verify", "补填完成，必填项已全部就位 ✓", 0.96)
 
             # 步骤25：提交
@@ -447,28 +499,59 @@ class Publisher:
                 meta = load_meta(assets.episode_dir)
                 self._library_operation = begin(self._library_runtime, meta.work_id, assets.album_name)
             ok = self._step_submit(page)
+            if ok:
+                # 提交成功即绑定平台身份（2026-09-11 根治半成品壳）：
+                # 刚发布的作品此前要等下次同步才拿到 platform_item_id，
+                # 同步期名字兜底一旦被判歧义就会给平台行建 0 文件壳
+                # （一天 85 个"资源未到齐"半成品的根因）。趁会话还活着，
+                # 拉一次列表 API 把本弹的 StikerID 直接写进 meta。
+                try:
+                    from .platform_data import LIST_URL, read_json
+                    body = read_json(page, LIST_URL)
+                    for _it in (body.get("List") or []):
+                        if _it.get("Name") == assets.album_name and _it.get("StikerID"):
+                            from ..config.series import load_meta, save_meta
+                            _m = load_meta(assets.episode_dir)
+                            _m.platform_item_id = _it["StikerID"]
+                            save_meta(assets.episode_dir, _m)
+                            self._report("submit", f"已绑定平台身份 {_it['StikerID'][:18]}…", 0.99)
+                            break
+                except Exception as _exc:  # noqa: BLE001
+                    # 绑定失败不阻塞发布结果；下次同步仍有名字兜底
+                    self._warn(_exc)
             if not ok:
                 try:
                     page.screenshot(path=str(assets.episode_dir / "_publish_error.png"))
                 except Exception:  # noqa: BLE001
                     pass
-                return {"success": False, "step": "submit",
-                        "error": "未检测到提交成功标志（表单可能校验未通过，已截图）",
-                        "album_name": assets.album_name,
-                        "warnings": list(self.warnings)}
-            return {"success": True, "step": "done",
-                    "album_name": assets.album_name,
-                    "warnings": list(self.warnings)}
+                outcome = {"success": False, "step": "submit",
+                           "error": "未检测到提交成功标志（表单可能校验未通过，已截图）",
+                           "album_name": assets.album_name,
+                           "warnings": list(self.warnings)}
+                return outcome
+            outcome = {"success": True, "step": "done",
+                       "album_name": assets.album_name,
+                       "warnings": list(self.warnings)}
+            return outcome
         except Exception as e:  # noqa: BLE001 - 保现场
             try:
                 page.screenshot(path=str(assets.episode_dir / "_publish_error.png"))
             except Exception as e:  # noqa: BLE001
                 self._warn(e)
-            return {"success": False, "step": "unknown",
-                    "error": f"{type(e).__name__}: {e}",
-                    "warnings": list(self.warnings)}
+            outcome = {"success": False, "step": "unknown",
+                       "error": f"{type(e).__name__}: {e}",
+                       "warnings": list(self.warnings)}
+            return outcome
         finally:
-            self.session.close()
+            # 批量流水线：keep_session=True 时保留浏览器与登录态给下一弹
+            # （每弹重开浏览器都要走 ~150s 账号密码登录，2026-09-09 计时实锤）；
+            # 失败/单发则关闭（失败页可能残留脏状态，下次干净登录）
+            if keep_session and outcome is not None and outcome.get("success"):
+                _SHARED_BROWSER.update(session=self.session, page=page)
+            else:
+                if _SHARED_BROWSER.get("session") is self.session:
+                    _SHARED_BROWSER.update(session=None, page=None)
+                self.session.close()
 
     # ---- 步骤3-5：开表单 ----
 
@@ -1315,7 +1398,8 @@ class Publisher:
         price, rolled = roll_sticker_price()
         label = "10 微信豆" if price >= 10 else "免费"
         if rolled:
-            self._warn(f"本弹价格按概率抽定：【{label}】（价格权重见设置 → 表情价格）")
+            # 用进度上报而非 _warn——抽样是正常流程，不是告警
+            self._report("price", f"本弹价格按概率抽定：【{label}】", 0.85)
         self._click_label(page, label, check=True)
 
     # ---- 步骤20-22：赞赏 ----

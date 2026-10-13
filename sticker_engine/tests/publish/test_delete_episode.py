@@ -18,7 +18,7 @@ def _run_cli(commands):
     proc = subprocess.Popen(
         [sys.executable, "-m", "sticker_engine.cli"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, cwd=Path(__file__).parent.parent.parent)
+        text=True, encoding="utf-8", cwd=Path(__file__).parent.parent.parent)
     stdin_data = "\n".join(json.dumps(c) for c in commands) + "\n"
     stdout, stderr = proc.communicate(input=stdin_data, timeout=30)
     return [json.loads(line) for line in stdout.strip().split("\n") if line.strip()], stderr

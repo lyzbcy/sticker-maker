@@ -50,6 +50,7 @@ def load_prefs_from_file(prefs_path: Path) -> Optional[Prefs]:
         sticker_price=int(data.get("sticker_price", 0) or 0),
         price_probs=_clean_price_probs(data.get("price_probs")),
         background_mode=str(data.get("background_mode") or "transparent"),
+        sticker_text=bool(data.get("sticker_text", True)),
     )
 
 
@@ -73,6 +74,7 @@ def save_prefs(prefs: Prefs, prefs_path: Path) -> None:
         "sticker_price": prefs.sticker_price,
         "price_probs": {str(k): v for k, v in (prefs.price_probs or {}).items()},
         "background_mode": prefs.background_mode,
+        "sticker_text": prefs.sticker_text,
     }
     if yaml is None:
         raise RuntimeError("PyYAML 未安装")

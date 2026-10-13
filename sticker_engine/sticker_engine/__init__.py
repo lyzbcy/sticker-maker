@@ -1,5 +1,9 @@
 import sys
+import os
 from pathlib import Path
+
+if hasattr(sys, "_MEIPASS"):
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(Path(sys._MEIPASS) / "browsers")
 
 from .api import StickerEngine, Episode
 from .config.schema import Config

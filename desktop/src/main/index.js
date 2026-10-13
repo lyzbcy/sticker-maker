@@ -10,7 +10,10 @@ let mainWindow
 // 开发模式用独立 userData（2026-09-03 事故：用户同时开着安装版「表情包一键制作.exe」，
 // 两者同 app 名——单实例锁跨安装版/开发版生效 + 共享 user-data 目录被锁，
 // 开发版启动即静默退出且无任何报错。独立目录后互不干扰。）
-if (!app.isPackaged) {
+if (process.env.STICKER_DESKTOP_USER_DATA) {
+  app.setPath('userData', path.resolve(process.env.STICKER_DESKTOP_USER_DATA))
+}
+if (!app.isPackaged && !process.env.STICKER_DESKTOP_USER_DATA) {
   app.setPath('userData', app.getPath('userData') + '-dev')
 }
 
@@ -29,6 +32,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 960, height: 680, minWidth: 800, minHeight: 600,
     title: '表情包一键制作',
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    titleBarOverlay: process.platform === 'win32' ? { color: '#FAF6EB', symbolColor: '#1E3A24', height: 32 } : false,
     icon: path.join(app.getAppPath(), 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
@@ -56,6 +61,7 @@ function createWindow() {
 app.whenReady().then(() => {
   // 去掉默认菜单栏（Windows 上会显示英文 File/Edit/View，粉丝版不需要）
   Menu.setApplicationMenu(null)
+  app.setAppUserModelId('com.lyzbcy.sticker-maker')
 
   const isPackaged = app.isPackaged
   bridge = new PythonBridge(isPackaged ? 'packaged' : 'dev')
@@ -136,12 +142,32 @@ app.whenReady().then(() => {
     return { ok: true, length: s.length }
   })
 
+  ipcMain.handle('export-episode', async (_e, episodePath) => {
+    const result = await dialog.showSaveDialog(mainWindow, { title: '保存表情包', defaultPath: '我的表情包.zip', filters: [{ name: 'ZIP 表情包', extensions: ['zip'] }] })
+    if (result.canceled || !result.filePath) return { canceled: true }
+    try { return await bridge.send('export_episode', { path: episodePath, destination: result.filePath }) }
+    catch (error) { return PythonBridge.flattenError(error) }
+  })
+
+  ipcMain.handle('send-feedback', async (_e, payload) => {
+    const { sendFeedback } = require('./feedback')
+    const { net } = require('electron')
+    return sendFeedback(payload, { version: app.getVersion(), fetchFn: net.fetch })
+  })
+
   ipcMain.handle('check-for-updates', async () => {
     const { checkForUpdates } = require('./updater')
     return checkForUpdates(mainWindow, { manual: true })
   })
 
   createWindow()
+  if (app.isPackaged && process.platform === 'win32') {
+    const { confirmUpdateRestart } = require('./update-handoff')
+    const { shell } = require('electron')
+    confirmUpdateRestart(path.join(app.getPath('userData'), 'update-result.json'), {
+      version: app.getVersion(), executable: process.execPath, readShortcut: shell.readShortcutLink
+    }).catch(error => console.error('[updater] restart confirmation:', error.message))
+  }
 
   // 启动 2 秒后检查更新（每天只自动检查一次：prompt「自适应更新检测」——
   // 每次启动都查既费流量也容易打扰，同一天内重复启动直接跳过；手动检查不受限）
@@ -158,20 +184,8 @@ app.whenReady().then(() => {
 /** 每日首检门控：userData/update-check.json 记录上次自动检查日期，
  * 同一天内的后续启动不再自动查（手动「检查更新」不经过这里）。 */
 function shouldAutoCheckToday() {
-  try {
-    const stateFile = path.join(app.getPath('userData'), 'update-check.json')
-    const today = new Date().toISOString().slice(0, 10)
-    let last = ''
-    try {
-      last = JSON.parse(fs.readFileSync(stateFile, 'utf-8')).lastDate || ''
-    } catch { /* 首次或文件损坏都视为需要检查 */ }
-    if (last === today) return false
-    fs.writeFileSync(stateFile, JSON.stringify({ lastDate: today }))
-    return true
-  } catch (error) {
-    console.error('[updater] 读写检查日期失败，默认执行检查', error)
-    return true
-  }
+  try { return require('./update-state').recordAttempt(app.getPath('userData')) }
+  catch { return false }
 }
 
 app.on('window-all-closed', async () => {

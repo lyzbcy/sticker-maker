@@ -115,7 +115,7 @@ def test_replenish_refs_dedup_and_import(tmp_path):
     env = {**os.environ, "STICKER_ENGINE_USER_DATA": str(tmp_path)}
     proc = subprocess.Popen([sys.executable, "-m", "sticker_engine.cli"],
                             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE, text=True,
+                            stderr=subprocess.PIPE, text=True, encoding="utf-8",
                             cwd=Path(__file__).parent.parent.parent, env=env)
     out, _ = proc.communicate(input=json.dumps(
         {"id": "r1", "cmd": "replenish_refs",

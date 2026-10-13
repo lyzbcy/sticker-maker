@@ -64,6 +64,9 @@ class Prefs:
     # 默认）；solid=纯白实底不抠图——爆款 No.6 即白底上架（4711 发送），
     # 实底在深色聊天模式下略显块状，但省去抠图环节零毛边。
     background_mode: str = "transparent"
+    # solid 模式配字（2026-09-09 用户需求）：底部留白带写含义词，表达力
+    # 更强；透明底不配（字会脏图）。默认开——用户实测"表情包还是得配文字"。
+    sticker_text: bool = True
 
     def __post_init__(self):
         s = self.mode_probs.single + self.mode_probs.duo + self.mode_probs.trio + self.mode_probs.quad

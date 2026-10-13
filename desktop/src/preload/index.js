@@ -30,6 +30,8 @@ const api = {
   selectDirectory: async () => ipcRenderer.invoke('select-directory'),
   toFileUrl,
   copyText: (text) => ipcRenderer.invoke('copy-text', text),
+  exportEpisode: (episodePath) => ipcRenderer.invoke('export-episode', episodePath),
+  sendFeedback: (payload) => ipcRenderer.invoke('send-feedback', payload),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   // 更新下载进度（main 的 updater 流式回报：stage=download/verify, percent, MB）

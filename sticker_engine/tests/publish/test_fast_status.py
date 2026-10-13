@@ -53,6 +53,11 @@ def test_all_303_and_second_sync_skips_cached_reasons(tmp_path):
     p = Page([row(n) for n in range(303)])
     first = service().sync_page(p, tmp_path)
     assert first['matched'] == 303 and first['reasons_fetched'] == 303
+    # 2026-09-10 平台改版：存累计总量（TotalDownloadNum/TotalSendNum），
+    # 不是列表近期值（DownloadNum=0/SendNum=0）——用户看到的下载/发送
+    # 次数此前被近期值覆盖。
+    m = load_meta(tmp_path / 'episode_5')
+    assert m.platform_downloads == '68' and m.platform_sends == '214'
     p.calls.clear()
     second = service().sync_page(p, tmp_path)
     assert len(p.calls) == 1
@@ -141,6 +146,82 @@ def test_api_error_and_duplicate_ids_are_not_valid_lists():
     for body in ({'base_resp': {'ret': -1}, 'List': []}, {},
                  {'base_resp': {'ret': 0}, 'List': [row(), row()]}):
         with pytest.raises(mod.PlatformDataError): mod.parse_list(body)
+
+
+# ---------------- 同步克隆行修复（2026-09-10）：library 名字兜底 ----------------
+
+def _real_work(root, album, n=1, sid='', account='acc1'):
+    """有文件的真身作品目录（最终版至少 1 张图）。"""
+    path = root / f'episode_real{n}'
+    save_meta(path, EpisodeMeta(album_name=album, account_id=account,
+                                platform_item_id=sid))
+    (path / '最终版').mkdir(parents=True)
+    (path / '最终版' / '1.png').write_bytes(b'x')
+    return path
+
+
+def _empty_work(root, album, n=1, account='acc1', sid=''):
+    """0 文件占位符目录（只有 meta.json）。"""
+    path = root / f'episode_empty{n}'
+    save_meta(path, EpisodeMeta(album_name=album, account_id=account,
+                                platform_item_id=sid))
+    return path
+
+
+def test_library_name_fallback_binds_real_work_not_placeholder(tmp_path):
+    """新发布的作品本地还没记 platform_item_id：平台行必须按专辑名绑到有
+    文件的真身并回写统计，而不是建 0 文件占位符克隆（真身+克隆两行事故）。"""
+    real = _real_work(tmp_path, '周三涵做表情383')
+    created = []
+    result = service().sync_rows(
+        None, tmp_path, [dict(row(383, status=2), Name='周三涵做表情383')],
+        lambda msg: None, account_id='acc1',
+        placeholder_factory=lambda r: created.append(r) or (tmp_path / 'episode_ph'))
+    assert result['matched'] == 1 and result['created'] == 0 and created == []
+    bound = load_meta(real)
+    assert bound.platform_item_id == 'stiker_383'
+    assert bound.platform_status == '待审核' and bound.platform_updated_at
+    assert bound.platform_downloads == '68' and bound.platform_sends == '214'
+
+
+def test_library_name_fallback_ignores_fileless_placeholder(tmp_path):
+    """0 文件占位符不参与兜底：真身与同名空占位并存时绑真身，不产生歧义。"""
+    real = _real_work(tmp_path, 'X1')
+    empty = _empty_work(tmp_path, 'X1')
+    created = []
+    result = service().sync_rows(
+        None, tmp_path, [dict(row(3, status=2), Name='X1')], lambda msg: None,
+        account_id='acc1',
+        placeholder_factory=lambda r: created.append(r) or (tmp_path / 'episode_ph'))
+    assert result['matched'] == 1 and created == []
+    assert load_meta(real).platform_item_id == 'stiker_3'
+    assert not load_meta(empty).platform_item_id
+
+
+def test_library_name_fallback_ambiguous_same_name_not_bound(tmp_path):
+    """多个有文件同名作品=歧义：不绑（宁可不匹配也不绑错），仍无匹配才建占位符。"""
+    _real_work(tmp_path, '同名', n=1)
+    _real_work(tmp_path, '同名', n=2)
+    created = []
+    result = service().sync_rows(
+        None, tmp_path, [dict(row(9, status=2), Name='同名')], lambda msg: None,
+        account_id='acc1',
+        placeholder_factory=lambda r: created.append(r) or (tmp_path / 'episode_ph'))
+    assert result['created'] == 1 and len(created) == 1   # matched=1 是占位符
+    assert not load_meta(tmp_path / 'episode_real1').platform_item_id
+    assert not load_meta(tmp_path / 'episode_real2').platform_item_id
+
+
+def test_library_no_name_match_still_creates_placeholder(tmp_path):
+    """本地完全无同名真身：保持原行为，走 placeholder_factory。"""
+    _real_work(tmp_path, '别人的作品')
+    created = []
+    result = service().sync_rows(
+        None, tmp_path, [dict(row(7, status=2), Name='全新作品')], lambda msg: None,
+        account_id='acc1',
+        placeholder_factory=lambda r: created.append(r) or (tmp_path / 'episode_ph'))
+    assert result['created'] == 1 and len(created) == 1
+    assert not load_meta(tmp_path / 'episode_real1').platform_item_id
 
 
 def test_reason_preserves_full_text_and_group():
@@ -331,3 +412,40 @@ def test_shelf_cancel_keeps_completed_items(tmp_path, monkeypatch):
     assert len(data['remaining']) == 1     # 第三单保留未处理
     assert load_meta(eps[1]).platform_status == '已上架'
     assert load_meta(eps[2]).platform_status == '审核通过'
+
+
+def test_parse_reason_handles_emotion_dict_list():
+    """2026-09-11 平台改版：Reason 新增 emotion 键（字典列表），解析不得抛错。"""
+    raw = ('{"storeiconurl":["图中含有边框线，显示的效果不佳需要去除。"],'
+           '"paneliconurl":["聊天页图标在手机上展示位置较小，请去除不必要的文字信息和装饰图案。"],'
+           '"emotion":[{"item":"1","failMsg":["图中含有边框线，显示的效果不佳需要去除。"]},'
+           '{"item":"6","failMsg":["图中含有边框线，显示的效果不佳需要去除。"]}]}')
+    reason = service().parse_reason(raw)
+    assert "图中含有边框线" in reason
+    assert "聊天页图标" in reason
+
+
+def test_dual_projection_dirs_still_bind_by_name():
+    """同一作品的两个投影目录（时间戳名 + work_id 名）不算同名歧义：
+
+    2026-09-11 事故根因：双目录把真身判成 len==2 → 不绑定 → 同步给
+    平台行建 0 文件占位壳（半天 85 个半成品）。
+    """
+    from types import SimpleNamespace
+    from sticker_engine.publish.status import _match_by_item_then_name
+    wid = 'w-dual-001'
+    meta1 = SimpleNamespace(platform_item_id='', album_name='周三涵做表情576', work_id=wid)
+    meta2 = SimpleNamespace(platform_item_id='', album_name='周三涵做表情576', work_id=wid)
+    (tmp := __import__('pathlib').Path(__import__('tempfile').mkdtemp()))
+    for d, m in ((tmp / 'episode_20260911_111454', meta1), (tmp / f'episode_{wid}', meta2)):
+        d.mkdir()
+        (d / '最终版').mkdir()
+        (d / '最终版' / 'a.png').write_bytes(b'x')
+    locals_ = [
+        {'dir': tmp / 'episode_20260911_111454', 'meta': meta1},
+        {'dir': tmp / f'episode_{wid}', 'meta': meta2},
+    ]
+    row = SimpleNamespace(name='周三涵做表情576', item_id='stiker_new_576')
+    hits = _match_by_item_then_name(row, locals_)
+    assert len(hits) == 1, '双投影应去重后绑定真身'
+    assert hits[0]['meta'].platform_item_id == 'stiker_new_576'

@@ -83,6 +83,13 @@ class PipelineContext:
     # S3 图标降级信号：AI 大头照生成失败、退回复用封面（曾致平台驳回的形态）。
     # 批量自动发布路径据此跳过该单（cli.cmd_run_batch）；单次手动生成不阻断。
     icon_fallback: bool = False
+    # S3 封面降级信号（2026-09-08）：header 特写格缺失/形态质检不过，
+    # 封面退回旧"第 1 张直接缩放"（全身像头部占比低，驳回重灾区）。
+    # 批量自动发布路径据此跳过该单；单次手动生成不阻断。
+    cover_fallback: bool = False
+    # S1 keyword_combo 记录的头部特写格序号（恒为尾部 4 格）——
+    # S3 封面/图标从此选大头照源；regen 等无 ctx 场景读 meaning_map 兜底
+    header_slots: Optional[list] = None
     # S1 进度注入：runner 在每个 stage 执行前设置（签名 (message: str) -> None），
     # stage 内部用它发细粒度进度（做什么 / 输入 / 输出 / 在等什么），stage 外为 None。
     stage_progress: Optional[Callable] = None

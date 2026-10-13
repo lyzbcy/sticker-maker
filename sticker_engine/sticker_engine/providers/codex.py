@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -26,7 +27,7 @@ def _install_guidance() -> str:
     """手动安装指引，按平台给可用命令。"""
     if sys.platform == "win32":
         return ("未找到 codex。可通过软件的「一键安装」按钮安装，"
-                "或先安装 Node.js 22+（nodejs.org），再在命令行运行：npm i -g @openai/codex")
+                "无需安装 Node.js；安装后打开登录窗口完成登录，再回来重新检测")
     return ("未找到 codex。可通过软件的「一键安装」按钮安装，"
             "或手动运行：curl -fsSL https://chatgpt.com/codex/install.sh | sh")
 
@@ -37,6 +38,7 @@ class CodexStatus:
     logged_in: bool
     image_ready: bool
     guidance_msg: str = ""
+    needs_repair: bool = False
 
 
 class CodexProvider:
@@ -64,6 +66,10 @@ class CodexProvider:
         # 1) 用户显式指定的绝对路径（prefs 配置）
         if self.codex_exec and self.codex_exec != "codex" and Path(self.codex_exec).is_file():
             return self.codex_exec
+        # App-managed standalone install: no Node/Python required for fans.
+        from ..config.paths import resolve_paths, current_platform
+        native = resolve_paths(current_platform()).user_data / 'tools/codex/codex.exe'
+        if sys.platform == 'win32' and native.is_file(): return str(native)
         # 2) PATH 里能找到（终端启动 / 正常 CLI 安装）
         found = shutil.which("codex")
         if found:
@@ -111,10 +117,28 @@ class CodexProvider:
             )
         # 用绝对路径，后续 subprocess 不再依赖 PATH
         self.codex_exec = resolved
+        from ..config.paths import resolve_paths, current_platform
+        managed = resolve_paths(current_platform()).user_data / 'tools/codex/codex.exe'
+        if sys.platform == 'win32' and Path(resolved).resolve() == managed.resolve():
+            helpers = ['codex-code-mode-host.exe','codex-command-runner.exe','codex-windows-sandbox-setup.exe']
+            if not all((managed.parent/name).is_file() for name in helpers):
+                return CodexStatus(True, False, False, '生图运行组件缺失，请点击修复生图工具。', True)
+        if sys.platform == 'win32' and Path(resolved).resolve() == managed.resolve():
+            import json,hashlib
+            try:
+                manifest=json.loads((managed.parent/'release-manifest.json').read_text(encoding='utf-8'))
+                for name in ['codex.exe',*helpers]:
+                    expected=manifest['files'][name]
+                    digest=hashlib.sha256()
+                    with (managed.parent/name).open('rb') as file:
+                        for block in iter(lambda:file.read(1024*1024),b''):digest.update(block)
+                    if digest.hexdigest()!=expected:raise ValueError('component mismatch')
+            except (OSError,ValueError,KeyError,TypeError):
+                return CodexStatus(True,False,False,'生图组件版本或校验不一致，请点击修复生图工具。',True)
         # 2) 试跑 --version 确认可调用
         try:
             r = subprocess.run([self.codex_exec, "--version"], capture_output=True, text=True,
-                               encoding="utf-8", errors="replace", timeout=15)
+                               encoding="utf-8", errors="replace", timeout=15, creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
             if r.returncode != 0:
                 return CodexStatus(True, False, False, "codex 存在但 --version 失败，可能未登录。")
         except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -137,8 +161,10 @@ class CodexProvider:
         - --skip-git-repo-check：引擎的工作目录不在 git 仓库内，
           没有该 flag 时 codex 直接拒绝执行（Not inside a trusted directory）。
         """
-        cmd = [self.codex_exec, "exec", "--skip-git-repo-check",
+        cmd = [self.codex_exec, "exec", "--json", "--skip-git-repo-check",
                "--enable", "image_generation", "--sandbox", "read-only"]
+        if (Path(self.codex_exec).parent / ("codex-code-mode-host.exe" if sys.platform == "win32" else "codex-code-mode-host")).is_file():
+            cmd += ["--enable", "code_mode_host"]
         cmd.append(_flatten_prompt(prompt))
         for r in refs:
             cmd += ["-i", str(r)]
@@ -190,6 +216,7 @@ class CodexProvider:
           供调用方展示给用户，不再静默吞掉。
         """
         import threading
+        request_started = time.time()
         refs = self._stage_refs_ascii(refs or [])
         cmd = self.build_generate_command(prompt, refs)
         self.last_error = ""
@@ -198,7 +225,7 @@ class CodexProvider:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 stdin=subprocess.DEVNULL,   # 显式空 stdin：codex 在管道环境会附加读取 stdin，不给会挂住
-                text=True, encoding="utf-8", errors="replace")
+                text=True, encoding="utf-8", errors="replace", creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
         except (FileNotFoundError, OSError) as e:
             self.last_error = f"无法启动 codex：{e}"
             return None
@@ -232,10 +259,11 @@ class CodexProvider:
             if now >= deadline:
                 proc.kill()
                 proc.wait()
+                pump_out.join(timeout=2); pump_err.join(timeout=2)
                 tail = ("".join(chunks["out"]) + "".join(chunks["err"]))[-200:].strip()
                 # 超时收割：codex 迭代期间可能已写出中间版图片，杀了进程也先扫一次，
                 # 有图就宽容地用上（用户体验远好于直接判死）
-                img = self.scan_latest_image()
+                img = self._image_for_request(request_started, "".join(chunks["out"]) + "".join(chunks["err"]))
                 if img is not None:
                     self.last_error = (
                         f"codex 超时（{deadline_secs}s）被终止，但已收割到此前生成的图片。"
@@ -255,6 +283,7 @@ class CodexProvider:
                 except Exception:
                     pass
 
+        pump_out.join(timeout=2); pump_err.join(timeout=2)
         elapsed = int(time.time() - start)
         stdout = "".join(chunks["out"])
         stderr = "".join(chunks["err"])
@@ -266,7 +295,7 @@ class CodexProvider:
                 f"输出尾部：{err_tail or '（无输出）'}")
             return None
 
-        img = self.scan_latest_image()
+        img = self._image_for_request(request_started, stdout + stderr)
         if img is None:
             out_tail = stdout.strip()[-300:]
             self.last_error = (
@@ -294,13 +323,15 @@ class CodexProvider:
         # 参数顺序同 build_generate_command：prompt 必须在 -i 之前（-i 是多值参数会吞掉它），
         # 且需要 --skip-git-repo-check（工作目录不在 git 仓库时 codex 拒绝执行）
         cmd = [self.codex_exec, "exec", "--skip-git-repo-check"]
+        if (Path(self.codex_exec).parent / ("codex-code-mode-host.exe" if sys.platform == "win32" else "codex-code-mode-host")).is_file():
+            cmd += ["--enable", "code_mode_host"]
         cmd.append(_flatten_prompt(prompt))
         for r in refs:
             cmd += ["-i", str(r)]
         try:
             r = subprocess.run(
                 cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                stdin=subprocess.DEVNULL, timeout=timeout or self.timeout, check=False,
+                stdin=subprocess.DEVNULL, timeout=timeout or self.timeout, check=False, creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0),
             )
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             return ""
@@ -308,15 +339,22 @@ class CodexProvider:
             return ""
         return r.stdout or ""
 
-    def scan_latest_image(self) -> Optional[Path]:
+    def _image_for_request(self, started, output):
+        # Never return old images or another conversation's concurrent output.
+        sessions = re.findall(r'(?:"thread_id"\s*:\s*"|session id:\s*)([a-f0-9-]{36})', output, flags=re.I)
+        if not sessions:
+            return None
+        return self.scan_latest_image(since=started, session_id=sessions[0])
+
+    def scan_latest_image(self, since=None, session_id=None) -> Optional[Path]:
         """扫描 output_dir 下所有 session 的 png，返回最新的。"""
         if not self.output_dir.exists():
             return None
         latest, latest_mtime = None, 0.0
         for session in self.output_dir.iterdir():
-            if not session.is_dir():
+            if not session.is_dir() or (session_id and session.name != session_id):
                 continue
             for f in session.iterdir():
-                if f.suffix.lower() == ".png" and f.stat().st_mtime > latest_mtime:
+                if f.suffix.lower() == ".png" and f.stat().st_mtime > latest_mtime and (since is None or f.stat().st_mtime >= since):
                     latest, latest_mtime = f, f.stat().st_mtime
         return latest

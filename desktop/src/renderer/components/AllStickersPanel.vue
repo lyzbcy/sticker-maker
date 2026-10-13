@@ -52,7 +52,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useEngineStore } from '../store/engine'
 
 const store = useEngineStore()
@@ -66,6 +66,7 @@ const copying = ref(false)
 const copyTip = ref('')
 const timers = {}
 
+onBeforeUnmount(async () => { await flushAllPending() })
 onMounted(async () => {
   if (!window.api) return
   const res = await window.api.send('list_all_stickers', {})
@@ -108,25 +109,40 @@ function note(g, meaning, ev) {
   g.ratings = { ...g.ratings, [meaning]: { score, note: ev.target.value } }
   queueSave(g)
 }
+const pending = {}   // episode_dir -> 待落盘的打分快照（2026-09-11 防丢加固）
 function queueSave(g) {
+  // 打分快照先进 pending：即使防抖窗口内切页/关窗，卸载钩子也会强制落盘
+  pending[g.episode_dir] = {
+    overall: g.overall || null,
+    ratings: JSON.parse(JSON.stringify(g.ratings || {})),
+  }
   clearTimeout(timers[g.episode_dir])
-  timers[g.episode_dir] = setTimeout(async () => {
-    if (!window.api) return
-    try {
-      const res = await window.api.send('save_rating', {
-        episode_dir: g.episode_dir,
-        overall: g.overall || null,
-        note: '',
-        ratings: JSON.parse(JSON.stringify(g.ratings || {})),
-      })
-      if (res?.status !== 'ok') {
-        copyTip.value = '保存失败：' + (res?.errors?.[0]?.message || '未知')
-      }
-    } catch (e) {
-      copyTip.value = '保存失败：' + (e.message || e)
-    }
-  }, 400)
+  timers[g.episode_dir] = setTimeout(() => flushSave(g.episode_dir), 400)
 }
+async function flushSave(dir) {
+  const snap = pending[dir]
+  if (!snap || !window.api) return
+  delete pending[dir]
+  try {
+    const res = await window.api.send('save_rating', {
+      episode_dir: dir,
+      overall: snap.overall,
+      note: '',
+      ratings: snap.ratings,
+    })
+    if (res?.status !== 'ok') {
+      copyTip.value = '保存失败：' + (res?.errors?.[0]?.message || '未知')
+    }
+  } catch (e) {
+    copyTip.value = '保存失败：' + (e.message || e)
+  }
+}
+async function flushAllPending() {
+  const dirs = Object.keys(pending)
+  for (const dir of dirs) await flushSave(dir)
+}
+// 关窗前强制落盘（防抖窗口内的打分不再无声丢失）
+window.addEventListener('beforeunload', () => { if (Object.keys(pending).length) flushAllPending() })
 
 async function copyAll() {
   if (!window.api) return
@@ -142,7 +158,7 @@ async function copyAll() {
     if (res?.status === 'ok' && res.data?.text) {
       const clip = await window.api.copyText(res.data.text)
       copyTip.value = (clip && clip.ok)
-        ? `已复制 ${res.data.count} 单的打分索引（${clip.length} 字）——粘贴给 AI，它会自己去读各单的 rating.json`
+        ? `✓ 已导出 ${res.data.count} 单到 ${res.data.folder || 'rating_export'}，路径已复制，粘贴给 AI 即可`
         : '复制失败：剪贴板不可用'
     } else {
       copyTip.value = res?.errors?.[0]?.message || '没有可复制的打分'

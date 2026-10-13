@@ -25,6 +25,15 @@ _STYLE_BLOCK = (
     "and a clean margin around it inside its cell\n"
     "- Every character fully visible inside its own cell: no cropped "
     "limbs/tails/hair, nothing floating or detached, no extra stray elements\n"
+    # 2026-09-13 打分复盘（148 单 822 格）：舌头×7/头大×4/三只手×4/
+    # 裁剪×9——生成端显式禁掉，别再靠抽卡赌
+    "- Tongue MUST stay tiny or fully inside the mouth: NEVER a big "
+    "wagging, sticking-out or oversized tongue\n"
+    "- Head-to-body ratio stays chibi: head never swells beyond half of "
+    "the panel; keep a visible (tiny) body below the head\n"
+    "- Exactly TWO hands and TWO feet per character: never three hands, "
+    "extra fingers or duplicated limbs\n"
+    "- NO banner, ribbon or decorative strip across any panel\n"
     "- Characters must never touch or cross the grid divider lines: keep "
     "completely empty background gutters between neighboring cells; every "
     "body part (feet, hands, ears, props) stays FULLY inside its own panel "

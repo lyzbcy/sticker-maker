@@ -6,12 +6,16 @@ const sumValues = (object) => Object.values(object || {}).reduce(
   (total, value) => total + (Number(value) || 0), 0,
 )
 
-export function validatePrefs(prefs, characters = {}) {
+export function validatePrefs(prefs, characters = {}, charactersLoaded = true) {
   // 2026-09-05 评审 P0：概率不再硬性要求 =100%（此前用户要凑满三组滑条
   // 才能保存，差 1% 都被拦）。概率类问题交给 savePrefs 里的 normalizePrefs
   // 自动按比例折算到 100%；这里只拦"无法自动修复"的真错误。
+  // 2026-09-11 修复：角色校验只在角色数据已加载时执行——设置页不加载
+  // characters（只有向导角色步骤会 loadCharacters），空对象是"没加载"
+  // 而非"没有角色"，此前打开设置页一切开关都误报
+  // "至少需要一个带角色图的角色"并显示成"生成失败"横幅。
   const names = Object.keys(characters)
-  if (names.length === 0) {
+  if (charactersLoaded && names.length === 0) {
     return { ok: false, message: '至少需要一个带角色图的角色' }
   }
   for (const name of names) {
@@ -47,6 +51,8 @@ export const useEngineStore = defineStore('engine', () => {
   const prefs = ref(null)
   const codexStatus = ref(null)
   const characters = ref({})
+  // 角色数据是否已从引擎加载（区分"没加载"和"没有角色"，见 validatePrefs）
+  const charactersLoaded = ref(false)
   const episodes = ref([])
   // run 状态
   const running = ref(false)
@@ -106,7 +112,7 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
 
   async function init() {
   loadCodexUsage()
-    if (!api) { phase.value = 'wizard'; return }
+    if (!api) { prefs.value = defaultPrefs(); lastError.value = [{ message: '请通过安装后的桌面软件打开，浏览器预览没有制作引擎。' }]; phase.value = 'main'; return }
     // 超时兜底：cli 冷启动可能慢，但 15 秒还没响应就降级进向导
     const timeout = new Promise(resolve => setTimeout(() => resolve({__timeout: true}), 15000))
     try {
@@ -131,6 +137,7 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
         phase.value = firstRun.value ? 'wizard' : 'main'
       }
     } catch (e) {
+      lastError.value = [{ message: `引擎启动失败：${e?.message || '请重新打开软件后重试'}` }]
       prefs.value = defaultPrefs()
       phase.value = 'main'
     }
@@ -196,6 +203,7 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
     const res = await api.send('list_characters')
     if (res && res.status === 'ok') {
       characters.value = res.data.characters || {}
+      charactersLoaded.value = true
       ensureProbabilityDefaults()
     }
   }
@@ -261,7 +269,7 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
     if (!api) return true
     try {
       const { prefs: normalized, adjusted } = normalizePrefs(newPrefs)
-      const validation = validatePrefs(normalized, characters.value)
+      const validation = validatePrefs(normalized, characters.value, charactersLoaded.value)
       if (!validation.ok) {
         lastError.value = [{ message: validation.message }]
         return false
@@ -275,7 +283,7 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
         lastError.value = null
         return adjusted ? 'adjusted' : true
       }
-      lastError.value = [{ message: '保存失败' }]
+      lastError.value = res?.errors?.length ? res.errors : [{ message: '保存失败，请重试' }]
       return false
     } catch (e) {
       lastError.value = [{ message: (e && e.message) || '保存失败' }]
@@ -353,11 +361,17 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
     await api.stop('all').catch(() => {})
   }
 
+  const episodesLoading = ref(false)
   async function loadEpisodes() {
     if (!api) return
-    const res = await api.send('list_episodes')
-    if (res && res.status === 'ok') episodes.value = res.data.episodes || []
-    maybeAskForReview()
+    episodesLoading.value = true
+    try {
+      const res = await api.send('list_episodes')
+      if (res && res.status === 'ok') episodes.value = res.data.episodes || []
+      maybeAskForReview()
+    } finally {
+      episodesLoading.value = false
+    }
   }
 
   // ---- 求好评（prompt「不打扰用户的求好评」）----
@@ -572,6 +586,16 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
       pushActivity({ stage: 'SYS', message: '引擎意外退出，正在自动重启…请稍后重试' })
       lastError.value = [{ message: '引擎意外退出，正在自动重启…请稍后重试' }]
     })
+    // 引擎单实例锁被占（另一个应用实例在跑）：并发写库会导致版本冲突，
+    // 引擎已拒绝启动且不会自动重启——提示用户关掉其他窗口
+    if (api.onExit) {
+      api.onExit((data) => {
+        if (data && data.code === 3) {
+          lastError.value = [{ message: '检测到另一个「表情包一键制作」正在运行。为避免多实例并发造成版本冲突，本窗口的引擎已停止——请关闭其他窗口后重启本应用。' }]
+          pushActivity({ stage: 'SYS', message: '引擎被其他实例占用（单实例锁），已停止' })
+        }
+      })
+    }
     // 更新下载进度 → 底边栏活动流（下载中实时百分比/兆数）
     if (api.onUpdateProgress) {
       api.onUpdateProgress((ev) => {
@@ -588,7 +612,7 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
   }
 
   return {
-    phase, firstRun, prefs, codexStatus, characters, episodes,
+    phase, firstRun, prefs, codexStatus, characters, episodes, episodesLoading,
     running, progress, lastEpisode, lastError, runStartedAt, activity,
     installing, installLog,
     publishing, publishProgress, publishResult, logs, agentStatus, agentPrompt,

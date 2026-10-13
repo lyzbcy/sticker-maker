@@ -79,6 +79,28 @@ def detail_url(item_id):
             + quote(item_id, safe=''))
 
 
+def _reason_strings(values):
+    """从 Reason 值里提取字符串理由列表。
+
+    已知形态：字符串；字符串列表；字典列表（2026-09-11 平台改版新增，
+    如 emotion: [{"item":"1","failMsg":["图中含有边框线…"]}]——递归抽取
+    其中的字符串值）。未知形态抛错交人工。
+    """
+    out = []
+    for v in values:
+        if isinstance(v, str):
+            out.append(v)
+        elif isinstance(v, dict):
+            for inner in v.values():
+                if isinstance(inner, str):
+                    out.append(inner)
+                elif isinstance(inner, list):
+                    out.extend(s for s in inner if isinstance(s, str))
+        else:
+            raise PlatformDataError('驳回理由格式已变化')
+    return out
+
+
 def parse_reason(raw):
     if isinstance(raw, str):
         try:
@@ -91,9 +113,9 @@ def parse_reason(raw):
     for key, values in raw.items():
         if isinstance(values, str):
             values = [values]
-        if not isinstance(values, list) or any(not isinstance(v, str) for v in values):
+        if not isinstance(values, list):
             raise PlatformDataError('驳回理由格式已变化')
-        values = list(dict.fromkeys(v.strip() for v in values if v.strip()))
+        values = list(dict.fromkeys(v.strip() for v in _reason_strings(values) if v.strip()))
         if values:
             parts.extend([GROUPS.get(key.lower(), key), *values])
     if not parts:
@@ -140,17 +162,57 @@ def record_reason(meta, reason):
 
 
 def _match_rows(rows, root, account_id=None):
-    from .status import normalize_name
+    from .status import normalize_name, episode_has_files
     locals_ = [(p, load_meta(p)) for p in sorted(Path(root).glob('episode*')) if p.is_dir()]
     if account_id:
         locals_ = [(p, m) for p, m in locals_ if m.account_id == account_id]
     counts = Counter(normalize_name(r['Name']) for r in rows)
+    # 2026-09-10 同步克隆行修复：library 模式下 item_id 匹配不到（或归一化
+    # 兜底因同名 0 文件占位符歧义而失败）的平台行，先在「有文件的」本地
+    # 作品里找专辑名完全相等的唯一真身兜底（懒建索引；多个同名=歧义不绑，
+    # 宁可不匹配也不绑错；0 文件占位符不参与，否则占位符会抢走绑定，真身
+    # 丢平台身份，又长出一行 0 张克隆）。仍无匹配才由 sync_rows 走
+    # placeholder_factory。
+    exact_index = None   # 懒建：album_name -> 唯一「有文件且未绑 ID」本地作品
     result, unmatched = [], []
     for row in rows:
         hits = [(p, m) for p, m in locals_ if m.platform_item_id == row['StikerID']]
+        if len(hits) > 1:
+            # 2026-09-12：同一作品常有多个投影目录（时间戳名 + work_id 名）
+            # 且都带同一 platform_item_id——先按 work_id 去重（一个作品一个
+            # 匹配）；若仍是多个不同 work 同 sid（真身 + 带绑定的壳兄弟），
+            # 让「有文件的那个」胜出，0 文件壳/占位让位——两边都不唯一才
+            # 是真歧义，交 unmatched 处理。
+            _by_wid = {}
+            for p, m in hits:
+                _by_wid.setdefault(getattr(m, 'work_id', '') or str(p), (p, m))
+            cand = list(_by_wid.values())
+            if len(cand) > 1:
+                with_files = [(p, m) for p, m in cand if episode_has_files(p)]
+                if len(with_files) == 1:
+                    cand = with_files
+            if len(cand) == 1:
+                hits = cand
         if not hits and counts[normalize_name(row['Name'])] == 1:
             hits = [(p, m) for p, m in locals_ if not m.platform_item_id
                     and normalize_name(m.album_name or p.name) == normalize_name(row['Name'])]
+            if len(hits) != 1 and account_id:
+                if exact_index is None:
+                    grouped = {}
+                    seen_works = set()
+                    for p, m in locals_:
+                        # 同一作品常有多个投影目录（时间戳名 + work_id 名），
+                        # 不去重会把"唯一真身"误判成同名歧义 → 不绑定 →
+                        # 同步给平台行建 0 文件壳（2026-09-11 85 个半成品根因）
+                        wid = getattr(m, 'work_id', '') or str(p)
+                        if wid in seen_works:
+                            continue
+                        seen_works.add(wid)
+                        if not m.platform_item_id and m.album_name and episode_has_files(p):
+                            grouped.setdefault(m.album_name, []).append((p, m))
+                    exact_index = {n: h[0] for n, h in grouped.items() if len(h) == 1}
+                exact = exact_index.get(row['Name'])
+                hits = [exact] if exact else []
         if len(hits) != 1:
             unmatched.append({'name': row['Name'], 'status': STATUS[row['Status']],
                               'updated': row.get('ModifyTime', ''), 'item_id': row['StikerID']})
@@ -214,9 +276,14 @@ def sync_rows(page, root, rows, say, fetch_reasons=True, force_reasons=False,
         meta.platform_item_id = row['StikerID']
         meta.platform_status = state
         meta.platform_modified_at = modified
-        # These are the fields displayed by the management table, not cumulative totals.
-        meta.platform_downloads = str(row.get('DownloadNum') or '-')
-        meta.platform_sends = str(row.get('SendNum') or '-')
+        # 2026-09-10 平台改版修正：管理列表的 DownloadNum/SendNum 变成了
+        # 近期值（实测 No.6：DownloadNum=2/SendNum=95），累计真值在
+        # TotalDownloadNum/TotalSendNum（同单 168/4882）。用户口径是累计
+        # 总量；无 Total 字段时回落旧字段（旧数据兼容）。
+        meta.platform_downloads = str(row.get('TotalDownloadNum')
+                                      or row.get('DownloadNum') or '-')
+        meta.platform_sends = str(row.get('TotalSendNum')
+                                  or row.get('SendNum') or '-')
         meta.platform_tips = str(row.get('Rewards') or '-')
         meta.platform_updated_at = time.strftime('%Y-%m-%d %H:%M:%S')
         if state != '未通过审核':

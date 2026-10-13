@@ -1,19 +1,24 @@
 """Serialize device mutations and adapt existing handlers without a shared lock."""
+import time
 from dataclasses import replace
 from pathlib import Path
 
-from .commands import LOCK
+from .commands import LOCK, _LOCK_OWNER, _TASK_LABELS
 from .runtime import LibraryRuntime
 from .settings import settings_dir
 
 MUTATIONS = {
     'run', 'run_batch', 'publish_episode', 'fix_and_republish', 'shelf_passed',
     'sync_platform_status', 'repolish_finals', 'update_episode_meta',
-    'regen_intro', 'regen_assets', 'save_rating', 'delete_episode', 'save_series',
+    'regen_intro', 'regen_assets', 'delete_episode', 'save_series',
     'save_prefs', 'generate_base', 'add_base', 'remove_base', 'replenish_refs',
     'save_prompt_set', 'delete_prompt_set', 'save_publish_credentials',
     'clear_publish_credentials',
 }
+# save_rating 移出 MUTATIONS（2026-09-12 用户实测两次丢分根因）：打分只写
+# 本地 rating.json，与资源库无关——此前每次点星星都先跑 1~3 分钟的前置
+# 快照同步（用户看到的"打开打分卡提示正在同步本地资源卡"），用户等不
+# 及切走 → 400ms 防抖窗口 × 切页中断 → 分数无声丢失。直通即时保存。
 # 读命令一律直通（2026-09-05 两轮事故根修）：
 # ①首屏：load_prefs 读本地 yaml 却被锁内 40s 冷刷新拖住 → 前端超时踢向导
 # ②启动窗口：list_episodes 等读命令在锁内跑冷刷新，期间用户点同步/生成
@@ -121,12 +126,28 @@ def invoke(cli, req_id, cmd, args, handler):
     # 长任务保持快速失败（防发布中并发发布/同步）。
     blocking = cmd not in LONG_TASKS
     if not LOCK.acquire(blocking=blocking):
-        cli._result(req_id, 'fail', errors=[{'message': '正在生成、同步或迁移资源，请等待任务完成后再操作'}])
+        held = time.monotonic() - _LOCK_OWNER['at'] if _LOCK_OWNER['at'] else 0.0
+        owner = _TASK_LABELS.get(_LOCK_OWNER['cmd']) or _LOCK_OWNER['cmd'] or '资源任务'
+        cli._result(req_id, 'fail', errors=[{'message': f'「{owner}」正在进行（已 {held:.0f} 秒），完成后即可继续当前操作；详情见底部活动日志'}])
         return
+    _LOCK_OWNER.update(cmd=cmd, at=time.monotonic())
     try:
         rt = runtime_for(cli._ensure_engine())
         if rt:
-            status = rt.refresh(capture=True, max_age=120)
+            # 2026-09-12 用户反馈"同步中但一直不动、日志不说话"：前置刷新
+            # 在首次/有变更时要全量扫描+哈希几分钟，之前全程静默。先说一句
+            # 在干嘛（快时一闪而过，慢时用户知道没死）。
+            cli._emit({"id": req_id, "type": "progress", "stage": "prepare",
+                       "phase": "prepare", "percent": None, "eta_seconds": None,
+                       "message": "正在同步本地资源库快照（有变更时要一会儿，"
+                                  "日志会持续播报）…"})
+            # 平台读/写类命令（sync/shelf）不改本地资源文件——前置只需
+            # 库快照（capture=False，秒级）；本地资源入库由命令结束后的
+            # 后置 refresh(capture=True) 兜底。前置全量捕获（capture_all
+            # 1000+ 目录 stat ~106s）是"一键更新卡几分钟"的主因（09-12）。
+            capture = cmd not in ('sync_platform_status', 'shelf_passed',
+                                  'get_income', 'sync_platform_status_page')
+            status = rt.refresh(capture=capture, max_age=120)
             if cmd in MUTATIONS and isinstance(status, dict) and status.get('offline'):
                 raise ValueError('共享资源库当前不可用，已停止写入；请恢复同步目录后重试')
             # Applying shared prefs/series/bases changes the configuration
@@ -153,4 +174,5 @@ def invoke(cli, req_id, cmd, args, handler):
                     cli._engine = None
         return result
     finally:
+        _LOCK_OWNER.update(cmd='', at=0.0)
         LOCK.release()

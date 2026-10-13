@@ -237,6 +237,9 @@ const priceProbFree = ref(70)          // 免费档百分比（10 豆档 = 100 -
 const priceProbPaid = ref(30)
 const bmSaved = ref(false)
 onMounted(() => {
+  // 2026-09-11：设置页也加载角色——savePrefs 的校验依赖角色数据，
+  // 不加载则一切开关保存都误报"至少需要一个带角色图的角色"
+  store.loadCharacters()
   if (store.prefs) {
     browserHeadless.value = !!store.prefs.browser_headless
     stickerPrice.value = Number(store.prefs.sticker_price) || 0

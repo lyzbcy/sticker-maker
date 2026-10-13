@@ -247,3 +247,48 @@ def test_removed_reference_is_not_tombstoned_or_deleted_on_peer(tmp_path):
                    for w in library.list_works(first.account_id))
     SharedSettings(second).apply()
     assert (settings_dir(second) / "reference_library" / "keep.png").exists()
+
+
+def test_apply_keeps_local_only_and_content_style_prefs(tmp_path):
+    """内容风格键（background_mode/sticker_text）与本机独有偏好在 apply 后必须存活。
+
+    2026-09-10 用户事故：这两个键不在 PREF_KEYS 白名单，apply 把
+    prefs.yaml 整文件替换为白名单 payload，键被洗回 schema 默认值
+    （transparent），白天设好的 solid 实底从 317 弹起被静默改掉。
+    """
+    library = ResourceLibrary(tmp_path / "shared", create=True)
+    source = _runtime(tmp_path, library, "source")
+    sdir = settings_dir(source)
+    sdir.mkdir(parents=True)
+    (sdir / "prefs.yaml").write_text(
+        "grid_size: 3\nbackground_mode: solid\nsticker_text: true\n",
+        encoding="utf-8",
+    )
+    assert SharedSettings(source).capture()["captured"] == 1
+
+    destination = _runtime(tmp_path, library, "destination")
+    first = SharedSettings(destination).apply()
+    assert not first["conflicts"]
+    assert not first["missing"]
+    dest_prefs = settings_dir(destination) / "prefs.yaml"
+    # 本机独有偏好（白名单外）由用户/引擎写在本地，不进版本库
+    dest_prefs.write_text(
+        dest_prefs.read_text(encoding="utf-8") + "browser_headless: true\n",
+        encoding="utf-8",
+    )
+
+    # 远端推进：grid_size 3 → 4，destination 再同步
+    (sdir / "prefs.yaml").write_text(
+        "grid_size: 4\nbackground_mode: solid\nsticker_text: true\n",
+        encoding="utf-8",
+    )
+    assert SharedSettings(source).capture()["captured"] == 1
+    second = SharedSettings(destination).apply()
+    assert not second["conflicts"]
+    assert not second["missing"]
+
+    text = dest_prefs.read_text(encoding="utf-8")
+    assert "grid_size: 4" in text  # 远端新值照常落地
+    assert "background_mode: solid" in text  # 不再被洗回 transparent
+    assert "sticker_text: true" in text
+    assert "browser_headless: true" in text  # 本机独有偏好存活

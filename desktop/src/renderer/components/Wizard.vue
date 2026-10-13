@@ -22,7 +22,7 @@
     </div>
     <div v-if="finishErrors.length" class="finish-error">
       <p v-for="(msg, i) in finishErrors" :key="i">{{ msg }}</p>
-      <p class="finish-error-tip">请点「上一步」返回对应步骤（模式概率 / 角色概率 / base 图管理），把总和调整到 100% 后再点完成。</p>
+      <p class="finish-error-tip">请按上方具体原因处理后重试；角色图片问题可点「上一步」修改，概率会自动按比例调整。</p>
     </div>
   </div>
 </template>

@@ -47,6 +47,12 @@ PREF_KEYS = {
     "vision_calls",
     "sticker_price",
     "price_probs",
+    # 内容风格键（2026-09-10 用户事故）：background_mode/sticker_text
+    # 此前不在白名单，每次设置同步 apply 都会把 prefs.yaml 整体重写、
+    # 这两个键被打回 schema 默认值（transparent），白天设好的 solid
+    # 实底在 317 弹后被静默洗掉。纳入白名单进版本库，同步不再丢。
+    "background_mode",
+    "sticker_text",
 }
 PRIVATE_NAMES = {
     ".env",
@@ -519,9 +525,7 @@ class SharedSettings:
                         continue
                 elif setting_type == "prefs":
                     payload = self._apply_prefs_payload(metadata.get("payload", {}))
-                    if payload.get("reference_lib_path"):
-                        payload["reference_lib_path"] = str(self.root / "reference_library")
-                    self._write_yaml(self.root / "prefs.yaml", payload)
+                    self._write_prefs_merged(payload)
                 else:
                     self._apply_entity_files(stage, metadata)
                 markers[work["work_id"]] = self._new_marker(
@@ -874,6 +878,55 @@ class SharedSettings:
     # ------------------------------------------------------------------
     # Marker/state and serialization helpers
     # ------------------------------------------------------------------
+    def force_apply_entity(self, entity_id: str, revision_id: str) -> bool:
+        """resolve 选用设置版本后，立即把该版本物化到本地并更新 marker。
+
+        不做这一步时：本地仍是旧内容，而 marker 已对齐新版本——下一次
+        apply 会误判 unchanged（选定值永远到不了本地），或者 marker 指
+        纹取自旧本地内容形成新的幽灵冲突（2026-09-09 两种坑都实测踩过）。
+        物化后本地内容 == 选定版本，marker 指纹 == 该版本真实指纹，
+        apply 下一轮判定 unchanged，闭环。
+        series 聚合实体不走此路径（保持冲突卡可见，由用户在系列页处理）。
+        """
+        work = self.library.read_work(self.account_id, entity_id)
+        head = work.get("revision") or {}
+        if head.get("revision_id") != revision_id:
+            return False
+        if (head.get("metadata") or {}).get("setting_type") == "series":
+            return False
+        import tempfile as _tf
+        stage = Path(_tf.mkdtemp(prefix=".settings-force-", dir=str(self.root.parent)))
+        is_prefs_entity = (head.get("metadata") or {}).get("setting_type") == "prefs"
+        try:
+            self.library.materialize(self.account_id, entity_id, stage, revision_id)
+            for item in stage.rglob("*"):
+                if item.is_file():
+                    rel = item.relative_to(stage)
+                    dest = self.root / rel
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    if is_prefs_entity and rel.name == "prefs.yaml":
+                        # 物化的是白名单 payload；与本地合并，保住
+                        # browser_headless 等未纳入白名单的本地偏好。
+                        try:
+                            loaded = self._load_yaml(item)
+                        except (OSError, ValueError, TypeError):
+                            loaded = {}
+                        if isinstance(loaded, dict):
+                            self._write_prefs_merged(
+                                self._apply_prefs_payload(loaded))
+                            continue
+                        # 读不出来则退回整文件复制，宁可覆盖也不丢远端选定值
+                    shutil.copyfile(item, dest)
+        finally:
+            shutil.rmtree(stage, ignore_errors=True)
+        entities, _, _ = self._collect_entities()
+        ent = next((e for e in entities if e["work_id"] == entity_id), None)
+        if ent is not None:
+            self._markers()[entity_id] = self._new_marker(
+                revision_id, self._fingerprint(ent["metadata"], ent["files"]), ent)
+            self._save_state()
+        return True
+
     def _markers(self) -> Dict[str, Any]:
         state = getattr(self.runtime, "state", None)
         if not isinstance(state, dict):
@@ -980,6 +1033,27 @@ class SharedSettings:
             result["reference_lib_path"] = "reference_library"
         result.pop("browser_headless", None)
         return result
+
+    def _write_prefs_merged(self, payload: Mapping[str, Any]) -> None:
+        """合并写入 prefs.yaml：远端 payload 逐键覆盖本地，其余本地键保留。
+
+        payload 只含 PREF_KEYS 白名单里实际存在的键；browser_headless 等
+        本机独有偏好和任何未纳入白名单的新键都靠这里存活（2026-09-10
+        用户事故：整文件替换把 background_mode 洗回 transparent）。
+        """
+        prefs_path = self.root / "prefs.yaml"
+        existing = {}
+        if prefs_path.is_file():
+            try:
+                loaded = self._load_yaml(prefs_path)
+                if isinstance(loaded, dict):
+                    existing = loaded
+            except (OSError, ValueError, TypeError):
+                existing = {}
+        if payload.get("reference_lib_path"):
+            payload = {**payload,
+                       "reference_lib_path": str(self.root / "reference_library")}
+        self._write_yaml(prefs_path, {**existing, **payload})
 
     def _write_yaml(self, path: Path, payload: Mapping[str, Any]) -> None:
         data = self._dump_yaml(payload)

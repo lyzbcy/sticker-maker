@@ -55,7 +55,7 @@ def test_generate_sends_heartbeats_while_waiting(tmp_path):
     """等待 codex 期间按间隔发心跳（elapsed + 输出尾部）。"""
     provider = _provider(tmp_path, timeout=30, heartbeat=0.3)
     proc = _FakeProc([(1.2, 0)], stdout_text="working...")
-    provider.scan_latest_image = lambda: None
+    provider.scan_latest_image = lambda **kw: None
     with patch("sticker_engine.providers.codex.subprocess.Popen", return_value=proc):
         beats = []
         result = provider.generate(
@@ -69,7 +69,7 @@ def test_generate_timeout_reports_last_output(tmp_path):
     """超时被终止时，last_error 必须带超时时长和 codex 的最后输出。"""
     provider = _provider(tmp_path, timeout=1)
     proc = _FakeProc([(999, 0)], stdout_text="still drawing grid...")
-    provider.scan_latest_image = lambda: None
+    provider.scan_latest_image = lambda **kw: None
     with patch("sticker_engine.providers.codex.subprocess.Popen", return_value=proc):
         result = provider.generate("prompt")
     assert result is None
@@ -90,9 +90,9 @@ def test_generate_nonzero_exit_captures_stderr_tail(tmp_path):
 
 def test_generate_success_clears_last_error(tmp_path):
     provider = _provider(tmp_path, timeout=30)
-    proc = _FakeProc([(0.2, 0)], stdout_text="done")
+    proc = _FakeProc([(0.2, 0)], stdout_text='{"type":"thread.started","thread_id":"00000000-0000-0000-0000-000000000001"}')
     provider.last_error = "上次失败的残留"
-    provider.scan_latest_image = lambda: tmp_path / "img.png"
+    provider.scan_latest_image = lambda **kw: tmp_path / "img.png"
     with patch("sticker_engine.providers.codex.subprocess.Popen", return_value=proc) as pop:
         result = provider.generate("prompt")
     assert result == tmp_path / "img.png"

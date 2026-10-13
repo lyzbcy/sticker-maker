@@ -39,7 +39,8 @@ function go(kind) {
   const url = kind === 'star'
     ? 'https://github.com/lyzbcy/sticker-maker'
     : 'https://github.com/lyzbcy/sticker-maker/discussions'
-  if (window.api?.openExternal) window.api.openExternal(url)
+  if (kind === 'feedback') store.phase = 'feedback'
+  else if (window.api?.openExternal) window.api.openExternal(url)
   dismiss()
 }
 function dismiss() {

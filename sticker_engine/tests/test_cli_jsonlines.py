@@ -6,11 +6,16 @@ from pathlib import Path
 
 
 def _run_cli(commands):
-    """启动 cli 子进程，喂命令，收集 stdout 行。"""
+    """启动 cli 子进程，喂命令，收集 stdout 行。
+
+    STICKER_ENGINE_NO_LOCK=1：cli 的跨进程单实例锁为生产防双开设计，
+    测试子进程不应被真实运行中的引擎误杀（2026-09-09）。
+    """
+    env = dict(os.environ, STICKER_ENGINE_NO_LOCK="1")
     proc = subprocess.Popen(
         [sys.executable, "-m", "sticker_engine.cli"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, cwd=Path(__file__).parent.parent)
+        text=True, encoding="utf-8", cwd=Path(__file__).parent.parent, env=env)
     stdin_data = "\n".join(json.dumps(c) for c in commands) + "\n"
     stdout, stderr = proc.communicate(input=stdin_data, timeout=30)
     return [json.loads(line) for line in stdout.strip().split("\n") if line.strip()], stderr

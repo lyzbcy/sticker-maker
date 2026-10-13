@@ -2,7 +2,7 @@
 
 用户需求：账号密码由用户在软件里填写一次，之后安全保管在系统凭据库——
 Windows → 凭据管理器（Credential Manager）；macOS → 钥匙串（Keychain）。
-不落明文文件。keyring 不可用时回退到 user_data 下的本地文件（带警告）。
+不落明文文件。新凭据仅写系统凭据库；旧版本地文件只用于兼容读取。
 """
 from pathlib import Path
 
@@ -33,13 +33,7 @@ def save_credentials(account: str, password: str) -> dict:
         keyring.set_password(SERVICE, ACCOUNT_KEY, account)
         keyring.set_password(SERVICE, PASSWORD_KEY, password)
         return {"backend": "keyring"}
-    # 回退：本地 JSON（明文，但只在 keyring 不可用时）
-    import json
-    f = _fallback_file()
-    f.parent.mkdir(parents=True, exist_ok=True)
-    f.write_text(json.dumps({"account": account, "password": password},
-                            ensure_ascii=False), encoding="utf-8")
-    return {"backend": "file"}
+    raise RuntimeError("系统凭据库不可用，账号密码尚未保存。请重新安装完整软件后再试；不会写入明文文件。")
 
 
 def load_credentials():

@@ -38,19 +38,31 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Set embedded browser path
+        shell: bash
+        run: echo "PLAYWRIGHT_BROWSERS_PATH=${{ github.workspace }}/sticker_engine/build/browsers" >> "$GITHUB_ENV"
+
       - name: Build Python engine (PyInstaller)
         working-directory: sticker_engine
         run: |
           python -m pip install --upgrade pip
-          pip install -e . pyinstaller
+          pip install -e ".[dev]" pyinstaller
+          python -m pytest tests -q
+          python -m playwright install chromium
           pyinstaller sticker-engine-cli.spec --noconfirm
 
       - name: Build Electron app
         working-directory: desktop
         run: |
           npm ci
+          npm test
           npx vite build
           npx electron-builder --${{ matrix.platform == 'mac' && 'mac --arm64' || 'win --x64' }} --publish never
+
+      - name: Build themed Windows installer
+        if: matrix.platform == 'win'
+        working-directory: desktop
+        run: node scripts/build-win.cjs
 
       # Mac：手动包是 .app + install.command 并排的 zip；electron-builder dir 产物 + install.command 用 ditto 压缩
       - name: Pack Mac zip (app + install.command)
@@ -73,6 +85,8 @@ jobs:
           rm -rf "$STAGE"
           mkdir -p "$STAGE"
           cp -R "$APP" "$STAGE/"
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict "$APP"
           cp install.command "$STAGE/"
           (
             cd "$STAGE"
@@ -90,7 +104,7 @@ jobs:
           if [ "${{ matrix.platform }}" = "mac" ]; then
             ASSET="sticker-maker-mac-v${GITHUB_REF_NAME#v}.zip"
           else
-            ASSET=$(ls sticker-maker-win-*-setup.exe | head -1)
+            ASSET="sticker-maker-win-v${GITHUB_REF_NAME#v}-setup.exe"
           fi
           sha256sum "$ASSET" | awk '{print $1}' > "sha256-${{ matrix.platform }}.txt"
           echo "ASSET_NAME=$ASSET" >> "$GITHUB_ENV"
@@ -100,7 +114,8 @@ jobs:
         with:
           name: release-${{ matrix.platform }}
           path: |
-            desktop/release/sticker-maker-*
+            desktop/release/sticker-maker-*-setup.exe
+            desktop/release/sticker-maker-mac-*.zip
             desktop/release/sha256-*.txt
           if-no-files-found: error
 
@@ -154,7 +169,7 @@ jobs:
                 "sha256": "${WIN_SHA}"
               }
             },
-            "releaseNotes": "v0.5.0：批量生成+自动发布；词条库300词条17主题体系；审核驳回全自动闭环（一键更新抓理由→修改完毕重提→清空重传→一键上架）；全部表情跨单打分+路径引用式反哺；首页生图额度卡（剩余%/可生张数/刷新时间）；新横幅方案+AI头部图标+迭代抠边；四类评审问题修复（横幅/BIG-HEAD/不雅/越界）",
+            "releaseNotes": "粉丝易用性修复：批量默认一组且不自动提交；无需安装Python/Node；首次登录与反馈指引；本地ZIP导出；更新校验和失败恢复；主题安装器与非系统盘优先。",
             "lastUpdated": "${TODAY}"
           }
           EOF

@@ -55,14 +55,17 @@ def test_prompt_fails_without_reason(tmp_path, monkeypatch):
 
 
 def test_all_rejects_prompt_aggregates(tmp_path, monkeypatch):
-    """汇总命令：多个未通过作品的理由全带上；待审核/无理由的不混入。"""
+    """汇总命令（2026-09-11 JSONL 版）：理由写入 rejects.jsonl，剪贴板文本
+    只含路径+简短说明；待审核/无理由的不混入。"""
+    import json as _json
     import sticker_engine.cli as cli2
     from sticker_engine.cli import cmd_build_all_rejects_prompt
     from sticker_engine.config.series import load_meta, save_meta
     root = tmp_path / "episodes"; root.mkdir()
+    user_data = tmp_path / "appdata"
     monkeypatch.setattr(cli2, "_ensure_engine", lambda: type("E", (), {
         "config": type("C", (), {"paths": type("P", (), {
-            "output_root": root})()})()})())
+            "output_root": root, "user_data": user_data})()})()})())
     def _ep(dirn, album, status, reason):
         d = root / dirn; d.mkdir()
         m = load_meta(d); m.album_name = album
@@ -82,11 +85,21 @@ def test_all_rejects_prompt_aggregates(tmp_path, monkeypatch):
         cli2._result = orig
     st, data = results[0]
     assert st == "ok" and data["count"] == 2
+    # JSONL 落盘：每行一个作品，内容/过滤正确
+    folder = user_data / "reject_reasons"
+    lines = (folder / "rejects.jsonl").read_text(encoding="utf-8").splitlines()
+    recs = [_json.loads(l) for l in lines]
+    assert [r["album_name"] for r in recs] == ["周三涵做表情 61", "周三涵做表情 62"]
+    assert "避免出现空格" in recs[0]["reject_reason"]
+    assert "多余边框线" in recs[1]["reject_reason"]
+    # 剪贴板文本：短说明 + 文件夹路径，不含具体理由长文
+    # （背景规则行本身含"边框线"字样，断言用完整理由句）
     t = data["text"]
-    assert "周三涵做表情 61" in t and "避免出现空格" in t
-    assert "周三涵做表情 62" in t and "多余边框线" in t
-    assert "周三涵做表情 66" not in t and "周三涵做表情 63" not in t
+    assert str(folder) in t and "rejects.jsonl" in t
+    assert "应避免出现空格，需要修改" not in t
+    assert "表情图中含有多余边框线，需要去除" not in t
     assert "共性问题" in t and "修改清单" in t
+    assert data["folder"] == str(folder)
 
 
 def test_all_rejects_prompt_fails_when_empty(tmp_path, monkeypatch):

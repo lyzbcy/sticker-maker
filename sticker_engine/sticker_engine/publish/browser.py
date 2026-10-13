@@ -295,4 +295,30 @@ class BrowserSession:
             if kw in body:
                 self.last_login_error = msg
                 break
+        else:
+            # 2026-09-12 用户事故：平台弹「账号信息补全/安全验证」页时，
+            # 旧文案统一甩锅"请检查账号密码"——账号密码明明存好了，纯误导。
+            # 按页面实际停留位置给准确指引，并截图保现场。
+            url = page.url or ""
+            # 精确匹配补全页（t=account/message&action=refill）——不能用
+            # "realnamepage"/"account" 宽子串：正常收益页 URL 就含
+            # realnamepage，曾把一切误判成"要求补全"（2026-09-12 事故）
+            if "action=refill" in url or "t=account/message" in url:
+                self.last_login_error = ("平台要求先补全账号信息：账号密码本身是"
+                                         "好的；请在 设置 → 发布账号 点一次「测试登录」，"
+                                         "在弹出的浏览器窗口完成平台要求的账号信息"
+                                         "填写，之后自动登录即恢复")
+            elif "verify" in url or "captcha" in url.lower():
+                self.last_login_error = ("平台要求安全验证：账号密码本身是好的；"
+                                         "请在弹出的浏览器窗口完成一次验证")
+            elif not self.last_login_error:
+                self.last_login_error = ("登录未成功但账号密码已保存：请 设置 → "
+                                         "发布账号 →「测试登录」，把弹出窗口里平台"
+                                         "的具体提示截图发我")
+            try:
+                from ..config.paths import resolve_paths, current_platform
+                shot = resolve_paths(current_platform()).user_data / "_login_error.png"
+                page.screenshot(path=str(shot))
+            except Exception:   # noqa: BLE001
+                pass
         return False

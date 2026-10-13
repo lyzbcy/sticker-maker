@@ -14,5 +14,6 @@ exports.afterPack = async function (context) {
     console.log(`[afterPack] sticker-engine-cli 已 ad-hoc 签名: ${cliPath}`)
   } catch (e) {
     console.error(`[afterPack] 签名失败:`, e.message)
+    throw e
   }
 }

@@ -26,7 +26,13 @@
           <input type="radio" value="transparent" v-model="store.prefs.background_mode" />透明底（自动抠图）
         </label>
         <label class="bg-opt" :class="{ on: store.prefs.background_mode === 'solid' }">
-          <input type="radio" value="solid" v-model="store.prefs.background_mode" />实底白（不抠图）
+          <input type="radio" value="solid" v-model="store.prefs.background_mode" />彩色实底（不抠图）
+        </label>
+      </div>
+      <div class="bg-mode-row" v-if="store.prefs.background_mode === 'solid'">
+        <span class="bg-mode-label">配字：</span>
+        <label class="bg-opt" :class="{ on: store.prefs.sticker_text !== false }">
+          <input type="checkbox" v-model="store.prefs.sticker_text" />每张底部配含义文字（推荐，表达力更强）
         </label>
       </div>
     </div>

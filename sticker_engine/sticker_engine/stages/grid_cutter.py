@@ -108,6 +108,44 @@ def _cell_bounds(cuts: Optional[List[int]], total: int, n_cells: int) -> List[Tu
     return [(edges[i], edges[i + 1]) for i in range(n_cells)]
 
 
+def _strip_grid_lines(mask: np.ndarray, max_thick: int = 10,
+                      min_span: float = 0.80) -> int:
+    """清除宫格格线：横/纵方向"贯穿 ≥80% 且厚度 ≤10px"的前景条带。
+
+    根因（2026-09-09 panel_09 240×97 事故）：codex 偶发在宫格上画
+    白/浅色网格线——白线与角色白描边同色相连，把跨行内容连成覆盖
+    整图的巨型连通域，被 _components 的巨块过滤整块剔除（角色跟着
+    丢失，只剩感叹号碎块 → 联合 bbox 切出扁条）；同时白线填平行沟
+    导致 gutter 检测失败退等分。
+    格线特征实测（092455 单）：厚 6-7px、横纵各 3 条正好 4 格 3 沟；
+    角色密集带最薄 58px → 10px 阈值安全。返回清除条带数（诊断用）。
+    """
+    removed = 0
+    for axis in ("row", "col"):
+        dense = mask.mean(axis=1 if axis == "row" else 0)
+        idx = np.where(dense >= min_span)[0]
+        if len(idx) == 0:
+            continue
+        runs = []
+        s = p = int(idx[0])
+        for v in idx[1:]:
+            v = int(v)
+            if v == p + 1:
+                p = v
+            else:
+                runs.append((s, p))
+                s = p = v
+        runs.append((s, p))
+        for a, b in runs:
+            if (b - a + 1) <= max_thick:
+                if axis == "row":
+                    mask[a:b + 1, :] = False
+                else:
+                    mask[:, a:b + 1] = False
+                removed += 1
+    return removed
+
+
 def _components(mask: np.ndarray):
     """4-连通域：返回 [(centroid_y, centroid_x, y0, y1, x0, x1, area)]，过滤噪点。
 
@@ -162,6 +200,9 @@ def cut_grid(grid_image: Path, grid: int, out_dir: Path
 
     bg = _detect_background(arr)
     mask = _content_mask(arr, bg)
+    lines = _strip_grid_lines(mask)
+    if lines:
+        notes.append(f"检测并清除 {lines} 条宫格格线（白线粘连防护）")
 
     col_profile = mask.mean(axis=0)   # 每列前景占比 0~1
     row_profile = mask.mean(axis=1)   # 每行前景占比 0~1
@@ -194,8 +235,16 @@ def cut_grid(grid_image: Path, grid: int, out_dir: Path
                 m_x = int(0.45 * (rx1 - rx0))
                 y0, y1 = max(ry0 - m_y, y0), min(ry1 + m_y, y1)
                 x0, x1 = max(rx0 - m_x, x0), min(rx1 + m_x, x1)
+                # 健全性兜底（2026-09-09 panel_09 240×97 事故第二层防线）：
+                # 联合 bbox 任一维 <55% 格高/宽 = 只捕到装饰碎块、角色主体
+                # 丢失（粘连巨块被剔除等未知形态）——退回格子矩形，等分
+                # 位置至少不切脸。实测正常贴纸两维都 ≥75%。
+                if ((y1 - y0) < 0.55 * (ry1 - ry0)
+                        or (x1 - x0) < 0.55 * (rx1 - rx0)):
+                    notes.append(f"panel_{idx:02d} 归属 bbox 异常偏小，退格子矩形兜底")
+                    y0, y1, x0, x1 = ry0, ry1, rx0, rx1
                 # 越界诊断：bbox 超出格子范围 → 贴纸跨线，已整块归属
-                if y0 < ry0 or y1 > ry1 or x0 < rx0 or x1 > rx1:
+                elif y0 < ry0 or y1 > ry1 or x0 < rx0 or x1 > rx1:
                     overflow_count += 1
             else:
                 # 空格（该格无内容连通域）：用格子矩形兜底

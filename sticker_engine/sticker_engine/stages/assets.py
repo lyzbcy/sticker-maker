@@ -12,6 +12,23 @@ from PIL import Image
 
 from ..pipeline.context import PipelineContext, LogEntry
 from ..providers.vision import VisionProvider
+from .generate import HEADER_EMOS
+
+# HEADER_EMOS 的含义词集合（封面/图标选格的词表信号，与 generate 同源）
+_HEADER_EMOS_ZH = frozenset(emo[2] for emo in HEADER_EMOS)
+# 撞名后缀（generate._random_combo_panels 的 dedup 规则）：场景格先占
+# "心动了"，header 格被改名"心动了～"——匹配时容忍单个尾缀
+_HEADER_DEDUP_SUFFIXES = ("哦", "呀", "～")
+
+
+def _match_header_word(zh: str) -> bool:
+    """含义词是否 header 格词（精确 + 单尾缀变体）。"""
+    zh = zh.strip()
+    if zh in _HEADER_EMOS_ZH:
+        return True
+    if len(zh) >= 2 and zh[-1] in _HEADER_DEDUP_SUFFIXES:
+        return zh[:-1] in _HEADER_EMOS_ZH
+    return False
 
 # 微信平台素材目标尺寸（spec）
 _BANNER_W, _BANNER_H = 750, 400
@@ -31,6 +48,27 @@ _ICON_AI_PROMPT = (
     "Copy the character design EXACTLY from the attached reference image."
 )
 
+# ---- 封面大头照改造（2026-09-08，驳回数据驱动的 P0）----
+# 平台驳回复盘（82 单 meta.json）：66+ 单被"图标/头部正面像"驳回；
+# 而封面此前 = 第 1 张成品直接缩放（全身像头部仅占画幅 ~25%），与官方
+# "封面 = 正面半身像"规范不符。生成端已固定 keyword_combo 单尾部 4 格
+# 为 HEAD SHOT（generate.HEADER_SLOTS，实测头部占比 70%+）——封面直接
+# 复用这个洞：选 header 格 → alpha-bbox zoom-in 裁剪 → 形态质检。
+# 0 token、零新依赖（不用 OpenCV/人脸模型：透明底 alpha 通道就是
+# 100% 准确的主体检测器，见 doc/reference/platform-review.md）。
+#
+# 裁剪定位（2026-09-08 二版，离线实验+老单回归驱动）：
+# header 格主体 bbox 已占原图 93-99%（几乎满格），放不大、要反向
+# zoom-in。固定 zoom 会切脸（"头发占满 bbox"的格 head 比例失真），
+# 故用 mask 行宽剖面自适应找肩线（_head_bottom_y，纯 numpy 无模型），
+# 窗口 = 头顶到肩线高度 / 目标占比；剖面失真回退固定 head 比例。
+# 回归对比图（temp/cover_exp/cmp_*.png）目测验收：294 头部画幅 ~78%。
+_COVER_HEAD_RATIO = 0.60    # 兜底：头部占 bbox 高度比例（chibi 头肩格经验值）
+_COVER_TARGET = 0.78        # 裁剪后头部目标画幅占比（>平台 75% 线）
+# 形态质检：合格 header 格 bbox 宽/高接近方形（实测 0.93-0.99）；
+# 全身像 w/h ≈ 0.5-0.6，低于阈值说明选到场景格 → 换格/回退
+_COVER_MIN_BBOX_RATIO = 0.65
+
 
 class AssetsStage:
     """S3：横幅 750×400 / 封面 240×240 / 图标 50×50 / 介绍.txt。"""
@@ -49,33 +87,48 @@ class AssetsStage:
         banner_dir = ctx.episode_dir / "横幅"; banner_dir.mkdir(exist_ok=True)
         self._make_banner(paths[:4], banner_dir / "横幅.png")
 
-        # 封面：单张最佳图特写（教训14：不复用横幅源）—— 取最具辨识度正面像
+        # 封面（2026-09-08 大头照改造）：header 特写格 + zoom-in 裁剪，
+        # 保证头部占画幅 ≥75%（此前 = 第 1 张直接缩放，全身像头部仅
+        # ~25%，与平台"封面 = 正面半身像"规范不符）。失败回退旧行为
+        # 并外传 cover_fallback（批量自动发布据此跳过，同 icon_fallback）。
         cover_dir = ctx.episode_dir / "封面"; cover_dir.mkdir(exist_ok=True)
-        cover_src = self._pick_best_face(paths)
-        self._resize_save(cover_src, cover_dir / "封面.png", _COVER_SIZE, _COVER_SIZE)
-
-        # 图标（2026-09-03 降本：用户洞察——成品贴纸本身是大头照风格，
-        # 从成品**裁头部**即满足平台"只含形象头部的正面图像"，零生图
-        # 消耗——此前 AI 生成每单多烧 1 次生图调用，占单耗 50%。
-        # 裁剪失败 → AI 生成兜底 → 再失败 → 封面缩放（降级信号外传））
-        icon_dir = ctx.episode_dir / "图标"; icon_dir.mkdir(exist_ok=True)
-        icon_src = self._crop_head_icon(paths, icon_dir / "_icon_raw.png")
-        if icon_src is not None:
+        cover_src = self._pick_best_face(paths, ctx)
+        cover_ok = False
+        if cover_src is not None:
+            cover_ok = make_big_head_cover(cover_src, cover_dir / "封面.png")
+        if cover_ok:
             ctx.log(LogEntry(stage="S3", status="OK",
-                             message="图标：成品裁头部（50×50，零生图消耗）"))
-        if icon_src is None:
-            # 用户纪律（2026-09-03）：绝不为单位图标花生图机会——裁不了
-            # 就直接用封面缩放，先上传再说
-            pass
-        if icon_src is None:
-            icon_src = cover_src
-            why = getattr(self, "_icon_last_error", "") or "未知原因"
-            # 降级信号外传（2026-09-01 批量发布风险）：fallback 产物（格子缩放/
-            # 封面缩放形态）曾被平台驳回，run_batch 的自动发布路径据此跳过本单
-            ctx.icon_fallback = True
-            ctx.log(LogEntry(stage="S3", status="WARN",
-                             message=f"图标：AI 生成失败（{why[:120]}），本次退回复用封面"))
-        self._resize_save(icon_src, icon_dir / "图标.png", _ICON_SIZE, _ICON_SIZE)
+                             message=f"封面：header 格大头照（{cover_src.name}，"
+                                     f"头部画幅≈{_COVER_TARGET:.0%}）"))
+        else:
+            cover_src = paths[0]   # 教训14 关键：回退不复用横幅源
+            # 降级分两档（2026-09-08）：combo 单 header 格翻车 → 外传
+            # cover_fallback（批量自动发布跳过，同 icon_fallback）；
+            # 非 combo 单（本就无 header 格，旧行为即第 1 张缩放且封面
+            # 无被拒记录）→ 只 WARN 不拦截，不影响存量模式产量。
+            if getattr(self, "_cover_had_header", False):
+                ctx.cover_fallback = True
+                why = getattr(self, "_cover_last_error", "") or "header 格裁剪失败"
+                ctx.log(LogEntry(stage="S3", status="WARN",
+                                 message=f"封面：header 格大头照失败（{why[:120]}），"
+                                         "回退第 1 张缩放（易被驳回，已跳过自动发布）"))
+            else:
+                ctx.log(LogEntry(stage="S3", status="WARN",
+                                 message="封面：非 combo 单无 header 格，"
+                                         "按旧规则取第 1 张缩放"))
+            self._resize_save(cover_src, cover_dir / "封面.png", _COVER_SIZE, _COVER_SIZE)
+
+        # 图标（2026-09-09 用户定稿：图标 = 封面同图直接缩 50×50）。
+        # 此前独立从成品格裁头部（_crop_head_icon），但选格构图不稳定，
+        # 用户实测"封面选得好、图标选得不好"——封面已是肩线构图大头照
+        # （头部画幅 ≥78%），同图缩 50×50 构图天然一致且清晰。
+        # 图标无独立降级：封面成功则图标必然成功；封面降级由
+        # cover_fallback 携带（批量自动发布据此跳过）。
+        icon_dir = ctx.episode_dir / "图标"; icon_dir.mkdir(exist_ok=True)
+        self._resize_save(cover_dir / "封面.png", icon_dir / "图标.png",
+                          _ICON_SIZE, _ICON_SIZE)
+        ctx.log(LogEntry(stage="S3", status="OK",
+                         message="图标：与封面同图（50×50 缩放）"))
 
         # 赞赏引导图/致谢图（69 驳回：默认情侣图与专辑形象无关被拒）——
         # 用本组贴纸派生：柔和底色 + 角色贴纸 + 一行引导语，与形象强相关
@@ -159,69 +212,8 @@ class AssetsStage:
     def _make_banner(self, src_paths: list, out: Path) -> None:
         make_banner(src_paths, out)
 
-    def _crop_head_icon(self, sticker_paths: list, out: Path,
-                        header_slots: tuple = (13, 14, 15, 16)):
-        """从成品贴纸裁头部做图标（2026-09-03 用户降本：绝不为此花生图机会）。
-
-        选片（2026-09-05 根修）：keyword_combo 单的格 13-16 是固定的头部
-        特写格（generate.HEADER_SLOTS：头肩 ≥60%、无道具无装饰）——图标
-        只从这 4 格里 hash 选一个（跨单差异化）；格数不足或非 combo 单
-        退回全格 hash 选。旧"偏好安静脸"与纯 hash 的两个坑都不再踩。
-        主体定位两路：
-        - 透明底：alpha>8 找主体 bbox
-        - 非透明底（ref 库保留背景）：四边采样背景中位色，色差>60 为主体
-        裁法（用户口径）：头约占全身 50%——取主体上部 50% 裁方缩 50x50，
-        先上传再说。任何失败返回 None 走封面缩放（绝不触发生图）。
-        """
-        try:
-            import numpy as np
-            import hashlib
-            paths_sorted = sorted(sticker_paths)
-            if not paths_sorted:
-                return None
-            ep_name = Path(paths_sorted[0]).parent.parent.name  # episode 目录名
-            h = int(hashlib.md5(ep_name.encode("utf-8")).hexdigest(), 16)
-            slots = [s for s in header_slots if s <= len(paths_sorted)]
-            is_header = bool(slots)
-            if slots:
-                src = Path(paths_sorted[slots[h % len(slots)] - 1])
-            else:
-                src = Path(paths_sorted[h % len(paths_sorted)])
-            if src is None or not src.exists():
-                return None
-            im = Image.open(src).convert("RGBA")
-            arr = np.asarray(im)
-            a = arr[:, :, 3]
-            ys = xs = None
-            if (a < 8).sum() >= im.width * im.height * 0.05:
-                # 透明底：alpha 主体
-                ys, xs = np.where(a > 8)
-            else:
-                # 非透明底：边缘采样背景中位色，色差主体
-                edge = np.concatenate([arr[0, :, :3], arr[-1, :, :3],
-                                       arr[:, 0, :3], arr[:, -1, :3]]).astype(int)
-                bg = np.median(edge, axis=0)
-                dist = np.abs(arr[:, :, :3].astype(int) - bg).sum(axis=2)
-                ys, xs = np.where(dist > 60)
-            if not len(ys):
-                return None
-            y0, y1 = int(ys.min()), int(ys.max())
-            x0, x1 = int(xs.min()), int(xs.max())
-            if is_header:
-                # header 特写格（头肩 ≥60%）：整块主体就是完美构图——
-                # 2026-09-05 事故：走"上 50% 裁线"把脸下半切掉只剩头顶
-                crop = im.crop((x0, y0, x1 + 1, y1 + 1))
-            else:
-                head_h = max(1, int((y1 - y0) * 0.5))   # 头约占全身 50%（用户口径）
-                crop = im.crop((x0, y0, x1 + 1, min(y0 + head_h, y1 + 1)))
-            w, h = crop.size
-            side = max(w, h)
-            canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
-            canvas.paste(crop, ((side - w) // 2, (side - h) // 2), crop)
-            canvas.resize((50, 50), Image.LANCZOS).save(out)
-            return out
-        except Exception:
-            return None
+    # _crop_head_icon 已删（2026-09-09 用户定稿：图标 = 封面同图缩放，
+    # 独立裁头部构图不稳定；见 run() 图标段注释）
 
     def _make_ai_icon(self, ctx: PipelineContext, fallback_paths: list):
         """AI 生成图标专属"纯头部正面照"，返回成品路径；失败返回 None。
@@ -286,19 +278,227 @@ class AssetsStage:
         except Exception:
             return None
 
-    def _pick_best_face(self, paths: list) -> Path:
-        """选最具辨识度的正面像做封面源。
+    def _pick_best_face(self, paths: list, ctx: PipelineContext = None):
+        """选封面源（2026-09-08 重写：header 特写格优先）。
 
-        简化：取第 1 张（真实项目移植 asset_selection.py 的 face_detect，
-        按人脸占比/清晰度排序选最佳）。教训14 关键：封面源 ≠ 横幅拼贴源。
+        选格信号（pick_header_candidates：ctx.header_slots → 词表命中 →
+        meaning_map 尾部 4 格），候选做 bbox 形态质检（w/h ≥ 0.65 即
+        头肩方格）逐个尝试，全灭返回 None（调用方回退旧行为）。
+        教训14 关键：封面源 ≠ 横幅拼贴源。
         """
-        return paths[0]
+        try:
+            if not paths:
+                self._cover_had_header = False
+                return None
+            header_slots = list(getattr(ctx, "header_slots", None) or []) \
+                if ctx is not None else []
+            meaning_map = dict(getattr(ctx, "meaning_map", None) or {}) \
+                if ctx is not None else {}
+            cands = pick_header_candidates(paths, header_slots=header_slots,
+                                           meaning_map=meaning_map,
+                                           ep_dir=Path(paths[0]).parent.parent)
+            if not cands:
+                self._cover_last_error = "无 header 特写格（非 combo 单或含义词缺失）"
+                self._cover_had_header = False
+                return None
+            self._cover_had_header = True
+            for cand in cands:
+                if cand.exists() and _is_head_shot(cand):
+                    return cand
+            self._cover_last_error = "header 格形态质检全不过"
+            return None
+        except Exception as e:   # noqa: BLE001
+            self._cover_last_error = f"{type(e).__name__}: {e}"
+            self._cover_had_header = False
+            return None
 
     def _resize_save(self, src: Path, out: Path, w: int, h: int) -> None:
         resize_save(src, out, w, h)
 
 
 # ---- 模块级函数：供 AssetsStage 与作品详情页 regen_assets 复用 ----
+
+def pick_header_candidates(paths: list, header_slots=None, meaning_map=None,
+                           ep_dir: Path = None) -> list:
+    """返回 header 特写格候选路径（hash 轮转排序，失败可顺延下一格）。
+
+    两套定位方式（2026-09-08 回归修正）：
+    1. header_slots（ctx 运行时）——paths 即 panel 序，按 slots 位置索引。
+    2. meaning_map 词表命中（regen 等）——**词→同名文件反查**，绝不能拿
+       panel 序号去索引文件名排序后的列表：中文字典序 ≠ panel 序，正是
+       68 号单错位事故的同款约定（cli._episode_stickers 注释）。
+       兼容撞名后缀（"心动了～"），反查不到同名文件时放弃该词。
+    无 header 信号（老单/非 combo 单）返回空列表，调用方走回退。
+    """
+    import hashlib
+    import json
+    mm = dict(meaning_map or {})
+    if not mm and ep_dir is not None:
+        try:
+            f = Path(ep_dir) / "meaning_map.json"
+            if f.exists():
+                mm = {int(k): str(v) for k, v
+                      in json.loads(f.read_text(encoding="utf-8")).items()}
+        except Exception:   # noqa: BLE001
+            mm = {}
+    if header_slots:
+        slots = [s for s in (int(s) for s in header_slots)
+                 if 1 <= s <= len(paths)]
+        if not slots:
+            return []
+        ep_name = Path(paths[0]).parent.parent.name
+        h = int(hashlib.md5(ep_name.encode("utf-8")).hexdigest(), 16)
+        start = h % len(slots)
+        ordered = slots[start:] + slots[:start]
+        return [Path(paths[s - 1]) for s in ordered]
+
+    words = [v for v in (mm.get(k) for k in sorted(mm, key=int))
+             if _match_header_word(str(v))]
+    if not words:
+        return []
+    final = (Path(ep_dir) if ep_dir is not None
+             else Path(paths[0]).parent.parent) / "最终版"
+    cands = [final / f"{w.strip()}.png" for w in words]
+    cands = [c for c in cands if c.exists()]
+    if len(cands) < 2:
+        return _prefer_noword(cands)
+    ep_name = final.parent.name
+    h = int(hashlib.md5(ep_name.encode("utf-8")).hexdigest(), 16)
+    start = h % len(cands)
+    ordered = cands[start:] + cands[:start]
+    return _prefer_noword(ordered)
+
+
+def _prefer_noword(cands: list) -> list:
+    """solid 配字单：封面/图标必须无字（平台对图标明文"去除文字信息"），
+    S2 已把无字版存 原图/_noword/同名.png——存在即替换为无字源。"""
+    out = []
+    for p in cands:
+        p = Path(p)
+        noword = p.parent.parent / "原图" / "_noword" / p.name
+        out.append(noword if noword.exists() else p)
+    return out
+
+
+def _body_mask(src_path: Path):
+    """主体 mask：透明底走 alpha（>8），非透明底走边缘中位色差（>60），
+    scipy 连通域过滤小噪声（保留最大域 + 面积 ≥5% 的域，防飘丝/小
+    doodle 撑大 bbox）。返回 (mask, im)；失败返回 None。
+    （scipy 为引擎既有依赖）"""
+    import numpy as np
+    from scipy import ndimage
+    im = Image.open(src_path).convert("RGBA")
+    arr = np.asarray(im)
+    a = arr[:, :, 3]
+    if (a < 8).sum() >= im.width * im.height * 0.05:
+        mask = a > 8
+    else:
+        edge = np.concatenate([arr[0, :, :3], arr[-1, :, :3],
+                               arr[:, 0, :3], arr[:, -1, :3]]).astype(int)
+        bg = np.median(edge, axis=0)
+        dist = np.abs(arr[:, :, :3].astype(int) - bg).sum(axis=2)
+        mask = dist > 60
+    lab, n = ndimage.label(mask)
+    if n > 1:
+        sizes = ndimage.sum(mask, lab, range(1, n + 1))
+        big = sizes.max()
+        keep = np.zeros_like(mask)
+        for i, s in enumerate(sizes, 1):
+            if s >= big * 0.05:
+                keep |= (lab == i)
+        mask = keep
+    return mask, im
+
+
+def _body_bbox(src_path: Path):
+    """主体 bbox + mask + im（供裁剪/质检共用）。失败返回 None。"""
+    got = _body_mask(src_path)
+    if got is None:
+        return None
+    mask, im = got
+    import numpy as np
+    ys, xs = np.where(mask)
+    if not len(ys):
+        return None
+    return (int(xs.min()), int(ys.min()),
+            int(xs.max()) + 1, int(ys.max()) + 1), im, mask
+
+
+def _head_bottom_y(mask, x0, y0, x1, y1):
+    """mask 行宽剖面找头部底界（肩线）：从 bbox 顶往下，最宽行（脸/发）
+    之后的骤减点（< 峰值 62%）即脖颈。找不到骤减（长发贴身/剖面失真）
+    返回 None，调用方回退固定比例。纯 numpy，无模型依赖。"""
+    import numpy as np
+    widths = mask[y0:y1, x0:x1].sum(axis=1).astype(float)
+    if widths.size < 12:
+        return None
+    k = np.ones(5) / 5.0
+    sm = np.convolve(widths, k, mode="same")
+    peak_i = int(sm.argmax())
+    peak = sm[peak_i]
+    if peak <= 0:
+        return None
+    drop = np.where(sm[peak_i:] < peak * 0.62)[0]
+    if not drop.size:
+        return None
+    return y0 + peak_i + int(drop[0])
+
+
+def _is_head_shot(src_path: Path, min_ratio: float = _COVER_MIN_BBOX_RATIO) -> bool:
+    """header 格形态质检：主体 bbox 宽/高 ≥ min_ratio（头肩像近方格）。
+    全身站立像 w/h ≈ 0.5-0.6 不达标——防误把场景格当头肩格裁。"""
+    try:
+        got = _body_bbox(src_path)
+        if got is None:
+            return False
+        (x0, y0, x1, y1), _im, _mask = got
+        w, h = x1 - x0, y1 - y0
+        return h > 0 and (w / h) >= min_ratio
+    except Exception:   # noqa: BLE001
+        return False
+
+
+def make_big_head_cover(src: Path, out: Path, size: int = _COVER_SIZE) -> bool:
+    """封面大头照：header 特写格 → 自适应方形窗口 zoom-in → 240×240 透明 PNG。
+
+    窗口定位（2026-09-08 二版）：先用 mask 行宽剖面找肩线（头部底界），
+    窗口边长 = 头顶到肩线高度 / 目标占比，使头部占画幅 78%（> 平台 75%
+    线）；剖面失真（长发贴身找不到骤减点/骤减点过低）回退固定比例
+    head=bbox_h×60%。锚点 x 居中、y 从 bbox 顶开始（保头发完整、切下
+    部身体）。任何失败返回 False（调用方回退旧行为），绝不抛异常。
+    """
+    try:
+        got = _body_bbox(Path(src))
+        if got is None:
+            return False
+        (x0, y0, x1, y1), im, mask = got
+        bw, bh = x1 - x0, y1 - y0
+        if bh <= 0:
+            return False
+        neck = _head_bottom_y(mask, x0, y0, x1, y1)
+        head_h = (neck - y0) if neck else 0
+        if not (bh * 0.35 <= head_h <= bh * 0.75):
+            # 肩线过高（半张脸）/过低（profile 失真）→ 固定比例兜底
+            head_h = bh * _COVER_HEAD_RATIO
+        side = int(min(max(head_h / _COVER_TARGET, bh * 0.5),
+                       min(bh * 1.2, min(im.width, im.height))))
+        cx = (x0 + x1) // 2
+        wx0 = max(0, min(cx - side // 2, im.width - side))
+        wy0 = max(0, min(y0, im.height - side))
+        win = im.crop((wx0, wy0, min(wx0 + side, im.width),
+                       min(wy0 + side, im.height)))
+        scale = size / side
+        nw, nh = max(1, round(win.width * scale)), max(1, round(win.height * scale))
+        win = win.resize((nw, nh), Image.LANCZOS)
+        canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        canvas.paste(win, ((size - nw) // 2, (size - nh) // 2), win)
+        out = Path(out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        canvas.save(out)
+        return True
+    except Exception:   # noqa: BLE001
+        return False
+
 
 def make_banner(src_paths: list, out: Path) -> None:
     """前 4 张成品拼 750×400 横幅（2026-09-02 美观度重做，评分复盘驱动）。

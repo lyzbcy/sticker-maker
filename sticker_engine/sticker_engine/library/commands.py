@@ -10,6 +10,48 @@ from .transfer import TransferManager
 COMMANDS = ('status', 'bind_account', 'preview', 'execute', 'connect', 'import', 'reconcile',
             'refresh', 'resolve', 'delete', 'handoff', 'capture')
 LOCK = threading.RLock()
+# 当前持锁任务（hooks.invoke 与本文件 register 共用一把 LOCK，两侧都维护）：
+# 拒绝消息据此告诉用户"谁在跑、跑了多久"，而不是一句无主语的"请等待"
+_LOCK_OWNER = {'cmd': '', 'at': 0.0}
+_TASK_LABELS = {
+    'run': '生成表情', 'run_batch': '批量生成', 'publish_episode': '提交作品',
+    'fix_and_republish': '整改重发', 'shelf_passed': '上架', 'sync_platform_status': '一键更新',
+    'library_preview': '生成迁移预览', 'library_execute': '执行迁移/复制',
+    'library_refresh': '刷新资源库', 'library_handoff': '准备切换电脑',
+    'library_import': '复制导入', 'library_connect': '连接资源库',
+}
+
+
+def _lock_wait_message(default='资源任务'):
+    import time as _time
+    held = _time.monotonic() - _LOCK_OWNER['at'] if _LOCK_OWNER['at'] else 0.0
+    owner = _TASK_LABELS.get(_LOCK_OWNER['cmd']) or _LOCK_OWNER['cmd'] or default
+    return f'「{owner}」正在进行（已 {held:.0f} 秒），完成后即可继续当前操作；详情见底部活动日志'
+# status 结果短缓存：一次 status 全量扫库（12k 文件约 20s+ 持锁），UI 又
+# 周期轮询——缓存内直接返回快照，把锁和 IO 让给用户主动触发的命令。
+# 任何非 status 的 library 命令执行后立即失效（见 register）。
+_STATUS_TTL = 20.0
+_STATUS_CACHE = {'at': 0.0, 'data': None}
+
+
+# run_batch 等长任务持锁期间置 True：其工作线程（流水线生成/发布线程）
+# 豁免 LOCK 抢锁——RLock 重入是同线程语义，跨线程伙伴会被误拒
+# （2026-09-09 流水线事故：批量 5 组在同一秒全部"资源任务正在进行"）
+BATCH_LOCK_HELD = False
+
+
+def batch_lock_held() -> bool:
+    return BATCH_LOCK_HELD
+
+
+def _cached_status(rt):
+    import time as _time
+    now = _time.monotonic()
+    if _STATUS_CACHE['data'] is not None and now - _STATUS_CACHE['at'] < _STATUS_TTL:
+        return _STATUS_CACHE['data']
+    data = rt.status()
+    _STATUS_CACHE.update(at=now, data=data)
+    return data
 
 
 def _progress_emitter(cli, req_id):
@@ -37,7 +79,7 @@ def dispatch(cli, name, req_id, args):
     rt = LibraryRuntime(cli._ensure_engine().config.paths.user_data)
     manager = TransferManager(rt.local / 'transfers')
     if name == 'status':
-        return rt.status()
+        return _cached_status(rt)
     if name == 'bind_account':
         result = rt.bind(args.get('account'), bool(args.get('confirm_legacy')))
         cli._engine = None
@@ -181,14 +223,19 @@ def register(cli):
             # 用户手动触发的命令应等到锁释放继续执行；
             # 只有长任务（如全量刷新）持锁超过 3 秒才提示稍后重试
             if not LOCK.acquire(timeout=3):
-                cli._result(req_id, 'fail', errors=[{'message': '资源任务正在进行（超过 3 秒未释放），请等待当前任务完成后再试'}])
+                cli._result(req_id, 'fail', errors=[{'message': _lock_wait_message('资源任务')}])
                 return
+            _LOCK_OWNER.update(cmd='library_' + name, at=__import__('time').monotonic())
             try:
                 data = dispatch(cli, name, req_id, args)
+                if name != 'status':
+                    # 写类命令改变了库/账号状态，status 快照立即失效
+                    _STATUS_CACHE['at'] = 0.0
                 cli._result(req_id, 'ok', data=data)
             except Exception as exc:
                 cli._result(req_id, 'fail', errors=[{'message': str(exc)}])
             finally:
+                _LOCK_OWNER.update(cmd='', at=0.0)
                 LOCK.release()
         return call
     for name in COMMANDS:
