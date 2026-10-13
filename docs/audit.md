@@ -20,7 +20,7 @@
 |润物细无声.md|既有精选角色/原创贴图资源与FeaturedShowcase|沿用；实际新图样品可视检查通过|
 |ios与win兼容架构.md|Mac/Windows依赖隔离；统一协议；Windows native Codex无需Node；打包Chromium+keyring；Mac分发脚本原子替换并校验|Windows冻结运行真实通过；Mac待CI；不宣称支持iPhone|
 |强制刷新组件.md|稳定version.json来源、文本安全渲染、离线介绍可见、手动版本刷新、自动刷新防循环|源码修复；公网仍0.5.0，未提前指向不存在包|
-|网页回归测试.md|按规范授权独立ux_regression子代理；真实Vite浏览器+解包Electron；16个前端文件83项测试|通过，报告verification/ux-regression.md|
+|网页回归测试.md|按规范授权独立ux_regression子代理；真实Vite浏览器+解包Electron；16个前端文件85项测试|通过，报告verification/ux-regression.md|
 |启动器适配/接入指南及适配规范|现有登记/图标/真实exe识别规则已在软件中心；最终包登记描述与实际装机识别需一致|待最终发布、主维护启动器接入及严格脚本+真实安装验收|
 |skill 静默更新.md|本地规范快照；项目渐进式入口已补齐；版本与实际产物区分|文档已补；远端备份待执行|
 
@@ -33,7 +33,7 @@
 
 ## 已观察证据
 - 基线：桌面65通过；引擎17失败/457通过/3跳过（verification/baseline-*.txt）。
-- 修复：桌面83通过；引擎500通过/6跳过（verification/modified-*.txt）。跳过限POSIX shell/symlink/需授权fixture，不是假装生产能力通过。
+- 修复：桌面85通过；引擎506通过/6跳过（verification/modified-*.txt）。跳过限POSIX shell/symlink/需授权fixture，不是假装生产能力通过。
 - Windows冻结引擎：PATH仅System32、隔离HOME、没有开发Python/Node情况下真实启动Chromium和keyring（verification/frozen-runtime-*）；最新打包仍需重复该验收。
 - 真实单次4x4生图：episode_20261013_171309，16表情；21张素材ZIP导出；原图和240px透明成品已查看；没有执行微信提交。
 - 早期假成功记录generation-false-success.txt保留但作废，绝不计入验收。

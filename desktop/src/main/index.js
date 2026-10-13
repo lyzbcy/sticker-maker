@@ -152,7 +152,7 @@ app.whenReady().then(() => {
   ipcMain.handle('send-feedback', async (_e, payload) => {
     const { sendFeedback } = require('./feedback')
     const { net } = require('electron')
-    return sendFeedback(payload, { version: app.getVersion(), fetchFn: net.fetch })
+    return sendFeedback(payload, { version: app.getVersion(), fetchFn: net.fetch, storageDir: app.getPath('userData') })
   })
 
   ipcMain.handle('check-for-updates', async () => {

@@ -34,7 +34,7 @@ jobs:
         working-directory: sticker_engine
         run: |
           python -m pip install -e ".[dev]" pyinstaller
-          python -m pytest tests -q
+          python -m pytest tests ../server -q
           python -m playwright install chromium
           pyinstaller sticker-engine-cli.spec --noconfirm
       - name: Test and package desktop
