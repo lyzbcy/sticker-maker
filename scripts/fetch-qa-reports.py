@@ -1,5 +1,5 @@
 """Read small QA reports from an Actions ZIP using ranges; no installer download."""
-import json,os,struct,subprocess,sys,urllib.request,urllib.error,zlib
+import json,os,struct,subprocess,sys,urllib.request,urllib.error,zlib,uuid
 from pathlib import Path
 run,name=sys.argv[1:]
 for key in ['HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy']:os.environ.pop(key,None)
@@ -15,11 +15,13 @@ except urllib.error.HTTPError as error:
  url=error.headers['Location']
 token=None
 def fetch(spec,maximum):
- request=urllib.request.Request(url,headers={'Range':spec,'User-Agent':'Sticker-QA'})
+ request=urllib.request.Request(url+'&range_nonce='+uuid.uuid4().hex,headers={'Range':spec,'User-Agent':'Sticker-QA','Cache-Control':'no-cache'})
  with opener.open(request,timeout=45) as response:
   if response.status!=206:raise RuntimeError('artifact server did not support bounded range')
   data=response.read(maximum+1)
   if len(data)>maximum:raise RuntimeError('unexpected large range')
+  actual=response.headers.get('Content-Range','')
+  assert actual.startswith('bytes '+spec.removeprefix('bytes=')+'/'), (spec,actual)
   return data,response.headers.get('Content-Range','')
 with opener.open(urllib.request.Request(url,method='HEAD'),timeout=30) as response:
  total=int(response.headers['Content-Length'])
@@ -36,7 +38,7 @@ for _ in range(count):
  method,compressed,plain=header[4],header[8],header[9]
  name_length,extra_length,comment_length=header[10:13];offset=header[16]
  filename=central[index+46:index+46+name_length].decode('utf-8');index+=46+name_length+extra_length+comment_length
- if Path(filename).name not in {'clean-install.json','clean-install.png','installed-runtime.txt','real-upgrade.json','packaged-app.png','windows-package.json'}:continue
+ if Path(filename).name not in {'clean-install.json','clean-install.png','installed-runtime.txt','real-upgrade.json','mac-upgrade.json','packaged-app.png','windows-package.json'}:continue
  if plain>5*1024*1024:raise RuntimeError('oversized report')
  local,_=fetch(f'bytes={offset}-{offset+29}',30);fields=struct.unpack('<4s5H3I2H',local);assert fields[0]==b'PK\x03\x04'
  data_offset=offset+30+fields[-2]+fields[-1]

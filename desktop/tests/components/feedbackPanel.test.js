@@ -29,10 +29,22 @@ describe('feedback interaction (mock transport; no actual messages)', () => {
     await sendButton().trigger('click')
     await flushPromises()
     expect(sendFeedback).toHaveBeenCalledTimes(1)
-    expect(wrapper.get('[role="status"]').text()).toContain('已送达作者')
+    const response = wrapper.get('[role="status"]')
+    expect(response.text()).toContain('已送达作者')
+    expect(response.isVisible()).toBe(true)
+    expect(response.attributes('aria-live')).toBe('polite')
+    // Guard against putting confirmation after the form/buttons where the
+    // desktop fixed status bar hid it. This tests DOM order, not jsdom geometry.
+    expect(response.element.compareDocumentPosition(wrapper.get('textarea').element)
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(wrapper.get('textarea').element.value).toBe('')
     expect(sendButton().isDisabled()).toBe(true)
     expect(sendFeedback.mock.calls[0][0].logs).not.toContain('secret-sample-token')
+    await wrapper.get('textarea').setValue('第二条隔离测试留言')
+    expect(sendButton().isDisabled()).toBe(false)
+    await sendButton().trigger('click')
+    await flushPromises()
+    expect(sendFeedback).toHaveBeenCalledTimes(2)
   })
 
   it('keeps draft and restores send button after network rejection, allowing retry', async () => {
@@ -41,6 +53,9 @@ describe('feedback interaction (mock transport; no actual messages)', () => {
     await sendButton().trigger('click')
     await flushPromises()
     expect(wrapper.get('[role="status"]').text()).toContain('模拟网络断开')
+    expect(wrapper.get('[role="status"]').isVisible()).toBe(true)
+    expect(wrapper.get('[role="status"]').element.compareDocumentPosition(wrapper.get('textarea').element)
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(wrapper.get('textarea').element.value).toContain('改善安装说明')
     expect(sendButton().isDisabled()).toBe(false)
     await sendButton().trigger('click')

@@ -7,7 +7,9 @@ DEST_PATH="$INSTALL_ROOT/表情包一键制作.app"
 UPDATE_MODE="${1:-}"
 OLD_PID="${2:-}"
 READY_FILE="${3:-}"
-show_error() { /usr/bin/osascript - "$1" <<'APPLESCRIPT'
+show_error() {
+if [ "${STICKER_INSTALL_NO_LAUNCH:-0}" = '1' ]; then printf '%s\n' "$1" >&2; return; fi
+/usr/bin/osascript - "$1" <<'APPLESCRIPT'
 on run argv
  display dialog (item 1 of argv) buttons {"好"} default button 1 with title "安装失败"
 end run

@@ -100,6 +100,10 @@ jobs:
         if: matrix.platform == 'mac'
         shell: bash
         run: python scripts/verify-packaged-ui.py "$RUNNER_TEMP/fan-apps/表情包一键制作.app/Contents/MacOS/表情包一键制作"
+      - name: Mac actual old bundle replacement and failure retention
+        if: matrix.platform == 'mac'
+        timeout-minutes: 10
+        run: python scripts/verify-mac-upgrade.py
       - name: Ensure runtime actually launched browser
         shell: bash
         run: |
@@ -112,6 +116,7 @@ jobs:
             verification/clean-install.*
             verification/installed-runtime.txt
             verification/real-upgrade.json
+            verification/mac-upgrade.json
             verification/packaged-app.png
             desktop/release/*setup.exe
             desktop/release/windows-package.json

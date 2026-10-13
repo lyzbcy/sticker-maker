@@ -4,7 +4,7 @@
 
 # 反馈转发服务
 
-用户已选择使用现有服务部署。已确认文档中的腾讯云服务器和现有HTTPS 8443入口，保留443 DERP、launcher-stats及其它应用。文档专用SSH密钥id_ed25519_tencent在本机缺失；现有默认密钥登录返回Permission denied。目前没有远端写入或上线成功记录。
+用户已选择现有服务并完成部署。现役ubuntu账号使用现有密钥连接；新增HTTPS8443路由与独立systemd，保留443 DERP、launcher-stats及其它应用。公开反馈已真实送达，见下方上线结果。
 
 源码server/feedback_relay.py、systemd与nginx-location.conf已准备。绑定127.0.0.1:18774；仅新路由/sticker-maker-feedback；机器人URL只在服务器/etc/sticker-feedback.env，权限0600。客户端feedback-config.json仅放公开HTTPS转发URL，不含密钥。
 
@@ -20,9 +20,9 @@ SQLite最多约8MB，回执保存24小时，不保存IP/留言/日志原文；�
 4. 用真实公网TLS验证health/无效请求；发送一次明确标记的验收留言（模拟日志，不传真实作品/账号），验证errcode=0和同ID重复不发送。只有通过后写客户端公开URL并重新打包。
 5. 上线失败恢复原nginx配置与旧current指针、旧systemd；保留回执数据库，防重复送达。现有launcher-stats/health必须前后都正常。
 
-当前仅本机单元与真实回环HTTP测试（上游mock），未发真实企业微信消息。公开URL为空是有意发布门禁，不宣称粉丝反馈已可送达。
+本机7项转发测试与上线后一次明确标记的真实留言分别验收；两类证据不混用。公开URL已写客户端配置，机器人密钥仅在服务端。
 
-2026-10-13：回环真实HTTP+上游mock 7项通过；默认SSH密钥root登录未通过；公网8443/launcher-stats/health请求超时，无服务端写入。需要用户提供已授权服务的专用密钥文件路径继续实际部署。
+历史失败：root登录失败与HTTPSIP的Schannel连接超时已定位；改用现役ubuntu及正常证书验证的HTTPS请求后，部署与公网验收通过。
 
 ## 真实上线结果
 
