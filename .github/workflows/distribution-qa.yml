@@ -57,6 +57,23 @@ jobs:
           $env:STICKER_ENGINE_USER_DATA=Join-Path $env:RUNNER_TEMP 'isolated-library'
           '{"id":"runtime","cmd":"runtime_check","args":{}}' | & "$target/resources/sticker-engine-cli/sticker-engine-cli.exe" | Tee-Object ../verification/installed-runtime.txt
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - name: Windows actual installed window
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: python scripts/verify-packaged-ui.py "$env:RUNNER_TEMP/fan-app/表情包一键制作.exe"
+      - name: Windows real previous-version upgrade
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: |
+          $old=Join-Path $env:RUNNER_TEMP 'old-0.5.0.exe'
+          curl.exe -fL --retry 3 -o $old https://github.com/lyzbcy/sticker-maker/releases/download/v0.5.0/sticker-maker-win-v0.5.0-setup.exe
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          if((Get-FileHash -LiteralPath $old -Algorithm SHA256).Hash.ToLowerInvariant() -ne '84c8f0195b3222adce299ec8ba8e203fac10931d7f25720b07305a07b331e680'){throw 'previous official release hash mismatch'}
+          $target=Join-Path $env:RUNNER_TEMP 'fan-app'
+          $p=Start-Process -FilePath $old -ArgumentList ('/S /D='+$target) -WindowStyle Hidden -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'old-version installation failed'}
+          node scripts/verify-real-upgrade.cjs
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
       - name: Mac real clean installation
         if: matrix.platform == 'mac'
         shell: bash
@@ -83,5 +100,7 @@ jobs:
           path: |
             verification/clean-install.*
             verification/installed-runtime.txt
+            verification/real-upgrade.json
+            verification/packaged-app.png
             desktop/release/*setup.exe
             desktop/release/windows-package.json

@@ -407,16 +407,15 @@ class ResourceLibrary:
     # ---- 跨进程盘缓存（2026-09-11）：works() 冷 164s → 命中后秒开 ----
 
     def _disk_cache_path(self) -> Optional[Path]:
-        import os
-        base = os.environ.get("APPDATA")
-        if not base:
-            return None
+        from ..config.paths import current_platform, resolve_paths
         import hashlib
         lid = getattr(self, "_library_id", "") or ""
         if not lid:
             return None
         h = hashlib.md5(str(self._root).encode("utf-8")).hexdigest()[:12]
-        d = Path(base) / "StickerEngine" / "catalog_cache"
+        # Same platform/override resolution as the engine. APPDATA is Windows-only;
+        # it also bypassed the isolated device directory during tests.
+        d = resolve_paths(current_platform()).user_data / "catalog_cache"
         return d / f"{lid[:8]}_{h}.json"
 
     def _ensure_disk_cache(self):

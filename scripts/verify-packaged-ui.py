@@ -1,10 +1,11 @@
-import subprocess,os,time,json
+import subprocess,os,time,json,sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 for key in ['HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy']:os.environ.pop(key,None)
 root=Path.cwd();data=root/'verification/packaged-profile';data.mkdir(exist_ok=True)
 env=dict(os.environ,STICKER_DESKTOP_USER_DATA=str(data/'desktop'),STICKER_ENGINE_USER_DATA=str(data/'engine'),STICKER_ENGINE_NO_LOCK='1')
-proc=subprocess.Popen([str(root/'desktop/release/win-unpacked/表情包一键制作.exe'),'--remote-debugging-port=9489'],env=env,stdout=open(data/'stdout.txt','w'),stderr=open(data/'stderr.txt','w'))
+exe=Path(sys.argv[1]) if len(sys.argv)>1 else root/'desktop/release/win-unpacked/表情包一键制作.exe'
+proc=subprocess.Popen([str(exe),'--remote-debugging-port=9489'],env=env,stdout=open(data/'stdout.txt','w'),stderr=open(data/'stderr.txt','w'))
 try:
  with sync_playwright() as p:
   for i in range(40):

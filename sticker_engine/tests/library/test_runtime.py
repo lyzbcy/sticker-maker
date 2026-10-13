@@ -77,6 +77,19 @@ def test_connect_restart_refresh_and_local_hide(tmp_path):
     assert a.rows()
 
 
+def test_hide_invalidates_rows_during_first_two_minutes_of_system_uptime(tmp_path, monkeypatch):
+    import time
+    monkeypatch.setattr(time, 'monotonic', lambda: 45.0)
+    rt = runtime(tmp_path / 'fresh-boot'); rt.bind('a@example.com', True)
+    path = rt.placeholder({'StikerID': 'early-boot', 'Name': '刚启动'})
+    rt.capture(path)
+    wid = rt.rows()[0]['work_id']
+    assert rt._rows_at == 45.0
+    rt.delete(wid, 'hide')
+    assert rt.rows() == []
+    assert runtime(tmp_path / 'fresh-boot').rows() == []
+
+
 def test_capture_is_idempotent_and_conflict_not_silently_overwritten(tmp_path):
     rt = runtime(tmp_path); rt.bind('a@example.com', True)
     p = rt.placeholder({'StikerID': '1', 'Name': '作品'})

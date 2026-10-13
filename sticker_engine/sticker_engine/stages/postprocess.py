@@ -287,10 +287,19 @@ def draw_caption(img, text: str):
     font = None
     for fp in (r"C:\Windows\Fonts\STHUPO.TTF",    # 华文琥珀（粗圆体，首选）
                r"C:\Windows\Fonts\SIMYOU.TTF",    # 幼圆
-               r"C:\Windows\Fonts\msyhbd.ttc"):   # 微软雅黑粗体（兜底）
+               r"C:\Windows\Fonts\msyhbd.ttc",    # 微软雅黑粗体（兜底）
+               "/System/Library/Fonts/PingFang.ttc",
+               "/System/Library/Fonts/Supplemental/Songti.ttc",
+               "/System/Library/Fonts/STHeiti Medium.ttc",
+               "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+               "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+               "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"):
         if Path(fp).exists():
-            font = ImageFont.truetype(fp, max(18, int(w * 0.14)))
-            break
+            try:
+                font = ImageFont.truetype(fp, max(18, int(w * 0.14)))
+                break
+            except OSError:
+                continue  # A missing/corrupt face must not suppress other installed fonts.
     if font is None:
         return img
     d = ImageDraw.Draw(img)

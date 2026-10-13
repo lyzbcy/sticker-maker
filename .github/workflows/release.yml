@@ -84,9 +84,9 @@ jobs:
           STAGE="release/stage-mac"
           rm -rf "$STAGE"
           mkdir -p "$STAGE"
-          cp -R "$APP" "$STAGE/"
           codesign --force --deep --sign - "$APP"
           codesign --verify --deep --strict "$APP"
+          cp -R "$APP" "$STAGE/"
           cp install.command "$STAGE/"
           (
             cd "$STAGE"

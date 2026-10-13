@@ -723,7 +723,8 @@ class LibraryRuntime:
         # capture 处已同步打穿（capture 新作品/改动入口，delete/resolve 改
         # 变可见性），发布等校验路径有 hooks 前 refresh 兜底新鲜度。
         import time as _time
-        if _time.monotonic() - getattr(self, '_rows_at', 0) < 120:
+        rows_at = getattr(self, '_rows_at', 0)
+        if rows_at > 0 and _time.monotonic() - rows_at < 120:
             cached = self.state.get('last_rows')
             if cached is not None:
                 return cached

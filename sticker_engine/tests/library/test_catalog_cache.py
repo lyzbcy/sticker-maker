@@ -1,6 +1,7 @@
 import json
 import time
 from pathlib import Path
+import pytest
 
 from sticker_engine.library.catalog import ResourceLibrary
 
@@ -71,3 +72,32 @@ def test_disk_cache_survives_new_instance_and_invalidates_on_write(tmp_path):
     lib3 = ResourceLibrary(tmp_path / "library")
     w = lib3.read_work("acc", "work")
     assert (w["revision"] or {}).get("metadata", {}).get("v") == 2
+
+
+@pytest.mark.parametrize('platform,segments', [
+    ('darwin', ('Library', 'Application Support', 'StickerEngine')),
+    ('linux', ('.local', 'share', 'StickerEngine')),
+])
+def test_disk_cache_without_windows_appdata_uses_platform_directory(tmp_path, monkeypatch, platform, segments):
+    import os
+    from sticker_engine.config import paths
+    home = tmp_path / 'private' / 'var' / 'fixture-home'
+    monkeypatch.delenv('APPDATA', raising=False)
+    monkeypatch.delenv('XDG_DATA_HOME', raising=False)
+    monkeypatch.delenv('STICKER_ENGINE_USER_DATA', raising=False)
+    monkeypatch.setattr(paths, 'current_platform', lambda: platform)
+    monkeypatch.setattr(os.path, 'expanduser', lambda p: str(home / p[2:]) if p.startswith('~/') else str(home))
+    lib = ResourceLibrary(tmp_path / 'library', create=True)
+    resource = lib.put_file(_raw(tmp_path, 'platform.png', b'platform'))
+    lib.write_revision('acc', 'work', {'v': 1}, {'a.png': resource})
+    lib.read_work('acc', 'work'); lib.save_disk_cache()
+    cache = lib._disk_cache_path()
+    assert cache.parent == home.joinpath(*segments, 'catalog_cache')
+    assert cache.is_file()
+    assert ResourceLibrary(tmp_path / 'library').read_work('acc', 'work')['state'] == 'available'
+
+
+def test_disk_cache_honors_isolated_device_override(tmp_path, monkeypatch):
+    monkeypatch.setenv('STICKER_ENGINE_USER_DATA', str(tmp_path / 'isolated-device'))
+    library = ResourceLibrary(tmp_path / 'library', create=True)
+    assert library._disk_cache_path().parent == tmp_path / 'isolated-device' / 'catalog_cache'

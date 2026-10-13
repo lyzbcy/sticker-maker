@@ -7,6 +7,7 @@ NameError: name 'np' is not defined——import 用别名 `_np`、使用处写
 background_mode=solid 时 S2 必须跑通且品红被替换成马卡龙色。
 """
 import numpy as np
+import pytest
 from PIL import Image
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -97,6 +98,37 @@ def test_solid_mode_keeps_ai_painted_background(tmp_path):
     white = ((band > 235).all(axis=2)).sum()
     assert red > 500, f"底部未检出红色底条（{red}）"
     assert white > 30, f"红条上未检出白色文字像素（{white}）"
+
+
+@pytest.mark.parametrize('font_path', [
+    '/System/Library/Fonts/PingFang.ttc',
+    '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+])
+def test_non_windows_caption_font_path_keeps_background_and_caption(tmp_path, monkeypatch, font_path):
+    """Use the actual local CJK face for pixels; fixture only platform path discovery.
+
+    Mac/Linux CI use their real face. Windows runner maps the fixture to its real
+    CJK face; assertions for red bar, white lettering and blue corners stay intact.
+    """
+    from PIL import ImageFont
+    real_exists, real_truetype = Path.exists, ImageFont.truetype
+    candidates = [r'C:\Windows\Fonts\msyhbd.ttc', '/System/Library/Fonts/PingFang.ttc',
+                  '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+                  '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc']
+    actual = next((p for p in candidates if real_exists(Path(p))), None)
+    assert actual is not None, 'A CJK font is required to validate actual Chinese caption pixels'
+    selected = []
+    def exists(path):
+        if path == Path(font_path): return True
+        if path.as_posix().startswith(('C:/Windows/Fonts', '/System/Library/Fonts', '/usr/share/fonts')): return False
+        return real_exists(path)
+    def truetype(path, size, *args, **kwargs):
+        selected.append(str(path))
+        return real_truetype(actual if str(path) == font_path else path, size, *args, **kwargs)
+    monkeypatch.setattr(Path, 'exists', exists)
+    monkeypatch.setattr(ImageFont, 'truetype', truetype)
+    test_solid_mode_keeps_ai_painted_background(tmp_path)
+    assert font_path in selected
 
 
 def test_solid_mode_text_off_keeps_clean(tmp_path):

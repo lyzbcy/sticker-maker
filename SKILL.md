@@ -15,7 +15,7 @@ Electron 30 / Vue 3 / Pinia / Python 3.12 / PyInstaller；Windows x64 与 macOS 
 - verification：原始哈希、回归结果与验收证据。
 ## 开发流程
 1. 先读 docs/agent.md、roadmap.md 和对应模块文档，再读 .agents/skills/sticker-maker-dev/SKILL.md 的引擎纪律。
-2. 保留现有未提交代码与真实用户数据；小写英文文件名；fix/feat/docs 提交；独立工作分支。
+2. 保留现有未提交代码与真实用户数据；小写英文文件名；fix/feat/docs 提交；按既定仓库分支协作；备份源码不等于发布安装包。
 3. 代码、文档、版本同步：desktop/package.json、package-lock.json、Python pyproject.toml 与 cli.py；正式包确认后再更新网站 version.json，严禁伪造新包哈希。
 4. 日志显示阶段/输入输出/耗时；反馈只发送经脱敏的信息。
 5. 发版读 reference/standards/启动器适配/laoyu-launcher-adapter/SKILL.md 与 docs/distribution.md。
