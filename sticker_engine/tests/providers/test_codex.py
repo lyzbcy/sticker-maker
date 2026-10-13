@@ -29,8 +29,8 @@ def test_resolve_codex_path_finds_desktop_app(monkeypatch):
         assert Path(resolved).is_file()
 
 
-def test_check_uses_auth_json_for_login(tmp_path, monkeypatch):
-    """修复B验证：登录态看 auth.json（不只 auth）。"""
+def test_check_uses_cli_login_status_without_exposing_auth(tmp_path, monkeypatch):
+    """Only CLI login status proves authentication; file contents are not read."""
     provider = CodexProvider(codex_exec="codex", output_dir=tmp_path)
     # mock 找到 codex + --version 成功
     monkeypatch.setattr(provider, "_resolve_codex_path", lambda: "/fake/codex")
@@ -46,8 +46,27 @@ def test_check_uses_auth_json_for_login(tmp_path, monkeypatch):
     monkeypatch.setattr(cmod.Path, "home", classmethod(lambda cls: fake_home))
     status = provider.check()
     assert status.installed is True
-    assert status.logged_in is True   # auth.json 存在 → 登录态
+    assert status.logged_in is True
     assert status.image_ready is True
+
+
+def test_stale_auth_file_cannot_make_login_ready(tmp_path,monkeypatch):
+    import sticker_engine.providers.codex as cmod
+    provider=CodexProvider(output_dir=tmp_path)
+    monkeypatch.setattr(provider,'_resolve_codex_path',lambda:'/fake/codex')
+    home=tmp_path/'home';(home/'.codex').mkdir(parents=True);(home/'.codex/auth.json').write_text('{}')
+    monkeypatch.setattr(cmod.Path,'home',classmethod(lambda cls:home))
+    monkeypatch.setattr(cmod.subprocess,'run',lambda command,**kw:type('R',(),{'returncode':1 if command[1:]==['login','status'] else 0})())
+    status=provider.check();assert status.installed;assert not status.logged_in;assert not status.image_ready
+
+
+def test_keychain_login_can_be_ready_without_auth_file(tmp_path,monkeypatch):
+    import sticker_engine.providers.codex as cmod
+    provider=CodexProvider(output_dir=tmp_path)
+    monkeypatch.setattr(provider,'_resolve_codex_path',lambda:'/fake/codex')
+    monkeypatch.setattr(cmod.Path,'home',classmethod(lambda cls:tmp_path/'empty-home'))
+    monkeypatch.setattr(cmod.subprocess,'run',lambda *a,**kw:type('R',(),{'returncode':0})())
+    assert provider.check().image_ready
 
 
 def test_scan_latest_image_picks_most_recent(tmp_path):

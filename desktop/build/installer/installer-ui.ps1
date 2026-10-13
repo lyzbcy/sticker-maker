@@ -17,6 +17,7 @@ Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase
 trap {
  $message=$_.Exception.Message
  try{[IO.File]::WriteAllText((Join-Path $env:TEMP 'laoyu-installer-error.log'),$_.ToString())}catch{}
+ if($Acceptance){@{status='failed';message=$message}|ConvertTo-Json|Set-Content -LiteralPath $ReportPath -Encoding UTF8;exit 1}
  [void][Windows.MessageBox]::Show('安装界面暂时无法启动，请重新打开安装包。'+[Environment]::NewLine+$message,'表情包一键制作')
  exit 1
 }
@@ -26,9 +27,20 @@ $script:process = $null
 $script:timer = $null
 $script:exitCode = 0
 $script:startedAt = $null
+function Find-RegisteredInstall([object[]]$Rows) {
+ foreach($row in $Rows) {
+  if($row.DisplayName -notmatch '^表情包一键制作(?: \d+\.\d+\.\d+)?$'){continue}
+  $icon=([string]$row.DisplayIcon -replace ',\s*-?\d+$','').Trim('"')
+  try {
+   if(-not [IO.Path]::IsPathRooted($icon) -or [IO.Path]::GetFileName($icon) -ne '表情包一键制作.exe' -or -not [IO.File]::Exists($icon)){continue}
+   return @{Root=[IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($icon));Version=[string]$row.DisplayVersion}
+  } catch {continue}
+ }
+ return $null
+}
 if (-not $InstallDir) {
- $record=Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object {$_.DisplayName -eq '表情包一键制作'} | Select-Object -First 1
- if ($record.InstallLocation) {$InstallDir=$record.InstallLocation;$LocationReason='沿用已有安装位置，保留作品与设置。'}
+ $record=Find-RegisteredInstall @(Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue)
+ if ($record.Root) {$InstallDir=$record.Root;$LocationReason='沿用已有安装位置，保留作品与设置。'}
  else {
   $InstallDir=Join-Path $env:LOCALAPPDATA 'Programs\表情包一键制作';$LocationReason='没有合适的其他磁盘，使用当前用户目录，也可以手动选择。'
   foreach($drive in [IO.DriveInfo]::GetDrives()) {
@@ -185,8 +197,8 @@ function Start-Installation {
     $script:timer.Stop();$script:installing=$false;$controls.CloseButton.IsEnabled=$true
     if($script:process.ExitCode -ne 0){throw "安装没有完成（代码 $($script:process.ExitCode)）。请先退出表情包工具，再重试。"}
     $executable=Join-Path $script:selectedPath "表情包一键制作.exe"
-    $record=Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' | Where-Object {$_.DisplayName -eq '表情包一键制作' -and $_.DisplayVersion -eq $Version} | Select-Object -First 1
-    if(-not [IO.File]::Exists($executable) -or $record.DisplayVersion -ne $Version -or ([Diagnostics.FileVersionInfo]::GetVersionInfo($executable).FileVersion -ne $Version)){throw '安装结果未能确认，请重试或选择其他位置。'}
+    $record=Find-RegisteredInstall @(Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*')
+    if(-not [IO.File]::Exists($executable) -or $record.Version -ne $Version -or $record.Root -ne $script:selectedPath -or ([Diagnostics.FileVersionInfo]::GetVersionInfo($executable).FileVersion -ne $Version)){throw '安装结果未能确认，请重试或选择其他位置。'}
     if($controls.DesktopCheck.IsChecked){
      $ws=New-Object -ComObject WScript.Shell;$link=$ws.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) '表情包一键制作.lnk'));$link.TargetPath=$executable;$link.WorkingDirectory=$script:selectedPath;$link.IconLocation=$executable;$link.Save()
     }

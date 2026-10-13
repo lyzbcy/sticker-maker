@@ -46,9 +46,12 @@ jobs:
           npx electron-builder --${{ matrix.platform == 'win' && 'win --x64' || 'mac --arm64' }} --publish never
       - name: Windows wrapper and real clean installation
         if: matrix.platform == 'win'
+        timeout-minutes: 10
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force verification | Out-Null
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-installer-registry.ps1
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           Set-Location desktop
           node scripts/build-win.cjs
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
@@ -66,6 +69,7 @@ jobs:
         run: python scripts/verify-packaged-ui.py "$env:RUNNER_TEMP/fan-app/表情包一键制作.exe"
       - name: Windows real previous-version upgrade
         if: matrix.platform == 'win'
+        timeout-minutes: 15
         shell: pwsh
         run: |
           $old=Join-Path $env:RUNNER_TEMP 'old-0.5.0.exe'
@@ -92,6 +96,10 @@ jobs:
           codesign --verify --deep --strict "$STICKER_INSTALL_ROOT/表情包一键制作.app"
           export STICKER_ENGINE_USER_DATA="$RUNNER_TEMP/isolated-library"
           printf '%s\n' '{"id":"runtime","cmd":"runtime_check","args":{}}' | "$STICKER_INSTALL_ROOT/表情包一键制作.app/Contents/Resources/sticker-engine-cli/sticker-engine-cli" | tee verification/installed-runtime.txt
+      - name: Mac actual installed window
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: python scripts/verify-packaged-ui.py "$RUNNER_TEMP/fan-apps/表情包一键制作.app/Contents/MacOS/表情包一键制作"
       - name: Ensure runtime actually launched browser
         shell: bash
         run: |

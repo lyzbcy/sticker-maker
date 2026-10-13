@@ -140,15 +140,22 @@ class CodexProvider:
             r = subprocess.run([self.codex_exec, "--version"], capture_output=True, text=True,
                                encoding="utf-8", errors="replace", timeout=15, creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
             if r.returncode != 0:
-                return CodexStatus(True, False, False, "codex 存在但 --version 失败，可能未登录。")
+                return CodexStatus(True, False, False, "生图工具启动验证失败，请点击修复。", True)
         except (subprocess.TimeoutExpired, FileNotFoundError):
-            return CodexStatus(True, False, False, "codex 调用超时或失败。")
-        # 3) 登录态：检查 ~/.codex/auth 或 ~/.codex/auth.json（两种都认）
-        codex_dir = Path.home() / ".codex"
-        logged = (codex_dir / "auth").exists() or (codex_dir / "auth.json").exists()
+            return CodexStatus(True, False, False, "生图工具启动验证超时或失败，请点击修复。", True)
+        # Codex may store auth in the system credential store (especially Mac).
+        # An auth.json file alone can also be stale or empty; ask the CLI without
+        # reading, displaying or logging any credential content.
+        try:
+            auth = subprocess.run([self.codex_exec, "login", "status"], capture_output=True,
+                                  encoding="utf-8", errors="replace", timeout=15,
+                                  creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
+            logged = auth.returncode == 0
+        except (OSError,subprocess.TimeoutExpired):
+            return CodexStatus(True,False,False,"登录检测未完成，请检查网络后重新检测。")
         return CodexStatus(
             installed=True, logged_in=logged, image_ready=logged,
-            guidance_msg="" if logged else "codex 已安装但未检测到登录态，请先 `codex login`。"
+            guidance_msg="" if logged else "生图工具已安装，登录尚未完成或已过期；请打开登录窗口，再重新检测。"
         )
 
     def build_generate_command(self, prompt: str, refs: list) -> list:

@@ -383,12 +383,10 @@ def cmd_install_codex(req_id, args):
     provider = CodexProvider(codex_exec="codex", output_dir=engine.config.paths.codex_output_dir)
     resolved = provider._resolve_codex_path()
     managed = engine.config.paths.user_data / 'tools/codex/codex.exe'
-    helpers = ['codex-code-mode-host.exe','codex-command-runner.exe','codex-windows-sandbox-setup.exe']
-    complete = all((managed.parent/name).is_file() for name in helpers)
-    if resolved and (Path(resolved).resolve() != managed.resolve() or complete):
+    status = provider.check() if resolved else None
+    if status and status.installed and not status.needs_repair:
         _emit({"id": req_id, "type": "progress", "stage": "install",
                "message": f"✅ 已检测到 codex：{resolved}", "percent": 0.9})
-        status = provider.check()
         _result(req_id, "ok" if status.installed else "fail",
                 data={"installed": status.installed, "image_ready": status.image_ready,
                       "guidance_msg": status.guidance_msg,

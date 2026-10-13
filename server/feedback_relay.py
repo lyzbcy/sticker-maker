@@ -67,7 +67,7 @@ class Relay:
         try:
             parts = chunks(content)
             for index, part in enumerate(parts):
-                body = {'msgtype':'text','text':{'content':f'表情包一键制作 反馈 {index+1}/{len(parts)}\n'+part}}
+                body = {'msgtype':'text','text':{'content':f'表情包一键制作 反馈 {request_id} {index+1}/{len(parts)}\n'+part}}
                 response = self.sender(body)
                 if response.get('errcode') != 0:
                     state = 'failed' if index == 0 else 'partial'; break
@@ -127,6 +127,10 @@ class BoundedServer(ThreadingHTTPServer):
     def process_request_thread(self,request,address):
         try:super().process_request_thread(request,address)
         finally:self.slots.release()
+    def handle_error(self,request,address):
+        # The stdlib default prints the peer IP and stack; neither is needed here.
+        import sys
+        print('feedback request failed',file=sys.stderr)
 
 
 if __name__ == '__main__':

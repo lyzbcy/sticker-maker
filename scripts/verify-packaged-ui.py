@@ -18,6 +18,7 @@ try:
   page.screenshot(path=str(root/'verification/packaged-app.png'))
   assert len(text)>80,text
   assert not errors,errors
+  assert page.evaluate('document.visibilityState')=='visible','installed application window is hidden'
   print(json.dumps({'status':'PACKAGED_UI_PASS','visible_text_length':len(text),'page_errors':errors,'title':page.title(),'own_process_pid':proc.pid},ensure_ascii=False))
 finally:
  proc.terminate();proc.wait(timeout=30)

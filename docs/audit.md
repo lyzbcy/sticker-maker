@@ -33,7 +33,7 @@
 
 ## 已观察证据
 - 基线：桌面65通过；引擎17失败/457通过/3跳过（verification/baseline-*.txt）。
-- 修复：桌面85通过；引擎506通过/6跳过（verification/modified-*.txt）。跳过限POSIX shell/symlink/需授权fixture，不是假装生产能力通过。
+- 修复：桌面85通过；引擎512通过/6跳过（verification/modified-*.txt）。跳过限POSIX shell/symlink/需授权fixture，不是假装生产能力通过。
 - Windows冻结引擎：PATH仅System32、隔离HOME、没有开发Python/Node情况下真实启动Chromium和keyring（verification/frozen-runtime-*）；最新打包仍需重复该验收。
 - 真实单次4x4生图：episode_20261013_171309，16表情；21张素材ZIP导出；原图和240px透明成品已查看；没有执行微信提交。
 - 早期假成功记录generation-false-success.txt保留但作废，绝不计入验收。
@@ -45,3 +45,7 @@
 3. 配置公开反馈转发服务并做明确标记的测试留言；企微群机器人密钥仅服务端持有。
 4. 严格启动器适配验收；最终发布包SHA+官网元数据+下载文件公网回读一致。
 5. 先过门禁，再不可变发布0.5.1；候选包不是粉丝正式版，网站继续保留0.5.0。
+
+2026-10-13新增实证：CI38381407992 Mac真实签名、安装、冻结引擎内置Chromium/Keyring启动通过；Windows正在真实安装。新增CLI修复路由4项与真实login status2项，后端512+转发7=519通过/6既有跳过，桌面85通过。当前后端auth存在文件不再等于可用登录，CLI登录检测支持Mac凭据存储。
+
+Windows真实安装CI38381407992：后端实际安装完成，但WPF验收错误地按精确DisplayName查登记，NSIS默认附版本号且InstallLocation在另一注册键，造成假失败。已固定uninstallDisplayName并用DisplayIcon真实exe目录兼容旧登记；AST执行的注册fixture验证旧/新名称、目录与排除无关软件通过。需要新轮真实安装复核，不把fixture当正式装机。
