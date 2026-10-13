@@ -112,10 +112,31 @@ def test_non_windows_caption_font_path_keeps_background_and_caption(tmp_path, mo
     """
     from PIL import ImageFont
     real_exists, real_truetype = Path.exists, ImageFont.truetype
-    candidates = [r'C:\Windows\Fonts\msyhbd.ttc', '/System/Library/Fonts/PingFang.ttc',
-                  '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
-                  '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc']
-    actual = next((p for p in candidates if real_exists(Path(p))), None)
+    # Discover an independently installed CJK face, not the production candidate
+    # tuple. Recent macOS images need not expose PingFang at its legacy path:
+    # Songti/Heiti in Supplemental still provide real Chinese glyphs.
+    roots = [Path(r'C:\Windows\Fonts'), Path('/System/Library/Fonts'),
+             Path('/Library/Fonts'), Path('/usr/share/fonts'),
+             Path.home() / '.local/share/fonts']
+    candidates = []
+    for root in roots:
+        if real_exists(root):
+            candidates.extend(p for p in root.rglob('*')
+                              if p.suffix.lower() in {'.ttf', '.ttc', '.otf'}
+                              and any(name in p.name.lower() for name in
+                                      ('msyh', 'simhei', 'simyou', 'sthupo', 'pingfang',
+                                       'songti', 'heiti', 'notosanscjk', 'notoserifcjk', 'wqy')))
+    # Preserve stable local Windows pixels while still loading native Mac/Linux
+    # faces; existence alone is not enough (broken font files must not be used).
+    candidates.sort(key=lambda p: (p.name.lower() != 'msyhbd.ttc', str(p)))
+    actual = None
+    for candidate in candidates:
+        try:
+            real_truetype(str(candidate), 18)
+        except OSError:
+            continue
+        actual = str(candidate)
+        break
     assert actual is not None, 'A CJK font is required to validate actual Chinese caption pixels'
     selected = []
     def exists(path):
