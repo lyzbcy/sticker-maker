@@ -1,57 +1,51 @@
-> 现状：验收中（未正式发布）
+> 现状：0.5.1正式发行，分发验收完成
 > 负责人：捞鱼工作室 / Codex
 > 最后更新时间：2026-10-13
 
-# 软件开发规范逐项审计（0.5.1 候选）
+# 软件开发规范逐项审计
 
 ## 结论
-原0.5.0未满足全部要求。当前已完成代码修复与本机样品验收，公开反馈与Mac ARM64安装/窗口已通过；正式分发仍待Windows真实升级、最终公开包和严格启动器验收。不得将单测、源码或进程存在当作正式安装/更新通过。
+原0.5.0存在未完成要求及真实缺陷。本轮补齐开发入口、易用性、安装运行、反馈、更新和适配；0.5.1已正式发布。按每类证据分别记录，不用单测或历史图片冒充真实生成/安装。
 
-|规范来源（reference/standards）|当前实现与证据|状态|
+|规范来源（reference/standards）|实现与证据|状态|
 |---|---|---|
-|软件对应开发 skill.md|根 SKILL、docs/agent 导航、roadmap/tech/audit/distribution/updater；三处源码版本0.5.1|已补齐；远端发布待验收|
-|日志系统.md|JSON-lines 阶段心跳、可展开复制日志、实际错误透传|本机+单测通过|
-|用户提意见&反馈.md|显著反馈入口、分类/留言、可选脱敏日志预览、失败保留草稿、55s超时、30s防重复|真实桌面→公网→企微ACK0通过；同ID只查回执；密钥仅服务端|
-|自适应更新检测.md|Asia/Shanghai每日尝试/成功分记、SemVer正式版本、固定受信URL+强制SHA、流式进度、下载失败保留、ready/commit/abort、安装备份恢复|单测+真实PowerShell交接通过；CI38386084597真实0.5.0升级、作品保留、可见重启通过；失败恢复为fixture证据|
-|个人推广页.MD|作者页、既有三个推广二维码、软件介绍页入口|沿用既有素材；实际Win/Mac窗口通过，沿用二维码素材|
-|不打扰用户的求好评.md|原15天延迟/持续生效逻辑；问题入口走直接反馈|代码+UI回归通过|
-|图标logo.md|沿用本软件原创图标；全局software-logos.json登记；reference/icon-selection.json哈希|已登记（非重新随机抽取）|
-|美化设计.md|cream/forest主题、隐藏白色系统标题栏、WPF主题安装器、非系统盘优先、中文换目录、自选快捷方式|安装器预览和真实解包版窗口通过；CI实际安装与卸载登记通过|
-|润物细无声.md|既有精选角色/原创贴图资源与FeaturedShowcase|沿用；实际新图样品可视检查通过|
-|ios与win兼容架构.md|Mac/Windows依赖隔离；统一协议；Windows native Codex无需Node；打包Chromium+keyring；Mac分发脚本原子替换并校验|Win/Mac实际内置浏览器运行及可见窗口通过；不宣称支持iPhone|
-|强制刷新组件.md|稳定version.json来源、文本安全渲染、离线介绍可见、手动版本刷新、自动刷新防循环|源码修复；公网仍0.5.0，未提前指向不存在包|
-|网页回归测试.md|按规范授权独立ux_regression子代理；真实Vite浏览器+解包Electron；16个前端文件86项测试|通过，报告verification/ux-regression.md|
-|启动器适配/接入指南及适配规范|现有登记/图标/真实exe识别规则已在软件中心；最终包登记描述与实际装机识别需一致|待最终发布、主维护启动器接入及严格脚本+真实安装验收|
-|skill 静默更新.md|本地规范快照；项目渐进式入口已补齐；版本与实际产物区分|文档已补；main远端备份已完成|
+|软件对应开发skill.md|根SKILL、docs导航及模块文档、规范自包含；desktop/lock/pyproject/CLI0.5.1|代码/文档/版本同步，main远端备份|
+|日志系统.md|JSON-lines阶段心跳、错误透传、底部日志展开/复制；运行时错误可见|单测+实际桌面窗口|
+|用户提意见&反馈.md|显著入口、分类留言、可取消日志、脱敏预览、草稿保留；公开私密转发、持久ID、防重复回执、55s超时|519测试中的7项转发；实际UI→公网→企微ACK0；同IDduplicate=true|
+|自适应更新检测.md|上海日期每日首启；稳定semver、固定来源+强制SHA；下载进度/互斥；Win握手、备份、版本核验、可见重启；Macstage/签名/旧bundle备份|Win真实0.5.0→0.5.1升级与作品保留；Mac真实替换/坏签名保留；失败类型见下方|
+|个人推广页.MD|作者介绍、3个既有二维码、软件介绍页与视频|沿用既有素材，前端回归|
+|不打扰用户的求好评.md|15天延迟逻辑，问题引导直接反馈|代码+独立UI回归|
+|图标logo.md|本软件原创图标，全球software-logos.json登记及reference/icon-selection.json SHA|原图与哈希登记一致|
+|美化设计.md|cream/forest主题；无白色系统标题栏；WPF主题安装器；非系统盘优先；中文换目录；快捷方式/完成打开可选|Win真实主题安装登记/窗口截图通过|
+|润物细无声.md|精选角色与原创贴图；默认先1组且不自动投稿|16张真实新图+21素材ZIP视觉查看|
+|ios与win兼容架构.md|桌面Win x64/Mac ARM64依赖隔离；内置Chromium/keyring；统一协议；Native Codex四组件原子校验|Win/Mac安装目录实际冻结运行时与窗口通过|
+|强制刷新组件.md|固定version.json、安全文本渲染、离线介绍、手动刷新、防循环；Pages dispatch明确读取live main|官网公网0.5.1回读；双平台发布SHA一致|
+|网页回归测试.md|规范授权独立ux_regression；真实Vite/解包Electron；86项桌面单测；680px首屏反馈回执可见|独立回归与实际窗口分别验收|
+|启动器适配/接入指南及适配规范|产品ID/主exe/卸载名/原图/视频；最终包元数据；主维护Win目录登记；私有Win/Mac分支产品元数据备份|35项严格脚本exit0，真实自动识别既有安装；独立隔离UI生产shell.openPath打开0.5.1原生可见；新包安装/更新另由干净CI验证|
+|skill静默更新.md|规范快照、渐进式入口、源码main备份、真实版本区分|已补齐|
 
-## 重要真实缺陷
-- 生图调用失败却扫描全部历史图片，误报成功：现仅允许本次thread_id、请求起始mtime之后的新图，reader全部join后再读取输出；无本次身份不使用全局最新图。
-- Native安装缺code-mode-host导致实际生图失败：改为四组件SHA校验、完整资产预检查、同release staging整体切换，任一组件失败保留整套旧版；manifest逐文件检测。
-- 批量默认自动提交：改为默认1组、不自动投稿，导出ZIP独立于微信创作者账号。
-- 保存失败误显示概率之和错误：真实异常透传、保存失败不进入下一步。
-- 版本和测试污染：软件/CLI/pyproject统一0.5.1；隔离测试数据，修复Windows UTF8与平台fixture。
+## 真实修复
+- 生图工具失败却选取历史图片：仅本次thread_id与请求开始后的新图片；reader join后取输出；无身份不回退全局最新图。
+- 缺code-mode-host造成实际生成失败：完整四组件同release/SHA/staging/manifest；损坏或version/login失败正确进入修复或登录。
+- 默认批量自动投稿：改为1组、不自动投稿；本地ZIP独立于微信账号。
+- 保存失败显示错信息、白页、初始化故障无提示：异常透传，Vite模块正确导出，失败可见。
+- 原NSIS卸载名称附版本与登记位置造成安装器假失败：稳定展示名，兼容旧名称，按DisplayIcon实际目录核验。
+- Mac浏览器framework被PyInstaller重签破坏：COLLECT后完整复制symlink并签名核验。
+- 反馈成功提示被状态栏遮挡：放首屏，实际680px视口可见，loopback布局测试不发送真实消息。
 
-## 已观察证据
-- 基线：桌面65通过；引擎17失败/457通过/3跳过（verification/baseline-*.txt）。
-- 修复：桌面86通过；引擎512通过/6跳过（verification/modified-*.txt）。跳过限POSIX shell/symlink/需授权fixture，不是假装生产能力通过。
-- Windows冻结引擎：PATH仅System32、隔离HOME、没有开发Python/Node情况下真实启动Chromium和keyring（verification/frozen-runtime-*）；最新打包仍需重复该验收。
-- 真实单次4x4生图：episode_20261013_171309，16表情；21张素材ZIP导出；原图和240px透明成品已查看；没有执行微信提交。
-- 早期假成功记录generation-false-success.txt保留但作废，绝不计入验收。
-- 事务证据verification/transaction：基线错误选历史图、修复返回None、另一副本回滚恢复原hash/行为，实际源代码保持修复。
+## 核心证据
+- 基线：桌面65通过；引擎17失败/457通过/3跳过。
+- 当前：桌面86通过；后端/转发519通过、6平台跳过（POSIX/symlink等既有fixture）。
+- 真实生成：episode_20261013_171309，16张透明240px新图；21素材ZIP；对应本次会话与mtime；微信平台实际提交0条。历史假成功记录作废并保留。
+- QA38386084597、38387951697：Win/Mac全绿；Windows主题安装登记、冻结浏览器/凭据后端、实际可见窗口；旧正式0.5.0经新助手实际升级、confirmUpdateRestart及作品sentinel保留。
+- Mac旧0.5.0实际bundle替换；原hash备份；破坏签名后安装器exit1，既有bundle/作品保留。窗口由独立实际启动验证；换包测试headless。
+- Windows失败恢复证据为源码/fixture；Mac坏签名拒绝为实际安装器。旧0.5.0需要手工迁移一次，不能说旧助手被远端修复。
+- 原nginx配置真实回滚校验SHA后重应用，analytics保持健康；最终反馈服务active；密钥仅服务端0600文件；1条明确标记的验收留言，无用户日志。
+- 发布run38389217935成功，正式产物重新构建；最终字节校验见verification/final-release/release-verification.json，不沿用候选包SHA。
 
-## 发布门禁
-1. 干净Windows：真实安装、目录选择、卸载登记版本、无需开发依赖运行、窗口可见；从旧版升级，校验作品和设置保留，失败恢复。
-2. Mac arm64：真实签名校验、安装、引擎/浏览器启动与更新；普通Mac的Gatekeeper提示与操作步骤仍需确认。
-3. 配置公开反馈转发服务并做明确标记的测试留言；企微群机器人密钥仅服务端持有。
-4. 严格启动器适配验收；最终发布包SHA+官网元数据+下载文件公网回读一致。
-5. 先过门禁，再不可变发布0.5.1；候选包不是粉丝正式版，网站继续保留0.5.0。
+## 分发状态
+入口https://lyzbcy.github.io/sticker-maker/；GitHub正式v0.5.1。Windows约444MB、Mac约499MB；粉丝无需Python/Node，但使用自己的ChatGPT登录、网络与生图额度。系统签名：Windows未代码签名，Macad-hoc未Apple公证；首次系统确认步骤见fan-guide.md及Apple官方指南。不同电脑网络/系统设置仍有差异。
 
-2026-10-13新增实证：CI38381407992 Mac真实签名、安装、冻结引擎内置Chromium/Keyring启动通过；Windows正在真实安装。新增CLI修复路由4项与真实login status2项，后端512+转发7=519通过/6既有跳过，桌面86通过。当前后端auth存在文件不再等于可用登录，CLI登录检测支持Mac凭据存储。
+事务四件套见verification/transaction和feedback-deployment；原始397文件备份只保存在本机。现有个人作品、账号和运行中的安装版保持原状，验收均用隔离数据。软件中心仅更新此产品目录数据，Windows0.8.10/Mac0.9.4客户端版本保持。
 
-Windows真实安装CI38381407992：后端实际安装完成，但WPF验收错误地按精确DisplayName查登记，NSIS默认附版本号且InstallLocation在另一注册键，造成假失败。已固定uninstallDisplayName并用DisplayIcon真实exe目录兼容旧登记；AST执行的注册fixture验证旧/新名称、目录与排除无关软件通过。需要新轮真实安装复核，不把fixture当正式装机。
-
-反馈门禁已通过：用户选用既有服务，已用ubuntu部署私密转发，公网TLS/健康200、实际桌面UI→企微业务ACK0，重复同ID只查回执，不发送用户日志。原nginx配置真实回滚验证后重新应用，analytics始终健康；最终转发active，机器人密钥仅服务端0600环境文件。后端512+relay7=519通过/6跳过，桌面新增防过期回执重送现86通过。反馈成功提示移到首屏，避免被底部状态栏遮住。
-
-CI38386084597全绿：Windows主题安装登记通过，内置运行时真实启动，实际窗口可见无错误；真实0.5.0升级0.5.1、confirmUpdateRestart与作品sentinel保留通过。Mac ARM64签名、安装、运行时和可见窗口通过。公开反馈业务送达及现有服务回滚已通过。新增Mac旧bundle/坏签名CI不冒称自动可见重启。
-
-CI38387951697 Mac旧正式0.5.0 bundle实际替换通过；备份hash等于原版，坏签名输入被安装器exit1拒绝，原安装和作品保持。该测试headless，未假称自动重启可见。
+最终公开下载：Win443765034字节，SHA fafb405c130c47bc7dd9d2282978744e699937ce362ab838e3f9d42a74a7ba2d；Mac499356699字节，SHA af7d89ee2024b4199a2713f15de272683e7a1d049b393d8e032559adcef8a908。完整下载字节/官网/GitHubdigest一致，Mac全ZIP CRC与外层bundle0.5.1通过。启动器UI采用未修改官方0.8.10resources+Electron30 dev host，隔离关联与正常公网latest预检明示；首轮协议登记已恢复既有正式0.8.6处理器，个人软件4个原进程均保留。

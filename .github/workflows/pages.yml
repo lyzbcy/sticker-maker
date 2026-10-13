@@ -25,6 +25,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # A release dispatch can carry a briefly stale event head after the bot push.
+          # Fetch the live main ref rather than redeploying the previous version.json.
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

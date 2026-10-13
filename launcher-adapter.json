@@ -1,0 +1,27 @@
+{
+  "id": "sticker-maker",
+  "name": "表情包一键制作",
+  "category": "内容创作",
+  "summary": "把图片变成表情包，让创作、排版和导出更简单。",
+  "siteUrl": "https://lyzbcy.github.io/sticker-maker/",
+  "schemaVersion": 1,
+  "version": "0.5.1",
+  "platform": "win32",
+  "architecture": "x64",
+  "executable": "表情包一键制作.exe",
+  "iconPath": "desktop/build/icon.ico",
+  "videoIds": [
+    "7657593115926072639",
+    "7651649039531822345"
+  ],
+  "package": {
+    "type": "installer",
+    "path": "verification/final-release/sticker-maker-win-v0.5.1-setup.exe",
+    "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.5.1/sticker-maker-win-v0.5.1-setup.exe",
+    "sha256": "fafb405c130c47bc7dd9d2282978744e699937ce362ab838e3f9d42a74a7ba2d",
+    "sizeBytes": 443765034
+  },
+  "installation": {
+    "displayName": "表情包一键制作"
+  }
+}
