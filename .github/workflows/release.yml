@@ -87,6 +87,7 @@ jobs:
           codesign --force --deep --sign - "$APP"
           codesign --verify --deep --strict "$APP"
           cp -R "$APP" "$STAGE/"
+          codesign --verify --deep --strict "$STAGE/$APP_NAME"
           cp install.command "$STAGE/"
           (
             cd "$STAGE"

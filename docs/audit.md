@@ -12,11 +12,11 @@
 |软件对应开发 skill.md|根 SKILL、docs/agent 导航、roadmap/tech/audit/distribution/updater；三处源码版本0.5.1|已补齐；远端发布待验收|
 |日志系统.md|JSON-lines 阶段心跳、可展开复制日志、实际错误透传|本机+单测通过|
 |用户提意见&反馈.md|显著反馈入口、分类/留言、可选脱敏日志预览、失败保留草稿、55s超时、30s防重复|真实桌面→公网→企微ACK0通过；同ID只查回执；密钥仅服务端|
-|自适应更新检测.md|Asia/Shanghai每日尝试/成功分记、SemVer正式版本、固定受信URL+强制SHA、流式进度、下载失败保留、ready/commit/abort、安装备份恢复|单测+真实PowerShell交接通过；真实安装升级重启未通过验收|
-|个人推广页.MD|作者页、既有三个推广二维码、软件介绍页入口|沿用既有素材；尚待装机最终视觉复核|
+|自适应更新检测.md|Asia/Shanghai每日尝试/成功分记、SemVer正式版本、固定受信URL+强制SHA、流式进度、下载失败保留、ready/commit/abort、安装备份恢复|单测+真实PowerShell交接通过；CI38386084597真实0.5.0升级、作品保留、可见重启通过；失败恢复为fixture证据|
+|个人推广页.MD|作者页、既有三个推广二维码、软件介绍页入口|沿用既有素材；实际Win/Mac窗口通过，沿用二维码素材|
 |不打扰用户的求好评.md|原15天延迟/持续生效逻辑；问题入口走直接反馈|代码+UI回归通过|
 |图标logo.md|沿用本软件原创图标；全局software-logos.json登记；reference/icon-selection.json哈希|已登记（非重新随机抽取）|
-|美化设计.md|cream/forest主题、隐藏白色系统标题栏、WPF主题安装器、非系统盘优先、中文换目录、自选快捷方式|安装器预览和真实解包版窗口通过；真实安装待CI|
+|美化设计.md|cream/forest主题、隐藏白色系统标题栏、WPF主题安装器、非系统盘优先、中文换目录、自选快捷方式|安装器预览和真实解包版窗口通过；CI实际安装与卸载登记通过|
 |润物细无声.md|既有精选角色/原创贴图资源与FeaturedShowcase|沿用；实际新图样品可视检查通过|
 |ios与win兼容架构.md|Mac/Windows依赖隔离；统一协议；Windows native Codex无需Node；打包Chromium+keyring；Mac分发脚本原子替换并校验|Win/Mac实际内置浏览器运行及可见窗口通过；不宣称支持iPhone|
 |强制刷新组件.md|稳定version.json来源、文本安全渲染、离线介绍可见、手动版本刷新、自动刷新防循环|源码修复；公网仍0.5.0，未提前指向不存在包|
@@ -51,3 +51,7 @@
 Windows真实安装CI38381407992：后端实际安装完成，但WPF验收错误地按精确DisplayName查登记，NSIS默认附版本号且InstallLocation在另一注册键，造成假失败。已固定uninstallDisplayName并用DisplayIcon真实exe目录兼容旧登记；AST执行的注册fixture验证旧/新名称、目录与排除无关软件通过。需要新轮真实安装复核，不把fixture当正式装机。
 
 反馈门禁已通过：用户选用既有服务，已用ubuntu部署私密转发，公网TLS/健康200、实际桌面UI→企微业务ACK0，重复同ID只查回执，不发送用户日志。原nginx配置真实回滚验证后重新应用，analytics始终健康；最终转发active，机器人密钥仅服务端0600环境文件。后端512+relay7=519通过/6跳过，桌面新增防过期回执重送现86通过。反馈成功提示移到首屏，避免被底部状态栏遮住。
+
+CI38386084597全绿：Windows主题安装登记通过，内置运行时真实启动，实际窗口可见无错误；真实0.5.0升级0.5.1、confirmUpdateRestart与作品sentinel保留通过。Mac ARM64签名、安装、运行时和可见窗口通过。公开反馈业务送达及现有服务回滚已通过。新增Mac旧bundle/坏签名CI不冒称自动可见重启。
+
+CI38387951697 Mac旧正式0.5.0 bundle实际替换通过；备份hash等于原版，坏签名输入被安装器exit1拒绝，原安装和作品保持。该测试headless，未假称自动重启可见。
