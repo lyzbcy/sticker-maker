@@ -9,7 +9,7 @@
       <div class="state-icon ok">✓</div>
       <div class="state-text">
         <p class="state-title">codex 可用</p>
-        <p class="hint">已检测到 codex，图片生成可用。</p>
+        <p class="hint">生图工具和登录检测通过；实际生成以账号额度、网络和生成结果为准。</p>
       </div>
       <button class="btn-ghost" @click="store.checkCodex">重新检测</button>
     </div>

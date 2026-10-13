@@ -1,4 +1,5 @@
 import subprocess,os,time,json,sys
+sys.stdout.reconfigure(encoding='utf-8')
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 for key in ['HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy']:os.environ.pop(key,None)

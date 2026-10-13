@@ -3,14 +3,14 @@
     <button @click="$emit('back')">← 返回主页</button>
     <h2>遇到问题反馈</h2>
     <p>写下你遇到了什么、希望怎么改。发送后直接交给作者，不需要跳转。</p>
+    <p class="response" role="status" aria-live="polite" v-show="result">{{ result }}</p>
     <label>问题类型 <select v-model="category"><option>使用问题</option><option>生成失败</option><option>安装或更新</option><option>功能建议</option></select></label>
-    <label class="message">你的留言<textarea v-model="message" maxlength="1500" rows="6" placeholder="例如：点开始后出现了什么提示？请不要填写密码或登录令牌。"></textarea></label>
+    <label class="message">你的留言<textarea v-model="message" maxlength="1500" rows="5" placeholder="例如：点开始后出现了什么提示？请不要填写密码或登录令牌。"></textarea></label>
     <label><input type="checkbox" v-model="includeLogs" /> 附上最近的诊断日志（可取消）</label>
     <p class="hint">发送前会移除常见令牌、账号与本机路径；不读取作品、密码或登录文件。请检查留言是否含私人信息。</p>
     <details v-if="includeLogs"><summary>预览将发送的日志</summary><pre>{{ preview }}</pre></details>
     <button :disabled="busy || !message.trim()" @click="send">{{ busy ? '发送中…' : '发送给作者' }}</button>
     <button @click="copy" :disabled="busy">复制诊断信息</button>
-    <p role="status">{{ result }}</p>
   </section>
 </template>
 <script setup>
@@ -38,5 +38,6 @@ async function copy() {
 </script>
 <style scoped>
 .feedback{max-width:720px;margin:32px auto;padding:24px;background:var(--paper);border-radius:22px;color:var(--ink)}
+.response{padding:12px;border:1px solid var(--sage);border-radius:12px;background:var(--bg-cream);font-weight:600}
 label{display:block;margin:16px 0}.message textarea{display:block;width:100%;margin-top:8px;resize:vertical}button,textarea,select{font:inherit;padding:10px 14px;border:1px solid var(--sage);border-radius:12px;background:var(--bg-cream);color:var(--forest)}button{cursor:pointer;margin-right:8px}button:disabled{opacity:.5;cursor:default}.hint{font-size:12px;color:var(--muted)}pre{white-space:pre-wrap;word-break:break-word;font-size:12px}
 </style>

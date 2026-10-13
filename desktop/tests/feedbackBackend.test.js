@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import crypto from 'node:crypto'
 import { sendFeedback } from '../src/main/feedback'
 let store, now=2000000
 beforeEach(()=>{store=fs.mkdtempSync(path.join(os.tmpdir(),'sticker-feedback-fixture-'));now+=60000;vi.spyOn(Date,'now').mockReturnValue(now)})
@@ -32,5 +33,12 @@ describe('feedback backend (no actual messages)', () => {
   const first=JSON.parse(fetchFn.mock.calls[0][1].body),second=JSON.parse(fetchFn.mock.calls[1][1].body)
   expect(first.request_id).toBe(second.request_id);expect(first.request_id).toBe(pending.id)
   expect(fs.existsSync(path.join(store,'feedback-pending.json'))).toBe(false)
+ })
+ it('never resends after the server receipt retention window',async()=>{
+  const content='表情包一键制作 0.5.1\n\nold receipt fixture\n'
+  fs.writeFileSync(path.join(store,'feedback-pending.json'),JSON.stringify({id:'00000000-0000-0000-0000-000000000001',digest:crypto.createHash('sha256').update(content).digest('hex'),createdAt:now-24*60*60*1000}))
+  const fetchFn=vi.fn()
+  const result=await sendFeedback({message:'old receipt fixture'},{storageDir:store,version:'0.5.1',endpoint:'https://feedback.test/intake',fetchFn})
+  expect(result.ok).toBe(false);expect(result.error).toContain('超过查询窗口');expect(fetchFn).not.toHaveBeenCalled()
  })
 })

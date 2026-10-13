@@ -56,7 +56,7 @@ class Relay:
             row = self.db.execute('SELECT digest,state FROM receipts WHERE id=?', (request_id,)).fetchone()
             if row:
                 if row[0] != digest: return 409, {'errcode': 1, 'error': 'request_id_conflict'}
-                return (200 if row[1] == 'delivered' else 409), {'errcode': 0 if row[1] == 'delivered' else 1, 'state': row[1], 'request_id': request_id}
+                return (200 if row[1] == 'delivered' else 409), {'errcode': 0 if row[1] == 'delivered' else 1, 'state': row[1], 'request_id': request_id, 'duplicate':True}
             self.rates = {k:v for k,v in self.rates.items() if now-v < 60}
             if now-self.rates.get(client, -1000) < 30 or sum(k.startswith('global:') for k in self.rates) >= 3:
                 return 429, {'errcode': 1, 'error': 'rate_limited'}

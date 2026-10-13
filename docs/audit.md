@@ -49,3 +49,5 @@
 2026-10-13新增实证：CI38381407992 Mac真实签名、安装、冻结引擎内置Chromium/Keyring启动通过；Windows正在真实安装。新增CLI修复路由4项与真实login status2项，后端512+转发7=519通过/6既有跳过，桌面85通过。当前后端auth存在文件不再等于可用登录，CLI登录检测支持Mac凭据存储。
 
 Windows真实安装CI38381407992：后端实际安装完成，但WPF验收错误地按精确DisplayName查登记，NSIS默认附版本号且InstallLocation在另一注册键，造成假失败。已固定uninstallDisplayName并用DisplayIcon真实exe目录兼容旧登记；AST执行的注册fixture验证旧/新名称、目录与排除无关软件通过。需要新轮真实安装复核，不把fixture当正式装机。
+
+反馈门禁已通过：用户选用既有服务，已用ubuntu部署私密转发，公网TLS/健康200、实际桌面UI→企微业务ACK0，重复同ID只查回执，不发送用户日志。原nginx配置真实回滚验证后重新应用，analytics始终健康；最终转发active，机器人密钥仅服务端0600环境文件。后端512+relay7=519通过/6跳过，桌面新增防过期回执重送现86通过。反馈成功提示移到首屏，避免被底部状态栏遮住。

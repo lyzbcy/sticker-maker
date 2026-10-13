@@ -19,7 +19,8 @@ async function sendFeedback(payload, { version, fetchFn = fetch, endpoint = FEED
       catch (error) { if (error.code !== 'ENOENT') throw Error('反馈回执记录读取失败，请先联系作者。'); pending = null }
     }
     if (pending && pending.digest !== digest) return { ok: false, error: `上一条反馈的回执待确认（${pending.id}），请先联系作者；草稿已保留。` }
-    pending = pending || { id: crypto.randomUUID(), digest }
+    if (pending && (!Number.isFinite(pending.createdAt) || Date.now()-pending.createdAt >= 23*60*60*1000)) return { ok: false, error: `反馈回执已超过查询窗口（${pending.id}），请联系作者确认，草稿已保留；不会自动重复发送。` }
+    pending = pending || { id: crypto.randomUUID(), digest, createdAt: Date.now() }
     if (pendingFile) {
       await fs.mkdir(storageDir, { recursive: true })
       await fs.writeFile(pendingFile + '.tmp', JSON.stringify(pending))
