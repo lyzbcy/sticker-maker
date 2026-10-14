@@ -31,6 +31,7 @@ jobs:
         shell: bash
         run: echo "PLAYWRIGHT_BROWSERS_PATH=${{ github.workspace }}/sticker_engine/build/browsers" >> "$GITHUB_ENV"
       - name: Test and freeze engine
+        shell: bash
         working-directory: sticker_engine
         run: |
           python -m pip install -e ".[dev]" pyinstaller
@@ -38,6 +39,7 @@ jobs:
           python -m playwright install chromium
           pyinstaller sticker-engine-cli.spec --noconfirm
       - name: Test and package desktop
+        shell: bash
         working-directory: desktop
         run: |
           npm ci

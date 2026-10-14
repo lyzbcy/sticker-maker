@@ -43,6 +43,7 @@ jobs:
         run: echo "PLAYWRIGHT_BROWSERS_PATH=${{ github.workspace }}/sticker_engine/build/browsers" >> "$GITHUB_ENV"
 
       - name: Build Python engine (PyInstaller)
+        shell: bash
         working-directory: sticker_engine
         run: |
           python -m pip install --upgrade pip
@@ -52,6 +53,7 @@ jobs:
           pyinstaller sticker-engine-cli.spec --noconfirm
 
       - name: Build Electron app
+        shell: bash
         working-directory: desktop
         run: |
           npm ci
