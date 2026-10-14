@@ -2,15 +2,15 @@
 > 证据截至：2026-10-14本机0.5.15上架提速实装验收；phase22精选11—14共80张正式投稿及平台身份核验；优化实验最近投稿仍phase13。
 > 这是已观察状态，不是实时平台查询；继续操作前重新核对任务/锁/平台状态。
 
-## 最新开发：0.5.15已实装，正式分发验收中
+## 最新开发：0.5.15已实装并正式发布
 - 已接入正式命令：精确ID预检、持久化意向、单POST、详情核验；Status6与7分别回写，发送后未知不重试并停批，取消保留已确认结果；前端显示快速接口、待核对原因、剩余及保存告警。
 - 后端全量699通过/6跳过，桌面98通过；原上架相关32例基线通过，修改后52例通过，元数据相关69例通过。源码版本desktop/package/lock、Python pyproject/cli均0.5.15。
 - 本机最终包安装exit0；PE/asar/引擎IPC均0.5.15，三份payload SHA与构建一致。最终冻结fast_shelf/cli/hooks字节码语义逐项匹配已测试源码；旧0.5.14全1841文件备份保留。
 - 初始安装版277预约1.311秒，云端已成功但列表被旧平台观测覆盖为审核通过；已修复平台专用提交和行快照，并跳过上架后的全素材再捕获。第二次最终安装版244预约1.240秒，实际列表与持久化元数据均已预约上架，完整命令23.661秒。331既有未决操作两次均在POST前拦截，不做清除或重复请求；两次验收共新增2笔真实预约，不把处理limit2冒充2笔成功。
 - 全部752份保护原图/评分等SHA保持；资源库644可用/1占位/208既有软删除、0pending/作品/设置冲突。独立回滚源码32例通过，旧冻结引擎get_version返回0.5.14（隔离只读fixture），真实本机与云端预约不回退。
-- 修正旧依赖锁中source-map-support不存在的0.5.31为实际已用0.5.21、改用官方registry；干净目录npm ci安装472包成功；CI原生步骤改为失败即停，Win/Mac旧升级验收去除新版本0.5.1硬编码。双平台QA run38535103836进行中，公网当前仍0.5.1。详细证据verification/shelf-integration-20261014。
+- 修正旧依赖锁中source-map-support不存在的0.5.31为实际已用0.5.21、改用官方registry；干净目录npm ci安装472包成功；CI原生步骤改为失败即停，Win/Mac旧升级验收去除新版本0.5.1硬编码。双平台QA run38535103836通过（Win实际旧版升级、Mac替换及失败保留）；正式Release run38537670224及Pages run38538966823成功，公网清单与页面均0.5.15，完整公开Win/Mac下载SHA与更新器选包核验通过。最终重复回归692通过/6跳过、桌面98通过；此前699例记录单独保留，不替代本次命令输出。Playwright最低1.46匹配显式max_retries=0。详细证据verification/shelf-integration-20261014。
 
-## 最新实测：一键上架提速（2026-10-14）
+## 前期独立实测：一键上架提速（2026-10-14，集成前历史）
 - 独立测试驱动真实预约4弹：旧页面流程204/214平均12.262秒；直接复用页面预约POST的198/173平均1.170秒，均含提交前详情读取及提交后平台详情核验，约10.48倍。不同作品、每组2弹的小样本，不是100弹批量全链路耗时。
 - 两组含登录、名单、操作回执及末尾列表复查的驱动墙钟分别31.682/9.351秒。接口`stikeroper`以POST查询参数`stikerid/opentime/oper=open`提交，来自当前页面代码和旧流程实际网络回执，不靠注入点击。
 - 4次平台`base_resp.ret=0`，新鲜详情均Status6已预约上架、OpenTime为2026-10-14；平台627弹不变，审核通过68→64，4笔资源库operation均已成功、无样本未决操作。没有把预约状态6记成已上架7。
@@ -28,8 +28,8 @@
 |项目|已验证状态|证据|
 |---|---|---|
 |源码/本机实装|源码/主程序PE/asar/引擎IPC均0.5.15；安装exit0、3份payload SHA与构建逐项一致，接口及持久化列表实际验收|../verification/shelf-integration-20261014/installation.json、installed-shelf-final.json|
-|后端/桌面|699通过、6既有fixture跳过 / 桌面98通过|../verification/shelf-integration-20261014/backend-tests.log、desktop-tests.log|
-|公网Windows/Mac|正式0.5.1，未更新公网清单|distribution.md、../desktop/site/version.json|
+|后端/桌面|最终重跑692通过、6既有fixture跳过 / 桌面98通过；此前699例日志保留|../verification/shelf-integration-20261014/backend-tests.log、desktop-tests.log|
+|公网Windows/Mac|正式0.5.15，Pages/Release完成，双平台完整公开下载SHA及实际更新器校验通过|distribution.md、../verification/shelf-integration-20261014/public-manifest-verification.json|
 |资源库|phase22实际重查644可用+1占位、0pending/作品/设置冲突、208既有软删除|../verification/selected-batch-phase22-20261014/live-after.json|
 |平台同步|phase22平台627作品；11—14每弹唯一新增身份/精确名称/20张及80/80含义核验，状态同步不等于全部理由/图片抓取|../verification/selected-batch-phase22-20261014/publication-summary.json|
 
