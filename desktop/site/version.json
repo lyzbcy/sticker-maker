@@ -1,17 +1,17 @@
 {
-  "version": "0.5.1",
-  "downloadUrl": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.5.1/sticker-maker-mac-v0.5.1.zip",
-  "sha256": "af7d89ee2024b4199a2713f15de272683e7a1d049b393d8e032559adcef8a908",
+  "version": "0.5.15",
+  "downloadUrl": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.5.15/sticker-maker-mac-v0.5.15.zip",
+  "sha256": "f6827611b885344e997dcba529ffc4af462d0b0fcabee5f47a6d7e0c088025bb",
   "platforms": {
     "mac": {
-      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.5.1/sticker-maker-mac-v0.5.1.zip",
-      "sha256": "af7d89ee2024b4199a2713f15de272683e7a1d049b393d8e032559adcef8a908"
+      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.5.15/sticker-maker-mac-v0.5.15.zip",
+      "sha256": "f6827611b885344e997dcba529ffc4af462d0b0fcabee5f47a6d7e0c088025bb"
     },
     "win": {
-      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.5.1/sticker-maker-win-v0.5.1-setup.exe",
-      "sha256": "fafb405c130c47bc7dd9d2282978744e699937ce362ab838e3f9d42a74a7ba2d"
+      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.5.15/sticker-maker-win-v0.5.15-setup.exe",
+      "sha256": "7c4f45ebf4336556b76eb3d92c1e1a22d309a139f231391b5a47224807a66353"
     }
   },
-  "releaseNotes": "粉丝易用性修复：批量默认一组且不自动提交；无需安装Python/Node；首次登录与反馈指引；本地ZIP导出；更新校验和失败恢复；主题安装器与非系统盘优先。",
-  "lastUpdated": "2026-10-13"
+  "releaseNotes": "一键上架提速：复用登录态直接预约，取消逐弹页面渲染和固定等待；逐弹核验真实预约状态，结果未知不重复请求；同步提速、资源库冲突修复、人工反馈修图及完整性校验。",
+  "lastUpdated": "2026-10-14"
 }
