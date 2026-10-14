@@ -14,7 +14,11 @@ from ..config.series import load_meta, save_meta
 
 ORIGIN = 'https://sticker.weixin.qq.com'
 LIST_URL = ORIGIN + '/cgi-bin/mmemoticon-bin/home?lang=zh_CN&f=json'
-STATUS = {2: '待审核', 4: '未通过审核', 5: '审核通过', 7: '已上架', 8: '已下架'}
+# Verified against the platform's List renderer (26052800 home bundle), not
+# EmojiList's different enum. One status=11 previously forced all 605 rows to DOM.
+STATUS = {1: '已保存', 2: '待审核', 3: '审核中', 4: '未通过审核', 5: '审核通过',
+          6: '已预约上架', 7: '已上架', 8: '已下架', 9: '强制下架',
+          10: '预约上架失败', 11: '限制投稿'}
 GROUPS = {'paneliconurl': '聊天页图标', 'bannerurl': '横幅',
           'storebannerurl': '横幅', 'storeiconurl': '封面',
           'stikername': '表情名称', 'stikerdesc': '表情介绍',
@@ -47,7 +51,7 @@ def read_json(page, url):
                 response.dispose()
 
 
-def parse_list(body):
+def parse_list(body, allow_unknown=False):
     rows = _check(body).get('List')
     if not isinstance(rows, list):
         raise PlatformDataError('平台列表结构已变化')
@@ -60,7 +64,7 @@ def parse_list(body):
                 or not isinstance(name, str) or not name
                 or type(row.get('Status')) is not int):
             raise PlatformDataError('平台作品身份重复或缺失')
-        if row['Status'] not in STATUS:
+        if row['Status'] not in STATUS and not allow_unknown:
             raise PlatformDataError('平台出现未知状态，需要页面方式核验')
         seen.add(sid)
     return rows
@@ -128,7 +132,9 @@ def ensure_history(meta):
     if not meta.platform_review_cycle:
         meta.platform_review_cycle = uuid.uuid4().hex
         meta.platform_review_source = 'unknown'
-    if meta.platform_reject_reason:
+    if meta.platform_reject_reason and not any(
+            h.get('cycle') == meta.platform_review_cycle and h.get('reason') == meta.platform_reject_reason
+            for h in meta.platform_review_history):
         record_reason(meta, meta.platform_reject_reason)
 
 
@@ -231,8 +237,17 @@ def sync_page(page, root, on_status=None, fetch_reasons=True, force_reasons=Fals
 
 
 def sync_rows(page, root, rows, say, fetch_reasons=True, force_reasons=False,
-              should_stop=None, account_id=None, placeholder_factory=None):
+              should_stop=None, account_id=None, placeholder_factory=None,
+              detail_reader=None, on_meta_saved=None):
     stopped = should_stop or (lambda: False)
+    started = time.monotonic()
+    total = len(rows)
+    unknown = [{'item_id': r['StikerID'], 'name': r['Name'], 'status_code': r['Status']}
+               for r in rows if r['Status'] not in STATUS]
+    rows = [r for r in rows if r['Status'] in STATUS]
+    if unknown:
+        say(f'接口返回 {total} 弹，其中 {len(unknown)} 弹为未识别状态；'
+            '保留这些作品原数据，其余作品继续快速同步（不转逐页翻页）')
     matches, unmatched = _match_rows(rows, root, account_id)
     created = 0
     if account_id and placeholder_factory:
@@ -246,17 +261,31 @@ def sync_rows(page, root, rows, say, fetch_reasons=True, force_reasons=False,
                 created += 1
                 unmatched = [r for r in unmatched if r['item_id'] != row['StikerID']]
     result = {'matched': len(matches), 'updated': 0, 'pages': 1,
-              'platform_total': len(rows), 'source': 'api', 'complete': True,
-              'list_complete': True, 'unmatched_platform': unmatched,
+              'platform_total': total, 'source': 'api', 'complete': not unknown,
+              'list_complete': not unknown, 'unmatched_platform': unmatched,
+              'unknown_statuses': unknown,
+              'persistence_failures': [],
               'reasons_fetched': 0, 'reasons_skipped': 0, 'reason_failures': [],
               'fresh_passed': [], 'created': created}
     queue = []
+
+    def persist(path, meta):
+        save_meta(path, meta)
+        if on_meta_saved:
+            try:
+                on_meta_saved(path, meta)
+            except (OSError, ValueError) as exc:
+                result['complete'] = False
+                result['list_complete'] = False
+                result['persistence_failures'].append({'name': meta.album_name, 'message': str(exc)})
+                say(f'状态已保留在本机，资源库待处理：{meta.album_name}（{exc}）')
+
     cancelled_before_write = False
     for row, path in matches:
         if stopped():
             cancelled_before_write = True
-            say(f'收到取消请求：已更新 {result["updated"]} 单状态，'
-                f'剩余 {len(matches) - result["updated"]} 单未写入')
+            say(f'收到取消请求：已更新 {result["updated"]} 弹状态，'
+                f'剩余 {len(matches) - result["updated"]} 弹未写入')
             result['cancelled'] = True
             result['complete'] = False
             result['list_complete'] = False
@@ -265,7 +294,7 @@ def sync_rows(page, root, rows, say, fetch_reasons=True, force_reasons=False,
         ensure_history(meta)
         state = STATUS[row['Status']]
         modified = str(row.get('ModifyTime') or '')
-        if state == '待审核' and meta.platform_status != '待审核':
+        if state in ('待审核', '审核中') and meta.platform_status not in ('待审核', '审核中'):
             new_cycle(meta, 'observed_pending')
         elif (state == '未通过审核' and meta.platform_status == '未通过审核'
               and meta.platform_modified_at and modified != meta.platform_modified_at):
@@ -288,7 +317,7 @@ def sync_rows(page, root, rows, say, fetch_reasons=True, force_reasons=False,
         meta.platform_updated_at = time.strftime('%Y-%m-%d %H:%M:%S')
         if state != '未通过审核':
             meta.platform_reject_reason = ''
-        if state in ('已上架', '待审核', '审核通过', '已下架'):
+        if state in ('已上架', '待审核', '审核中', '审核通过', '已预约上架', '已下架'):
             meta.published = True
         if state == '审核通过':
             result['fresh_passed'].append(str(path))
@@ -298,20 +327,35 @@ def sync_rows(page, root, rows, say, fetch_reasons=True, force_reasons=False,
                 result['reasons_skipped'] += 1
             else:
                 queue.append((path, row['StikerID'], meta.platform_review_cycle))
-        save_meta(path, meta)
+        persist(path, meta)
         result['updated'] += 1
+        if result['updated'] % 100 == 0:
+            say(f'接口状态已写入 {result["updated"]}/{len(matches)} 弹')
+    result['status_seconds'] = round(time.monotonic() - started, 3)
+    result['reasons_total'] = len(queue)
     if not cancelled_before_write:
-        say(f'已更新 {result["updated"]} 单状态（平台共 {len(rows)} 单）；需补录 {len(queue)} 单理由，跳过 {result["reasons_skipped"]} 单已录入理由')
-    for i, (path, sid, cycle) in enumerate(queue, 1):
-        if stopped():
-            say(f'收到取消请求：已保留前 {result["reasons_fetched"]} 单理由，'
-                f'剩余 {len(queue) - i + 1} 单未读取')
-            result['cancelled'] = True
-            result['complete'] = False
-            break
-        say(f'补录驳回理由 {i}/{len(queue)}：{load_meta(path).album_name}')
+        say(f'已更新 {result["updated"]} 弹状态（平台共 {total} 弹，耗时 {result["status_seconds"]:.1f} 秒）；需补录 {len(queue)} 弹理由，跳过 {result["reasons_skipped"]} 弹已录入理由')
+
+    def serial_details():
+        for path, sid, cycle in queue:
+            if stopped():
+                break
+            try:
+                yield sid, read_detail(page, sid), None
+            except Exception as exc:
+                yield sid, None, exc
+
+    by_id = {sid: (path, cycle) for path, sid, cycle in queue}
+    detail_started = time.monotonic()
+    details = (detail_reader(page, list(by_id), stopped, say)
+               if detail_reader and queue and not stopped() else serial_details())
+    for i, (sid, detail, error) in enumerate(details, 1):
+        path, cycle = by_id[sid]
         try:
-            detail = read_detail(page, sid)
+            if error:
+                raise error
+            if detail.get('StikerID') != sid:
+                raise PlatformDataError('平台详情身份不一致')
             if detail['Status'] != 4:
                 raise PlatformDataError('审核状态已变化，请重新更新列表')
             reason = parse_reason(detail.get('Reason'))
@@ -320,11 +364,17 @@ def sync_rows(page, root, rows, say, fetch_reasons=True, force_reasons=False,
                 raise PlatformDataError('作品已发生变更，请重新更新')
             record_reason(meta, reason)
             meta.platform_reject_checked_cycle = cycle
-            save_meta(path, meta)
+            persist(path, meta)
             result['reasons_fetched'] += 1
         except Exception as exc:
             result['complete'] = False
             result['reason_failures'].append({'name': load_meta(path).album_name,
                                                'message': str(exc)})
             say(f'理由读取失败，已保留状态：{load_meta(path).album_name}')
+        say(f'补录驳回理由 {i}/{len(queue)}：成功 {result["reasons_fetched"]}，'
+            f'失败 {len(result["reason_failures"])}，耗时 {time.monotonic()-detail_started:.1f} 秒')
+    if stopped():
+        result.update(cancelled=True, complete=False)
+        say(f'收到取消请求：已保留 {result["reasons_fetched"]} 弹理由，剩余下次补录')
+    result['reason_seconds'] = round(time.monotonic() - detail_started, 3)
     return result

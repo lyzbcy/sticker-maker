@@ -7,6 +7,7 @@
         <h1 class="brand-name">表情包一键制作</h1>
       </div>
       <nav class="nav-group">
+        <button class="nav-btn" @click="store.phase = 'wizard'">可选使用教程</button>
         <button class="nav-btn" @click="store.phase = 'feedback'">遇到问题反馈</button>
         <button class="nav-btn" title="发布与 AI 工具" @click="store.phase = 'tools'">
           <span class="nav-ico">↗</span>发布与AI工具
@@ -28,6 +29,7 @@
         <span class="blob blob-2"></span>
 
         <div class="hero-copy">
+          <p v-if="store.firstRun" class="cta-hint">自由开始：可以先浏览作品、导入图片或设置发布；使用教程随时打开，生图工具按需配置。当前支持 Codex，后续将扩展其他工具（如豆包）。</p>
           <p class="hero-eyebrow">👋 {{ greeting }}，今天也来撸点表情</p>
           <h2 class="hero-title">一键生成你的<span class="hl">专属表情包</span></h2>
 

@@ -4,6 +4,8 @@
       <button class="back" @click="store.phase = 'main'">← 返回</button>
       <h2>全部作品</h2>
       <span class="count">{{ filtered.length }} 个</span>
+      <button class="all-stickers-btn" :disabled="repairing || syncing || shelving" @click="repairConflicts">修复观测冲突</button>
+      <button class="all-stickers-btn" :disabled="repairing || syncing || shelving" @click="cleanupFailed">清理空失败弹</button>
       <button class="all-stickers-btn" @click="store.phase = 'allStickers'"
               title="跨所有作品的表情总览，直接打分+备注">🖼️ 全部表情打分</button>
       <button class="sync-btn" :disabled="syncing" @click="doSync">
@@ -14,22 +16,47 @@
       <button v-if="shelfCount > 0" class="shelf-btn" :disabled="shelving"
               @click="shelfPassed"
               :title="`把 ${shelfCount} 个审核通过的作品预约今日上架`">
-        {{ shelving ? '发布中…' : `🚀 一键发布（${shelfCount} 单）` }}
+        {{ shelving ? '发布中…' : `🚀 一键发布（${shelfCount} 弹）` }}
       </button>
       <button v-if="shelving" class="cancel-btn" @click="cancelPlatformTask">✕ 取消发布</button>
       <span v-if="shelfTip" class="reject-copy-tip">{{ shelfTip }}</span>
       <button v-if="rejectCount > 0" class="copy-all-rejects-btn"
               :disabled="copyingAllRejects" @click="copyAllRejects"
               :title="`导出 ${rejectCount} 个未通过作品的驳回理由为 JSONL 文件，复制文件夹路径给 AI 自行读取`">
-        {{ copyingAllRejects ? '导出中…' : `📋 一键复制驳回理由（${rejectCount} 单）` }}
+        {{ copyingAllRejects ? '导出中…' : `📋 一键复制驳回理由（${rejectCount} 弹）` }}
       </button>
       <span v-if="allRejectsTip" class="reject-copy-tip">{{ allRejectsTip }}</span>
     </header>
+    <section v-if="maintenancePreview" class="sync-options">
+      <p>{{ maintenancePreview.text }}</p>
+      <button :disabled="repairing" @click="executeMaintenance">{{ repairing ? '处理中…' : '确认执行（保留恢复记录）' }}</button>
+      <button :disabled="repairing" @click="maintenancePreview = null">取消</button>
+    </section>
+    <p v-if="maintenanceMessage" role="status">{{ maintenanceMessage }}</p>
+
+    <section class="sync-options" aria-label="同步选项">
+      <label class="sync-reasons-choice">
+        <input v-model="syncReasons" type="checkbox" :disabled="syncing || shelving" />
+        同步驳回理由 <span class="sync-slower">较慢 · 按需勾选</span>
+      </label>
+      <div class="sync-estimates" aria-live="polite">
+        <span :class="{ selected: !syncReasons }">不勾选：仅更新状态与统计，预计 {{ syncEstimate.fast }}</span>
+        <span :class="{ selected: syncReasons }">勾选：同时补录驳回理由，预计 {{ syncEstimate.withReasons }}</span>
+      </div>
+      <p>一般仅在需要查看或整改驳回理由时勾选；平常更新状态、准备一键上架，建议不勾选。</p>
+      <small>当前已知 {{ syncEstimate.rejected }} 弹未通过审核，约 {{ syncEstimate.pending }} 弹理由待补录；已缓存的理由会跳过。
+        {{ syncEstimate.measured ? '预计时间参考本机上次实测。' : '预计时间按当前作品数量估算。' }}首次登录、平台状态变化或网络慢时可能更久。</small>
+    </section>
 
     <!-- 同步结果摘要 -->
     <div v-if="syncSummary" class="sync-summary" :class="{ 'sync-cancelled': syncSummary.cancelled }">
       <template v-if="syncSummary.cancelled">⏹ 已取消：已同步 {{ syncSummary.updated }} 个作品（剩余未同步，可再次一键更新）</template>
-      <template v-else>✅ 已同步 {{ syncSummary.matched }} 个作品（{{ syncSummary.pages }} 页）</template>
+      <template v-else>{{ syncSummary.complete === false ? '部分同步：' : '✅ ' }}已同步 {{ syncSummary.updated ?? syncSummary.matched }} 个作品
+        （{{ syncSummary.source === 'api' ? '接口直读' : `${syncSummary.pages} 页` }}<template v-if="syncSummary.wall_seconds">，{{ syncSummary.wall_seconds }} 秒</template>）</template>
+      <template v-if="syncSummary.source === 'api'">；补录 {{ syncSummary.reasons_fetched || 0 }} 弹理由，跳过 {{ syncSummary.reasons_skipped || 0 }} 弹缓存</template>
+      <template v-if="syncSummary.unknown_statuses?.length">；{{ syncSummary.unknown_statuses.length }} 弹为平台新状态，原数据已保留，待核验</template>
+      <template v-if="syncSummary.reason_failures?.length">；{{ syncSummary.reason_failures.length }} 弹理由读取失败，下次补录</template>
+      <template v-if="syncSummary.persistence_failures?.length">；{{ syncSummary.persistence_failures.length }} 项资源库写入待处理（详情见日志）</template>
       <template v-if="(syncSummary.unmatched_platform || []).length">
         ；平台有 {{ (syncSummary.unmatched_platform || []).length }} 条未匹配记录
         （可能是脏数据，如时间戳名）：<span class="unmatched-names">{{
@@ -156,11 +183,49 @@
 import { computed, onMounted, ref } from 'vue'
 import { useEngineStore } from '../store/engine'
 import { parseReasonItems, reasonCount } from '../utils/reason'
+import { estimateSync, recordSyncTiming } from '../utils/syncEstimate'
 
 const store = useEngineStore()
 const filter = ref('all')
 const syncing = ref(false)
 const syncSummary = ref(null)
+const syncReasons = ref(false)
+const syncTiming = ref(null)
+const repairing = ref(false)
+const maintenancePreview = ref(null)
+const maintenanceMessage = ref('')
+async function previewMaintenance(cmd) {
+  if (repairing.value) return
+  repairing.value = true
+  maintenanceMessage.value = ''
+  try {
+    const res = await window.api.send(cmd, { execute: false })
+    const d = res.data
+    maintenancePreview.value = { cmd, text: cmd === 'library_repair_conflicts'
+      ? `可无损合并 ${d.eligible.length} 弹；${d.unresolved.length} 弹有真实差异，继续保留全部版本。只合并平台观测与不冲突的评分，素材不覆盖，原历史保留。`
+      : `可清理 ${d.count} 个仅含元数据/角色卡的失败目录。有成品、原图或平台ID的作品不动；目录移至可恢复归档。` }
+  } catch (e) { maintenanceMessage.value = e.message || '预览失败，请查看日志' }
+  finally { repairing.value = false }
+}
+const repairConflicts = () => previewMaintenance('library_repair_conflicts')
+const cleanupFailed = () => previewMaintenance('library_cleanup_failed')
+async function executeMaintenance() {
+  if (!maintenancePreview.value || repairing.value) return
+  repairing.value = true
+  try {
+    const cmd = maintenancePreview.value.cmd
+    const res = await window.api.send(cmd, { execute: true })
+    const d = res.data
+    maintenanceMessage.value = cmd === 'library_repair_conflicts'
+      ? `已合并 ${d.merged.length} 弹；${d.unresolved.length} 弹保留版本选择。`
+      : `已归档 ${d.count} 个失败目录；恢复清单：${d.archive}/manifest.json`
+    maintenancePreview.value = null
+    await store.loadEpisodes()
+  } catch (e) { maintenanceMessage.value = e.message || '处理未完成，请查看日志' }
+  finally { repairing.value = false }
+}
+try { syncTiming.value = JSON.parse(localStorage.getItem('sticker-sync-timing-v1') || 'null') } catch {}
+const syncEstimate = computed(() => estimateSync(store.episodes, syncTiming.value))
 const confirming = ref('')
 // 驳回理由展开状态（作品库行内「N条理由」点击切换）
 const expandedRejects = ref(new Set())
@@ -200,13 +265,17 @@ async function shelfPassed() {
       const f = res.data.failed || []
       if (res.data.cancelled) {
         const remain = res.data.remaining || []
-        shelfTip.value = `⏹ 已取消：成功预约 ${res.data.published} 单` +
+        shelfTip.value = `⏹ 已取消：成功预约 ${res.data.published} 弹` +
           (f.length ? `，失败 ${f.length}` : '') +
-          (remain.length ? `，剩余 ${remain.length} 单未处理（${remain.join('、')}）` : '')
+          (remain.length ? `，剩余 ${remain.length} 弹未处理（${remain.join('、')}）` : '')
       } else {
-        shelfTip.value = `✓ 已预约上架 ${res.data.published} 单` +
-          (f.length ? `，失败 ${f.length}（${f.map(x => x.name).join('、')}）` : '')
+        shelfTip.value = `✓ 已预约上架 ${res.data.published} 弹` +
+          (f.length ? `，待核对或失败 ${f.length}（${f.map(x => `${x.name}：${x.reason || '请核对平台'}`).join('；')}）` : '') +
+          (res.data.remaining?.length ? `，剩余 ${res.data.remaining.length} 弹未处理` : '')
       }
+      if (res.data.source === 'api') shelfTip.value += '（快速接口，已逐弹核验）'
+      const warnings = res.data.warnings || []
+      if (warnings.length) shelfTip.value += `；${warnings.map(x => x.message).join('；')}`
       store.pushActivity({ stage: '发布', message: shelfTip.value })
       await store.loadEpisodes()
     } else {
@@ -232,7 +301,7 @@ async function copyAllRejects() {
     if (res?.status === 'ok' && res.data && res.data.text) {
       const clip = await window.api.copyText(res.data.text)
       allRejectsTip.value = (clip && clip.ok)
-        ? `✓ 已导出 ${res.data.count} 单到 ${res.data.folder || 'reject_reasons'}，路径已复制，粘贴给 AI 即可`
+        ? `✓ 已导出 ${res.data.count} 弹到 ${res.data.folder || 'reject_reasons'}，路径已复制，粘贴给 AI 即可`
         : '复制失败：剪贴板不可用'
     } else {
       allRejectsTip.value = '生成失败：' + (res?.errors?.[0]?.message || '返回为空')
@@ -375,17 +444,25 @@ function displayDate(ep) {
 }
 
 async function doSync() {
+  if (syncing.value) return
   syncing.value = true
   syncSummary.value = null
-  store.pushActivity({ stage: '同步', message: '一键更新：正在从微信平台抓取作品状态…' })
+  const started = Date.now()
+  const fetchReasons = syncReasons.value
+  store.pushActivity({ stage: '同步', message: `一键更新：${fetchReasons ? '同步状态并补录驳回理由' : '仅同步状态与统计（不抓取理由）'}，预计 ${fetchReasons ? syncEstimate.value.withReasons : syncEstimate.value.fast}` })
   try {
-    const res = await window.api.send('sync_platform_status')
+    const res = await window.api.send('sync_platform_status', { fetch_reasons: fetchReasons })
     if (res && res.status === 'ok') {
-      syncSummary.value = res.data
+      const wall = (Date.now() - started) / 1000
+      syncSummary.value = { ...res.data, wall_seconds: wall.toFixed(1) }
+      syncTiming.value = recordSyncTiming(res.data, wall, syncTiming.value)
+      try { localStorage.setItem('sticker-sync-timing-v1', JSON.stringify(syncTiming.value)) } catch {}
       await store.loadEpisodes()
     } else {
       store.pushActivity({ stage: '同步', message: '同步失败：' + (res?.errors?.[0]?.message || '未知原因') })
     }
+  } catch (e) {
+    store.pushActivity({ stage: '同步', message: '同步失败：' + (e?.message || String(e)) })
   } finally {
     syncing.value = false
   }
@@ -463,6 +540,14 @@ h2 { margin: 0; font-family: var(--font-head); font-size: 22px; font-weight: 700
 .copy-all-rejects-btn:hover:not(:disabled) { background: rgba(181, 72, 42, .16); }
 .copy-all-rejects-btn:disabled { opacity: .6; cursor: wait; }
 .sync-btn:disabled { opacity: .65; cursor: wait; }
+.sync-options { margin: 0 0 16px; padding: 14px 18px; border: 1px solid rgba(46,74,52,.16); border-radius: 12px; background: #f5f7ed; }
+.sync-reasons-choice { display: flex; align-items: center; gap: 9px; font-weight: 700; color: var(--forest); cursor: pointer; }
+.sync-reasons-choice input { width: 17px; height: 17px; accent-color: var(--forest); }
+.sync-slower { font-size: 11px; font-weight: 500; color: #826325; background: #f1e9c8; padding: 3px 8px; border-radius: 10px; }
+.sync-estimates { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 10px; color: var(--muted-soft); font-size: 12px; }
+.sync-estimates .selected { color: var(--forest); font-weight: 700; }
+.sync-options p { margin: 9px 0 4px; color: var(--ink); font-size: 12px; line-height: 1.7; }
+.sync-options small { color: var(--muted-soft); font-size: 11px; line-height: 1.7; }
 .cancel-btn { border: 1px solid rgba(181, 72, 42, .45); background: rgba(181, 72, 42, .08);
   color: var(--brick); border-radius: 999px; padding: 8px 14px; font-size: 12px;
   font-weight: 700; cursor: pointer; }

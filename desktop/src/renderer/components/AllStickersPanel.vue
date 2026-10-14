@@ -2,7 +2,7 @@
   <div class="all-stickers">
     <header class="head">
       <button class="back-btn" @click="store.phase = 'episodes'">← 返回作品库</button>
-      <h2>🖼️ 全部表情（{{ shownTotal }} 张 · {{ shownGroups.length }} 单）</h2>
+      <h2>🖼️ 全部表情（{{ shownTotal }} 张 · {{ shownGroups.length }} 弹）</h2>
       <button class="copy-btn" :disabled="copying" @click="copyAll">
         {{ copying ? '生成中…' : '📋 复制打分与 Prompt' }}
       </button>
@@ -158,7 +158,7 @@ async function copyAll() {
     if (res?.status === 'ok' && res.data?.text) {
       const clip = await window.api.copyText(res.data.text)
       copyTip.value = (clip && clip.ok)
-        ? `✓ 已导出 ${res.data.count} 单到 ${res.data.folder || 'rating_export'}，路径已复制，粘贴给 AI 即可`
+        ? `✓ 已导出 ${res.data.count} 弹到 ${res.data.folder || 'rating_export'}，路径已复制，粘贴给 AI 即可`
         : '复制失败：剪贴板不可用'
     } else {
       copyTip.value = res?.errors?.[0]?.message || '没有可复制的打分'

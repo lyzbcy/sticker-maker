@@ -602,7 +602,7 @@ INCOME_URL = ("https://sticker.weixin.qq.com/cgi-bin/mmemoticon-bin/"
               "realnamepage?t=income/index")
 
 
-def fetch_income(page, say=None, output_root=None, max_pages=20):
+def fetch_income(page, say=None, output_root=None, max_pages=20, navigation_timeout_ms=45000):
     """抓取「账号收入」页顶部汇总三数（累计赞赏/累计热度/可提现）。
 
     2026-09-06 用户口径：明细全量翻页没必要（一键更新本就抓每单下载/
@@ -611,7 +611,7 @@ def fetch_income(page, say=None, output_root=None, max_pages=20):
     """
     say = say or (lambda m: None)
     try:
-        page.goto(INCOME_URL, wait_until="domcontentloaded", timeout=45000)
+        page.goto(INCOME_URL, wait_until="domcontentloaded", timeout=navigation_timeout_ms)
         page.wait_for_timeout(4500)
 
         def _num_after(label):
@@ -673,43 +673,86 @@ def sync_status(engine, on_status=None, fetch_reasons=True, force_reasons=False,
     from .platform_data import read_json, parse_list, sync_rows, LIST_URL, PlatformDataError
     from .config import PublishConfig
     from .browser import BrowserSession
+    from .parallel_read import iter_details_parallel
     from playwright.sync_api import sync_playwright
 
     say = on_status or (lambda message: None)
     stopped = should_stop or (lambda: False)
+    started = __import__('time').monotonic()
+
+    def cancelled():
+        return {'cancelled': True, 'complete': False, 'list_complete': False,
+                'matched': 0, 'updated': 0, 'unmatched_platform': [], 'pages': 0,
+                'message': '已取消（尚未写入平台状态）'}
+
+    if stopped():
+        return cancelled()
     library_runtime = None
     if getattr(engine.config.paths, 'user_data', None):
-        from ..library.runtime import LibraryRuntime
-        candidate = LibraryRuntime(engine.config.paths.user_data)
-        if candidate.enabled:
+        from ..library.hooks import runtime_for
+        candidate = runtime_for(engine)
+        if candidate:
             library_runtime = candidate
-            candidate.refresh(capture=False)   # 2026-09-12: 平台读前置无需全量捕获
-    say('正在读取平台全部作品状态…')
+            candidate.require_account()
+            candidate.library
+    if stopped():
+        return cancelled()
+    say('正在通过接口读取平台全部作品状态（无需逐页翻页）…')
     fallback = False
     with sync_playwright() as pw:
         session = BrowserSession(PublishConfig(), playwright=pw)
         try:
             page = session.start()
-            if not session.ensure_login(page, on_status=say):
-                return {'error': '登录失败：' + (session.last_login_error or '请重新登录'),
-                        'complete': False, 'list_complete': False}
+            body = None
+            if session.can_reuse_session and not stopped():
+                try:
+                    body = read_json(page, LIST_URL)
+                    say('已复用有效登录会话，跳过首页加载')
+                except PlatformDataError:
+                    say('接口会话暂不可用，正在检查平台登录…')
+            if stopped():
+                return cancelled()
+            if body is None:
+                if not session.ensure_login(page, on_status=say, should_stop=stopped):
+                    if stopped():
+                        return cancelled()
+                    return {'error': '登录失败：' + (session.last_login_error or '请重新登录'),
+                            'complete': False, 'list_complete': False}
+                if stopped():
+                    return cancelled()
             try:
-                rows = parse_list(read_json(page, LIST_URL))
+                rows = parse_list(body if body is not None else read_json(page, LIST_URL),
+                                  allow_unknown=True)
             except PlatformDataError:
                 fallback = True
             if not fallback:
+                list_seconds = __import__('time').monotonic() - started
+                say(f'接口已取得 {len(rows)} 弹作品，耗时 {list_seconds:.1f} 秒')
                 options = ({'account_id': library_runtime.account_id,
-                            'placeholder_factory': library_runtime.placeholder}
+                            'placeholder_factory': library_runtime.placeholder,
+                            'on_meta_saved': library_runtime.commit_platform_metadata}
                            if library_runtime else {})
-                result = sync_rows(page, Path(engine.config.paths.output_root), rows,
-                                 say, fetch_reasons, force_reasons,
-                                 should_stop=stopped, **options)
+                try:
+                    result = sync_rows(page, Path(engine.config.paths.output_root), rows,
+                                     say, fetch_reasons, force_reasons,
+                                     should_stop=stopped, detail_reader=iter_details_parallel,
+                                     **options)
+                finally:
+                    if library_runtime:
+                        library_runtime.finish_platform_sync()
+                result['metadata_committed'] = bool(library_runtime)
+                result['list_seconds'] = round(list_seconds, 3)
                 # 2026-09-05：一键更新顺带抓收益（失败不影响作品同步）
-                say('正在读取账号收益…')
-                result['income'] = fetch_income(
-                    page, say, output_root=engine.config.paths.output_root)
-                if library_runtime:
-                    library_runtime.refresh(capture=False)   # 2026-09-12: 同上，后置 hooks 已带 capture
+                if not stopped():
+                    say('正在读取账号收益…')
+                    result['income'] = fetch_income(
+                        page, say, output_root=engine.config.paths.output_root,
+                        navigation_timeout_ms=8000)
+                # The metadata-only writer already updated the visible row cache.
+                # A full artwork scan here defeats fast status-only sync.
+                result['elapsed_seconds'] = round(__import__('time').monotonic() - started, 3)
+                say(f'接口同步结束：更新 {result["updated"]} 弹，'
+                    f'补录 {result["reasons_fetched"]} 弹理由，耗时 {result["elapsed_seconds"]:.1f} 秒')
                 return result
         finally:
             session.close()

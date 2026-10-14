@@ -15,7 +15,7 @@ from .config.schema import Paths, Prefs, ModeProbsConfig
 from .config.paths import resolve_paths, current_platform
 from .config.loader import load_prefs_from_file, save_prefs, _clean_price_probs
 
-VERSION = "0.5.1"
+VERSION = "0.5.15"
 
 _engine = None
 _stop_events = {}
@@ -663,9 +663,10 @@ def cmd_run(req_id, args):
     stop = threading.Event()
     _stop_events[req_id] = stop
     try:
+        extra = {'prefs_override': args['prefs_override']} if 'prefs_override' in args else {}
         episode = engine.run(
             progress_callback=lambda ev: _progress(req_id, ev),
-            stop_event=stop)
+            stop_event=stop, **extra)
         _result(req_id, "ok" if episode.success else "fail",
                 data={"episode_dir": str(episode.episode_dir) if episode.episode_dir else None,
                       "stickers": len(episode.stickers),
@@ -1028,7 +1029,7 @@ def _episode_meanings(episode_dir: Path) -> list:
 def _regen_episode_assets(episode_dir: Path, meta, series=None) -> list:
     """按 meta 的素材模式重新生成横幅/封面/图标。返回 warnings 列表。"""
     from .stages.assets import (make_banner, resize_save, make_big_head_cover,
-                                _is_head_shot, pick_header_candidates)
+                                _is_head_shot, pick_header_candidates, _prefer_noword)
     import shutil as _shutil
     episode_dir = Path(episode_dir)
     final = episode_dir / "最终版"
@@ -1073,7 +1074,7 @@ def _regen_episode_assets(episode_dir: Path, meta, series=None) -> list:
         if meta.cover_mode == "pick":
             idx = int(meta.cover_pick or 0)
             if 0 <= idx < len(paths):
-                cover_src = paths[idx]
+                cover_src = _prefer_noword([paths[idx]])[0]
             else:
                 warnings.append(f"封面选图越界（第 {idx + 1} 张不存在），回退第 1 张")
         if cover_src is not None:
@@ -1090,7 +1091,7 @@ def _regen_episode_assets(episode_dir: Path, meta, series=None) -> list:
                     warnings.append(f"封面：header 格大头照（{cand.name}）")
                     break
             if cover_src is None:
-                cover_src = paths[0]
+                cover_src = _prefer_noword([paths[0]])[0]
                 warnings.append("封面：无 header 格/裁剪失败，回退第 1 张缩放")
                 resize_save(cover_src, cover_out, 240, 240)
         else:
@@ -1190,7 +1191,7 @@ def cmd_shelf_passed(req_id, args):
 
     流程（2026-09-01 用户 SOP+实测）：sync 刷新状态 → 对每个审核通过单：
     管理页 → 详情页 → 点「上架」→ 弹窗默认已选今日 → 点「预约」。
-    成功后本地 meta.platform_status="已上架"。
+    成功后按平台真实状态区分已预约上架与已上架。
     """
     from pathlib import Path as _P
     from .config.series import load_meta, save_meta
@@ -1248,6 +1249,7 @@ def _run_shelf_passed(req_id, args, root, sync_status, _say, stop=None,
                        if w.get('can_shelf')} if runtime else None)
 
         passed = []
+        seen_ids = set()
         for ep_dir in sorted(root.iterdir()) if root.exists() else []:
             if not (ep_dir.is_dir() and ep_dir.name.startswith("episode")):
                 continue
@@ -1255,7 +1257,9 @@ def _run_shelf_passed(req_id, args, root, sync_status, _say, stop=None,
             if runtime and (meta.account_id != runtime.account_id or meta.work_id not in safe_works):
                 continue
             if str(ep_dir) in fresh_passed and meta.platform_item_id and meta.platform_status == "审核通过":
-                passed.append((ep_dir, meta))
+                if meta.platform_item_id not in seen_ids:
+                    seen_ids.add(meta.platform_item_id)
+                    passed.append((ep_dir, meta))
         if not passed:
             output_result(req_id, "ok", data={"published": 0,
                                                "message": "没有「审核通过待发布」的作品"})
@@ -1289,10 +1293,10 @@ def _run_shelf_passed(req_id, args, root, sync_status, _say, stop=None,
 
         from .publish.config import PublishConfig
         from .publish.browser import BrowserSession
-        from .publish.platform_data import read_detail, detail_url
+        from .publish.fast_shelf import reserve_today, ShelfCancelled, ShelfOutcomeUnknown
         from playwright.sync_api import sync_playwright
 
-        published, failed, warnings = [], [], []
+        published, failed, warnings, reservations = [], [], [], []
         done_dirs = set()   # 已开始处理的 episode 路径，取消时算 remaining 用
         with sync_playwright() as pw:
             session = BrowserSession(PublishConfig(), playwright=pw)
@@ -1317,52 +1321,34 @@ def _run_shelf_passed(req_id, args, root, sync_status, _say, stop=None,
                     operation_id = None
                     operation_success = False
                     try:
-                        # A fresh status check by exact identity; never search by name substring.
-                        detail = read_detail(page, meta.platform_item_id)
-                        if detail['Status'] != 5:
-                            failed.append((album, '当前已不是审核通过状态，请更新后重试'))
-                            continue
-                        page.goto(detail_url(meta.platform_item_id),
-                                  wait_until='domcontentloaded', timeout=45000)
-                        page.get_by_role('heading', name=album, exact=True).wait_for(timeout=20000)
-                        # 详情页「上架」
-                        shelf = page.locator(
-                            "button:has-text('上架'), a:has-text('上架'), "
-                            "span:has-text('上架')")
-                        shelf.first.wait_for(state="visible", timeout=20000)
-                        if not shelf.count():
-                            failed.append((album, "详情页无「上架」按钮"))
-                            continue
-                        shelf.first.click()
-                        page.wait_for_timeout(2500)
-                        # 弹窗默认已选今日 → 点「预约」
-                        confirm = page.locator(
-                            '.weui-desktop-dialog:visible '
-                            'button:has-text("预约")')
-                        if not confirm.count():
-                            failed.append((album, "未找到预约按钮（弹窗未出现？）"))
-                            continue
-                        if runtime:
-                            from .library.operations import begin
-                            operation_id = begin(runtime, meta.work_id, album, 'shelf')
-                        confirm.first.click()
-                        page.wait_for_timeout(4000)
-                        body = page.inner_text("body")
-                        if "预约成功" in body or "已上架" in body:
-                            operation_success = True
+                        def before_write():
+                            nonlocal operation_id
+                            if runtime:
+                                from .library.operations import begin
+                                operation_id = begin(runtime, meta.work_id, album, 'shelf')
+
+                        receipt = reserve_today(page, meta.platform_item_id,
+                                                should_stop=stop.is_set, before_write=before_write)
+                        operation_success = True
+                        published.append(album)
+                        reservations.append(dict(receipt, name=album))
+                        try:
                             meta = load_meta(ep_dir)
-                            meta.platform_status = "已上架"
+                            meta.platform_status = receipt['status_text']
                             meta.published = True
                             save_meta(ep_dir, meta)
-                            published.append(album)
-                            _say(f"✓「{album}」已预约今日上架")
-                        else:
-                            failed.append((album, "预约后未见成功标志"))
-                            try:
-                                page.screenshot(
-                                    path=str(ep_dir / "_shelf_error.png"))
-                            except Exception:
-                                pass
+                        except Exception as exc:
+                            warnings.append({'name': album, 'message':
+                                f'平台预约已核验，本地状态保存失败，请同步平台状态：{type(exc).__name__}: {exc}'})
+                        _say(f"✓「{album}」{receipt['status_text']}，接口核验耗时 {receipt['elapsed_seconds']:.3f} 秒")
+                    except ShelfCancelled:
+                        done_dirs.discard(str(ep_dir))
+                        break
+                    except ShelfOutcomeUnknown as exc:
+                        failed.append((album, str(exc)))
+                        _say(f"「{album}」预约结果待核对，停止本批后续请求")
+                        # Keep the durable unknown intention; no UI fallback or replay.
+                        break
                     except Exception as e:   # noqa: BLE001
                         failed.append((album, f"{type(e).__name__}: {e}"))
                     finally:
@@ -1401,7 +1387,7 @@ def _run_shelf_passed(req_id, args, root, sync_status, _say, stop=None,
             "published": len(published), "published_names": published,
             "cancelled": cancelled, "remaining": remaining,
             "failed": [{"name": n, "reason": r} for n, r in failed],
-            "warnings": warnings})
+            "warnings": warnings, "source": "api", "reservations": reservations})
     finally:
         _stop_events.pop(req_id, None)
 
@@ -1633,14 +1619,17 @@ def cmd_sync_platform_status(req_id, args):
 
     try:
         with _platform_exclusive("一键更新(同步)", req_id):
-            stop = threading.Event()
+            stop = _stop_events.get(req_id) or threading.Event()
+            owns_stop = req_id not in _stop_events
             _stop_events[req_id] = stop
             try:
                 res = sync_status(engine, on_status=_say,
+                                  fetch_reasons=bool(args.get('fetch_reasons', False)),
                                   force_reasons=bool(args.get('force_reasons')),
                                   should_stop=stop.is_set)
             finally:
-                _stop_events.pop(req_id, None)
+                if owns_stop:
+                    _stop_events.pop(req_id, None)
     except _PlatformBusy as e:
         _result(req_id, "fail", errors=[{"message": str(e)}])
         return
@@ -1648,6 +1637,7 @@ def cmd_sync_platform_status(req_id, args):
         _result(req_id, "fail", errors=[{"message": res["error"]}])
         return
     _result(req_id, "ok", data=res)
+    return res
 
 
 def cmd_delete_episode(req_id, args):
@@ -1814,6 +1804,34 @@ def cmd_regen_intro(req_id, args):
     _result(req_id, "ok", data={"intro": intro, "meta": meta.to_dict()})
 
 
+def _solid_panel_sources(episode_dir, finals):
+    """Prove slot-to-file correspondence before recovering any damaged source."""
+    import json
+    mapping_file = episode_dir / 'cell_sources.json'
+    keys = {str(i) for i in range(1, len(finals) + 1)}
+    if mapping_file.is_file():
+        mapping = json.loads(mapping_file.read_text(encoding='utf-8'))
+    else:
+        meanings = json.loads((episode_dir / 'meaning_map.json').read_text(encoding='utf-8'))
+        if not isinstance(meanings, dict) or set(meanings) != keys:
+            raise ValueError('原始分格与含义词序号不完整')
+        # Legacy evidence is accepted only when each unique meaning exactly
+        # identifies one current filename; never infer Chinese sorted order.
+        if any(not isinstance(v, str) or not v for v in meanings.values()):
+            raise ValueError('原始分格含义词无效')
+        mapping = {k: v + '.png' for k, v in meanings.items()}
+    if (not isinstance(mapping, dict) or set(mapping) != keys
+            or any(not isinstance(v, str) or Path(v).name != v or '/' in v or '\\' in v for v in mapping.values())
+            or len(set(mapping.values())) != len(finals)
+            or set(mapping.values()) != {p.name for p in finals}):
+        raise ValueError('原始分格文件对应存在歧义，未修改成品')
+    sources = {name: episode_dir / '原图' / '_panels' / f'panel_{int(k):02d}.png'
+               for k, name in mapping.items()}
+    if any(not p.is_file() or p.is_symlink() for p in sources.values()):
+        raise ValueError('缺少完整原始分格，未修改成品')
+    return sources
+
+
 def cmd_regen_assets(req_id, args):
     """按 meta 素材设置重新生成横幅/封面/图标。"""
     episode_dir = Path(args.get("episode_dir") or "")
@@ -1822,6 +1840,84 @@ def cmd_regen_assets(req_id, args):
         return
     from .config.series import load_meta, find_series, save_meta
     meta = load_meta(episode_dir)
+    recover_grid = bool(args.get('recover_solid_sources_from_grid'))
+    recover = bool(args.get('recover_solid_sources_from_panels')) or recover_grid
+    if recover_grid and args.get('recover_solid_sources_from_panels'):
+        _result(req_id, 'fail', errors=[{'message': '原网格恢复与原分格恢复请只选择一种'}])
+        return
+    if recover and (not args.get('reflow_solid_captions') or meta.published or meta.platform_item_id):
+        _result(req_id, 'fail', errors=[{'message': '原始分格恢复仅用于未投稿作品并须显式启用彩底排版修复'}])
+        return
+    if args.get('reflow_solid_captions'):
+        # Explicit, recoverable repair using only uncaptained sources. Never
+        # re-layout an already captioned final or infer missing source images.
+        from .stages.postprocess import normalize_solid_background, draw_caption, ensure_size
+        from PIL import Image
+        import shutil, hashlib, json
+        source = episode_dir / '原图' / '_noword'
+        finals = sorted((episode_dir / '最终版').glob('*.png'))
+        prompt_file = episode_dir / '原图' / 'prompt.txt'
+        prompt = prompt_file.read_text(encoding='utf-8') if prompt_file.is_file() else ''
+        if ('single FLAT SOLID PASTEL COLOR' not in prompt or not finals
+                or any(not (source / p.name).is_file() for p in finals)):
+            _result(req_id, 'fail', errors=[{'message': '彩底排版修复缺少已验证prompt或完整无字源'}])
+            return
+        recovered = {}
+        recovery_sources = {}
+        recovery_boxes = {}
+        if recover:
+            try:
+                recovery_sources = _solid_panel_sources(episode_dir, finals)
+                # Decode all sources before the first backup/write; corrupt or
+                # ambiguous mappings never cause a partial artwork repair.
+                if recover_grid:
+                    import math, numpy as np
+                    from .stages.grid_cutter import solid_cell_boxes
+                    grid = math.isqrt(len(finals))
+                    if grid * grid != len(finals) or grid not in (2, 3, 4):
+                        raise ValueError('原网格恢复要求完整2×2、3×3或4×4槽位')
+                    path = episode_dir / '原图' / f'grid_{grid}x{grid}.png'
+                    if (not path.is_file() or path.is_symlink() or path.parent.is_symlink()
+                            or not path.resolve().is_relative_to(episode_dir.resolve())):
+                        raise ValueError('缺少可信原网格，未修改成品')
+                    with Image.open(path) as opened:
+                        original = opened.convert('RGBA')
+                    boxes = solid_cell_boxes(np.asarray(original), grid)
+                    for name, panel in recovery_sources.items():
+                        index = int(panel.stem.split('_')[-1])-1
+                        box = boxes[index]
+                        recovered[name] = original.crop(box)
+                        recovery_boxes[name] = list(box)
+                    recovery_sources = {name: path for name in recovered}
+                else:
+                    for name, path in recovery_sources.items():
+                        with Image.open(path) as opened:
+                            recovered[name] = opened.convert('RGBA')
+            except (OSError, ValueError, TypeError) as exc:
+                _result(req_id, 'fail', errors=[{'message': str(exc)}])
+                return
+        backup = episode_dir / '原图' / '_caption_layout_backup'
+        backup.mkdir(exist_ok=True)
+        manifest = {}
+        for p in finals:
+            for original, relative in ((p, Path('最终版') / p.name),
+                                       (source / p.name, Path('_noword') / p.name)):
+                target = backup / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if not target.exists():
+                    shutil.copy2(original, target)
+                manifest[str(relative)] = hashlib.sha256(target.read_bytes()).hexdigest()
+            img = normalize_solid_background(recovered[p.name] if recover else Image.open(source / p.name))
+            img.save(source / p.name)
+            ensure_size(draw_caption(img, p.stem)).save(p)
+        (backup / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
+        if recover:
+            (episode_dir / 'solid_source_recovery.json').write_text(json.dumps({
+                'version': VERSION, 'kind': 'grid' if recover_grid else 'panels', 'sources': {name: {
+                    'path': str(path.relative_to(episode_dir)),
+                    'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                    **({'box': recovery_boxes[name]} if recover_grid else {})}
+                    for name, path in recovery_sources.items()}}, ensure_ascii=False, indent=2), encoding='utf-8')
     series = find_series(meta.series_id) if meta.series_id else None
     warnings = _regen_episode_assets(episode_dir, meta, series)
     save_meta(episode_dir, meta)
@@ -2031,7 +2127,7 @@ def cmd_build_all_rejects_prompt(req_id, args):
 
 请用工具读取该文件后做两件事：
 1. 提炼共性问题：哪些驳回理由在多个作品重复出现，各属于管线哪个环节（生图 prompt / 切图 / 抠图 / 素材生成 / 命名）。
-2. 逐单修改清单：每单给出可执行步骤（重新生成一单 / 详情页→重生成素材 / 改名）。
+2. 逐弹修改清单：每弹给出可执行步骤（重新生成一弹 / 详情页→重生成素材 / 改名）。
 
 背景规则：表情主图 240×240、聊天页图标 50×50（4×4 网格切图生成）；名称不能含空格；图标须"只含形象头部的正面图像"；表情图不能有多余边框线。"""
     _result(req_id, "ok", data={"text": text, "count": len(records), "folder": str(folder)})
@@ -2071,7 +2167,7 @@ def cmd_build_reject_review_prompt(req_id, args):
 1. 逐句解读驳回理由，指出它对应管线中的哪个环节（生图 prompt 的哪类指令 / 切图 / 图标选张）。
 2. 结合下面的当次生图 prompt，定位最可能导致驳回的具体指令（如 STYLE 块或某格描述里的文字/装饰元素）。
 3. 产出可执行修改：给出修改后的风格块（STYLE）或指令文本；若是图标选张问题，说明应选哪类格子（最简单/最大图形的那张）。
-4. 如果你在用户本机运行（ZCode 等代理）："Prompt 方案"文件在 {prompts_dir}/*.json，可直接修改方案文件并提示用户到 设置→Prompt 方案 设为默认；修改完成后提示用户重新生成一单并重新提交。
+4. 如果你在用户本机运行（ZCode 等代理）："Prompt 方案"文件在 {prompts_dir}/*.json，可直接修改方案文件并提示用户到 设置→Prompt 方案 设为默认；修改完成后提示用户重新生成一弹并重新提交。
 
 ## 当次生图 prompt（截取）
 {prompt_txt or '（当次 prompt 未落盘，可能是历史作品）'}
@@ -2274,7 +2370,7 @@ def cmd_build_all_ratings_prompt(req_id, args):
     if from_no is not None or to_no is not None:
         scope += f"第 {from_no or '…'}–{to_no or '…'} 弹 "
     if skipped:
-        scope += f"（{skipped} 单在范围外/无编号被跳过）"
+        scope += f"（{skipped} 弹在范围外/无编号被跳过）"
     # 2026-09-11 用户改造：多单路径清单也过长（89 单×6 行），改为导出
     # JSONL——每行一单（album/episode_dir/overall/note/ratings/素材路径），
     # 剪贴板只复制文件夹路径 + 任务说明，AI 自己读文件。
@@ -2292,9 +2388,9 @@ def cmd_build_all_ratings_prompt(req_id, args):
 - 有分数 = 用户有明确感受：高分（4-5）= 亮点，低分（1-2）= 有问题（配合备注看）。
 - 没打分 ≠ 差：可能没来得及打，也可能平平常常。有问题的用户一般都会打分。
 
-## 你的任务（跨作品全局优化，不是逐单流水账）
+## 你的任务（跨作品全局优化，不是逐弹流水账）
 1. 用工具读取 ratings.jsonl，聚类共性问题（同类备注跨作品重复 = 系统性问题）；需要看原始数据时按行内路径深入读取。
-2. 优化方向：a. 参考图库（{reflib}）：低分单的参考图共性，建议淘汰/补充；b. 横幅/封面美观度（横幅=4 张拼贴 750x400）：低分共性 → 新生成方案；c. 生图 prompt（各单 prompt.txt）：低分集中的指令模式。
+2. 优化方向：a. 参考图库（{reflib}）：低分弹的参考图共性，建议淘汰/补充；b. 横幅/封面美观度（横幅=4 张拼贴 750x400）：低分共性 → 新生成方案；c. 生图 prompt（各弹 prompt.txt）：低分集中的指令模式。
 3. 产出可执行修改清单（参考图库文件操作 / 管线代码方案 / 修改后的 prompt 文本）。"""
     _result(req_id, "ok", data={"text": text, "count": len(blocks),
                                 "folder": str(folder)})
@@ -2341,6 +2437,24 @@ def cmd_save_rating(req_id, args):
         "note": args.get("note", ""),
         "ratings": args.get("ratings") or {},   # {含义词: {"score":1-5,"note":""}}
     }
+    # A one-item edit does not turn every inherited old-art score into a new
+    # evaluation. Retain item-level provenance until those values are changed.
+    previous_file = ep_dir / 'rating.json'
+    provenance_file = ep_dir / 'rating_provenance.json'
+    if previous_file.is_file() and provenance_file.is_file():
+        import hashlib
+        try:
+            previous = _json.loads(previous_file.read_text(encoding='utf-8'))
+            provenance = _json.loads(provenance_file.read_text(encoding='utf-8'))
+            original = (provenance.get('inherited_from_other_artwork') and
+                        provenance.get('rating_sha256') == hashlib.sha256(previous_file.read_bytes()).hexdigest())
+            inherited = list(previous.get('ratings', {})) if original else previous.get('inherited_rating_meanings', [])
+            rating['inherited_rating_meanings'] = [name for name in inherited
+                if previous.get('ratings', {}).get(name) == rating['ratings'].get(name)]
+            rating['inherited_overall'] = bool((original or previous.get('inherited_overall')) and
+                                              previous.get('overall') == rating['overall'])
+        except (ValueError, OSError, AttributeError):
+            pass
     (ep_dir / "rating.json").write_text(
         _json.dumps(rating, ensure_ascii=False, indent=2), encoding="utf-8")
     _result(req_id, "ok", data={"path": str(ep_dir / "rating.json"),
@@ -2358,7 +2472,19 @@ def cmd_get_rating(req_id, args):
         return
     import json as _json
     try:
-        _result(req_id, "ok", data=_json.loads(f.read_text(encoding="utf-8")))
+        data = _json.loads(f.read_text(encoding="utf-8"))
+        provenance_file = ep_dir / 'rating_provenance.json'
+        if provenance_file.is_file():
+            import hashlib
+            try:
+                provenance = _json.loads(provenance_file.read_text(encoding='utf-8'))
+                if provenance.get('rating_sha256') == hashlib.sha256(f.read_bytes()).hexdigest():
+                    data['provenance'] = provenance
+                elif data.get('inherited_rating_meanings') or data.get('inherited_overall'):
+                    data['provenance'] = dict(provenance, inherited_from_other_artwork=True)
+            except (ValueError, OSError, AttributeError):
+                pass  # A damaged diagnostic must not hide intact human ratings.
+        _result(req_id, "ok", data=data)
     except Exception:
         _result(req_id, "ok", data={"ratings": {}, "overall": None, "note": ""})
 
@@ -2832,6 +2958,9 @@ def _handle_in_thread(req_id, cmd, args):
         _emit({"id": req_id, "type": "error", "message": f"未知命令: {cmd}"})
         return
     _log("info", f"开始命令：{cmd}", command=cmd, command_id=req_id)
+    # Register before library preparation so the cancel button is not a no-op.
+    if cmd == 'sync_platform_status':
+        _stop_events[req_id] = threading.Event()
     try:
         from .library.hooks import invoke
         invoke(sys.modules[__name__], req_id, cmd, args, handler)
@@ -2842,6 +2971,9 @@ def _handle_in_thread(req_id, cmd, args):
             command=cmd, command_id=req_id,
         )
         _emit({"id": req_id, "type": "error", "message": f"{type(e).__name__}: {e}"})
+    finally:
+        if cmd == 'sync_platform_status':
+            _stop_events.pop(req_id, None)
 
 
 def _force_utf8_stdio():

@@ -47,6 +47,10 @@ failed = subprocess.run(['bash', str(stage / 'install.command'), '--update', '99
 assert failed.returncode != 0, 'corrupt bundle accepted'
 assert hashlib.sha256(binary.read_bytes()).hexdigest() == new_hash
 assert sentinel.read_text() == 'original artwork sentinel'
-result = {'status': 'MAC_REPLACEMENT_PASS', 'from': '0.5.0', 'to': '0.5.1', 'old_bundle_backup': 'hash_verified', 'failed_signature': 'existing_bundle_retained', 'artwork': 'retained', 'automatic_relaunch': 'not_tested_headless', 'failure_exit': failed.returncode}
+import plistlib
+version = json.loads(pathlib.Path('desktop/package.json').read_text())['version']
+installed_version = plistlib.loads((destination / 'Contents/Info.plist').read_bytes())['CFBundleShortVersionString']
+assert installed_version == version
+result = {'status': 'MAC_REPLACEMENT_PASS', 'from': '0.5.0', 'to': installed_version, 'old_bundle_backup': 'hash_verified', 'failed_signature': 'existing_bundle_retained', 'artwork': 'retained', 'automatic_relaunch': 'not_tested_headless', 'failure_exit': failed.returncode}
 pathlib.Path('verification/mac-upgrade.json').write_text(json.dumps(result, indent=2))
-print('MAC_REPLACEMENT_PASS from=0.5.0 to=0.5.1; backup=original_hash; invalid_signature=rejected; artwork=retained')
+print(f'MAC_REPLACEMENT_PASS from=0.5.0 to={installed_version}; backup=original_hash; invalid_signature=rejected; artwork=retained')

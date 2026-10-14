@@ -135,6 +135,7 @@
           表情（{{ stickers.length }} 张）<span class="muted">角色：{{ characters.join('、') || '—' }}</span>
           <span class="rate-hint">👆 点星星打分（1-5，自动保存；评分文件可发给 AI 优化 prompt）</span>
         </h3>
+        <p v-if="inheritedRating" class="warn-text">这些评分来自保留的旧素材版本；已变化的图片尚未重新评分。原评分、备注及制作上下文已归档。</p>
         <div class="sticker-grid">
           <div v-for="(st, i) in stickers" :key="st.file" class="sticker-cell" :title="st.meaning">
             <img :src="fileUrl(st.path)" />
@@ -170,7 +171,7 @@
         <h3 class="card-title">发布</h3>
         <!-- 未通过审核：按驳回理由精准修复 + 平台编辑器重提（用户 SOP） -->
         <div v-if="(meta.platform_status || ep.platform_status || '').includes('未通过')" class="republish-box">
-          <p class="republish-title">⛔ 这单被驳回——按驳回理由修改后再提交：</p>
+          <p class="republish-title">⛔ 这弹被驳回——按驳回理由修改后再提交：</p>
           <button class="republish-btn" :disabled="!canEdit || !canPublish || fixingRepublish" @click="fixAndRepublish(true)">
             {{ fixingRepublish ? '正在修改并重新提交（约几分钟）…' : '✅ 修改完毕，去平台重新提交' }}
           </button>
@@ -179,7 +180,7 @@
           </button>
           <p class="republish-note">
             流程：本地按驳回理由修复（去边框/改空格名/AI 头部图标/重做赞赏图）→
-            打开平台该单的编辑页 → 只把有问题的部分改掉 → 点提交
+            打开平台该弹的编辑页 → 只把有问题的部分改掉 → 点提交
             <template v-if="fixRepublishActions"><br />→ 已完成：{{ fixRepublishActions }}</template>
           </p>
         </div>
@@ -291,6 +292,7 @@ const ratings = ref({})
 const overall = ref(null)
 const note = ref('')
 const ratingSavedAt = ref('')
+const inheritedRating = ref(false)
 let ratingTimer = null
 
 async function loadRating() {
@@ -301,6 +303,7 @@ async function loadRating() {
       ratings.value = res.data.ratings || {}
       overall.value = res.data.overall ?? null
       note.value = res.data.note || ''
+      inheritedRating.value = !!res.data.provenance?.inherited_from_other_artwork
     }
   } catch { /* 静默 */ }
 }

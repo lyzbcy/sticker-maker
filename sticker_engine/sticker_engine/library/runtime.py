@@ -11,6 +11,7 @@ import os
 import shutil
 import uuid
 import copy
+import threading
 from pathlib import Path
 
 from ..config.series import EpisodeMeta, load_meta, save_meta
@@ -35,7 +36,11 @@ def write_json(path, data):
     tmp = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
     try:
         with tmp.open('w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+            # Device state is a large private snapshot, not a hand-edited file.
+            # One compact C-encoder write avoids hundreds of thousands of
+            # Python encoder/write calls per marker update. Durability and
+            # atomic replacement remain immediate on EVERY save.
+            f.write(json.dumps(data, ensure_ascii=False, separators=(',', ':')))
             f.flush(); os.fsync(f.fileno())
         os.replace(tmp, path)
     finally:
@@ -58,7 +63,8 @@ def _content_fingerprint(metadata, files):
     """Directory-name-agnostic fingerprint: identical episode content must
     compare equal after a materialization renamed episode_<timestamp> to
     episode_<work_id> (legacy_name is a projection detail, not content)."""
-    normalized = {k: v for k, v in (metadata or {}).items() if k != 'legacy_name'}
+    from .reconciliation import authored_metadata
+    normalized = authored_metadata(metadata or {})
     return fingerprint(normalized, files)
 
 
@@ -202,6 +208,9 @@ class LibraryRuntime:
         if unbound and not confirm_legacy:
             raise ValueError(f'发现 {len(unbound)} 个旧作品，请确认其账号归属后绑定')
         try:
+            self._rows_at = 0
+            self._refresh_cache = None
+            self.state['last_rows'] = []
             self.state.update(account_id=key, account_label=str(account).strip())
             self.state['library_id'] = self.library.library_id
             self.state['accounts'][key] = str(account).strip()
@@ -443,6 +452,21 @@ class LibraryRuntime:
         metadata = source['metadata']
         metadata['resource_placeholder'] = not bool(files)
         metadata['missing_resources'] = missing
+        # Device-local platform observations are not artwork edits. When the
+        # local fields still equal our observation, compare/capture the parent's
+        # original platform fields; otherwise a later capture would manufacture
+        # a third asset head solely because the platform status was refreshed.
+        observation = self.state.get('platform_observations', {}).get(self.account_id + '/' + meta.work_id)
+        parent_id = self.state['paths'].get(str(path), {}).get('revision_id')
+        if observation and parent_id and all(metadata.get(k) == v for k, v in observation.items()):
+            parent = next((r for r in library.revisions(self.account_id, meta.work_id)
+                           if r['revision_id'] == parent_id), None)
+            if parent:
+                for key in observation:
+                    if key in parent['metadata']:
+                        metadata[key] = copy.deepcopy(parent['metadata'][key])
+                    else:
+                        metadata.pop(key, None)
         digest = fingerprint(metadata, files)
         marker = self.state['paths'].get(str(path), {})
         if marker.get('fingerprint') == digest and marker.get('revision_id'):
@@ -492,6 +516,123 @@ class LibraryRuntime:
         self._rows_at = 0   # 新作品/新内容入库：rows 快照立即失效
         return {'work_id': meta.work_id, 'revision_id': rev['revision_id']}
 
+    def commit_platform_metadata(self, path, meta):
+        """Commit only platform observations; never hash/copy artwork for sync.
+
+        Require the projection's exact parent and retain its existing file map.
+        A changed/shared head is not silently adopted. The caller keeps LOCK,
+        persists device markers once in finally, and reports any per-work error.
+        """
+        self.require_account()
+        path = Path(path)
+        if meta.account_id != self.account_id or not meta.work_id:
+            raise ValueError('平台状态入库账号或作品身份不一致')
+        marker = self.state['paths'].get(str(path), {})
+        work = self.library.read_work(self.account_id, meta.work_id)
+        revision = work.get('revision')
+        observations = {key: copy.deepcopy(value) for key, value in meta.to_dict().items()
+                        if key.startswith('platform_') or key == 'published'}
+        if not hasattr(self, '_platform_row_updates'):
+            self._platform_row_updates = {}
+        observation_key = self.account_id + '/' + meta.work_id
+        if (work['state'] == 'conflict' or work.get('sync_conflicts')
+                or meta.work_id in self.state.get('identity_conflicts', [])):
+            # Platform facts can be refreshed even while artwork heads conflict.
+            # Keep them as device-local observations, NOT a merged asset revision.
+            self.state.setdefault('platform_observations', {})[observation_key] = observations
+            self._platform_row_updates[meta.work_id] = observations
+            if not hasattr(self, '_platform_conflicted_updates'):
+                self._platform_conflicted_updates = set()
+            self._platform_conflicted_updates.add(meta.work_id)
+            return
+        if not revision and not work.get('heads') and not work.get('sync_conflicts'):
+            # A brand-new platform placeholder has no parent/file map yet.
+            # Capture just this new work once (normally meta.json only), not
+            # the whole library; the standard capture path validates its roots.
+            self.capture(path)
+            self._platform_row_updates[meta.work_id] = observations
+            return
+        if (not revision or work['state'] not in ('available', 'placeholder')
+                or work.get('sync_conflicts')
+                or marker.get('revision_id') != revision['revision_id']
+                or meta.work_id in self.state.get('identity_conflicts', [])):
+            raise ValueError('作品资源库版本已变更或存在冲突，已保留本地平台结果')
+        metadata = copy.deepcopy(revision['metadata'])
+        metadata.update(observations)
+        if all(key == 'platform_updated_at' or value == revision['metadata'].get(key)
+               for key, value in observations.items()):
+            # A new check time is not a new shared artwork revision. Keep the
+            # observation locally; publish a revision only for changed facts.
+            self.state.setdefault('platform_observations', {})[observation_key] = observations
+            self._platform_row_updates[meta.work_id] = observations
+            return
+        if metadata == revision['metadata']:
+            self._platform_row_updates[meta.work_id] = observations
+            return
+        files = revision.get('files') or {}
+        updated = self.library.write_revision(
+            self.account_id, meta.work_id, metadata, files,
+            parents=[revision['revision_id']])
+        self.state['paths'][str(path)] = dict(marker,
+            revision_id=updated['revision_id'], fingerprint=fingerprint(metadata, files))
+        self.state.setdefault('platform_observations', {}).pop(observation_key, None)
+        self._platform_row_updates[meta.work_id] = observations
+        # A work can have both timestamp and work-id projections. Keep platform
+        # observations aligned across siblings of the same parent; otherwise a
+        # later full capture mistakes the old sibling's status for an offline edit.
+        for sibling, sibling_marker in list(self.state['paths'].items()):
+            sibling_path = Path(sibling)
+            if (sibling == str(path) or sibling_marker.get('work_id') != meta.work_id
+                    or sibling_marker.get('revision_id') != revision['revision_id']
+                    or sibling_path.parent != self.output_root
+                    or not sibling_path.is_dir() or sibling_path.is_symlink()):
+                continue
+            sibling_meta = load_meta(sibling_path)
+            if sibling_meta.work_id != meta.work_id or sibling_meta.account_id != self.account_id:
+                continue
+            for key, value in observations.items():
+                if key.startswith('platform_') or key == 'published':
+                    setattr(sibling_meta, key, copy.deepcopy(value))
+            save_meta(sibling_path, sibling_meta)
+            self.state['paths'][sibling] = dict(sibling_marker,
+                revision_id=updated['revision_id'], fingerprint=fingerprint(metadata, files))
+        self._rows_at = 0
+        self._refresh_cache = None
+
+    def finish_platform_sync(self):
+        """Update the existing row snapshot without re-enumerating all artwork."""
+        updates = getattr(self, '_platform_row_updates', {})
+        cached = self.state.get('last_rows')
+        if cached is not None:
+            known = {r.get('work_id') for r in cached}
+            if set(updates) <= known:
+                for row in cached:
+                    observations = updates.get(row.get('work_id'))
+                    if observations is None:
+                        continue
+                    row.update(copy.deepcopy(observations))
+                    if row.get('work_id') in getattr(self, '_platform_conflicted_updates', set()):
+                        row.update(resource_state='conflict', can_edit=False, can_publish=False)
+                    row['can_shelf'] = (row.get('resource_state') in ('available', 'placeholder')
+                        and not row.get('offline')
+                        and not row.get('sync_conflicts') and not row.get('identity_conflict')
+                        and row.get('platform_status') == '审核通过')
+                self._rows_at = __import__('time').monotonic()
+            else:
+                self._rows_at = 0
+        self._platform_row_updates = {}
+        self._platform_conflicted_updates = set()
+        self.save()
+
+    def _platform_metadata(self, work_id, metadata):
+        """Overlay same-account observations without resolving resource conflicts."""
+        observation = self.state.get('platform_observations', {}).get(self.account_id + '/' + work_id)
+        if (observation and (not metadata.get('platform_item_id') or
+                metadata.get('platform_item_id') == observation.get('platform_item_id'))
+                and str(observation.get('platform_updated_at', '')) >= str(metadata.get('platform_updated_at', ''))):
+            return dict(metadata, **copy.deepcopy(observation))
+        return metadata
+
     def capture_all(self):
         if not self.enabled:
             return
@@ -504,19 +645,44 @@ class LibraryRuntime:
         light = self.state.get('capture_light') or {}
         import time as _time
         from concurrent.futures import ThreadPoolExecutor
+        from .reconciliation import authored_metadata
+        started = _time.monotonic()
+
+        def report(phase, completed, total, label):
+            callback = getattr(self, '_progress_callback', None)
+            if callback:
+                try:
+                    callback({'phase': phase, 'completed': completed, 'total': total,
+                              'elapsed_seconds': round(_time.monotonic()-started, 2),
+                              'message': f'{label} {completed}/{total}'})
+                except Exception:
+                    pass
 
         def _snap_one(path):
             try:
-                if not (path.is_dir() and load_meta(path).account_id in ('', self.account_id)):
+                meta = load_meta(path)
+                if not (path.is_dir() and meta.account_id in ('', self.account_id)):
                     return None
                 # Old unbound directories require explicit binding first.
                 if path.parent == self.user_data / 'episodes' and not load_meta(path).account_id:
                     return None
                 snapshot = sorted(
-                    (f.name, f.stat().st_mtime_ns, f.stat().st_size)
+                    (f.relative_to(path).as_posix(), f.stat().st_mtime_ns, f.stat().st_size)
                     for f in path.rglob('*') if f.is_file()
-                    and not is_private(path / f.relative_to(path)))
-                return path, snapshot
+                    and f != path / 'meta.json' and not is_private(path / f.relative_to(path)))
+                # A changed check-time/status is not a changed illustration.
+                # Keep authored metadata AND platform identity in the light key;
+                # changing a name/cover/ID still forces full capture.
+                external = []
+                for field in ('cover_custom', 'banner_custom', 'icon_custom'):
+                    if getattr(meta, field):
+                        file = Path(getattr(meta, field))
+                        if not file.is_absolute(): file = path / file
+                        stat = file.stat() if file.is_file() else None
+                        external.append((field, str(file), stat.st_mtime_ns if stat else None,
+                                         stat.st_size if stat else None))
+                return path, {'v': 2, 'files': snapshot,
+                              'metadata': authored_metadata(meta.to_dict()), 'external': external}
             except OSError:
                 return None
 
@@ -525,25 +691,34 @@ class LibraryRuntime:
         roots = [self.output_root]
         if not self.state.get('root'):
             roots.append(self.user_data / 'episodes')
+        paths = [path for root in roots for path in sorted(root.glob('episode*'))]
+        report('capture_scan', 0, len(paths), '正在扫描资源库轻快照')
+        last_report = _time.monotonic()
         with ThreadPoolExecutor(max_workers=8) as pool:
-            for root in roots:
-                for path, snapshot in pool.map(_snap_one, sorted(root.glob('episode*'))):
-                    if path is None:
-                        continue
-                    key = str(path)
-                    snapshot_key = json.dumps(snapshot, ensure_ascii=False)
-                    if light.get(key, {}).get('snapshot') == snapshot_key                         and light[key].get('captured_at'):
-                        light_new[key] = light[key]
-                        continue   # 未变更：跳过逐文件哈希
-                    changed.append((path, snapshot_key))
+            for index, result in enumerate(pool.map(_snap_one, paths), 1):
+                if index % 100 == 0 or index == len(paths) or _time.monotonic()-last_report >= 5:
+                    report('capture_scan', index, len(paths), '正在扫描资源库轻快照')
+                    last_report = _time.monotonic()
+                if result is None:
+                    continue
+                path, snapshot = result
+                key = str(path)
+                snapshot_key = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+                if light.get(key, {}).get('snapshot') == snapshot_key and light[key].get('captured_at'):
+                    light_new[key] = light[key]
+                    continue
+                changed.append((path, snapshot_key))
         deadline = _time.monotonic() + 100   # 硬上限：真正哈希的总量不超过 ~100s
-        for path, snapshot_key in changed:
+        for index, (path, snapshot_key) in enumerate(changed, 1):
             if _time.monotonic() > deadline:
                 light_new[str(path)] = light.get(str(path), {'captured_at': 0})
                 continue   # 超时预算：本轮跳过，下轮补
             self.capture(path)
             light_new[str(path)] = {'snapshot': snapshot_key,
                                     'captured_at': _time.monotonic()}
+            if index % 100 == 0 or index == len(changed) or _time.monotonic()-last_report >= 5:
+                report('capture_changed', index, len(changed), '正在捕获变更资源')
+                last_report = _time.monotonic()
         self.state['capture_light'] = light_new
         self.save()
         result = SharedSettings(self).capture()
@@ -573,7 +748,7 @@ class LibraryRuntime:
                 mapping[wid] = p
         return mapping
 
-    def _materialize(self, work, path=None):
+    def _materialize(self, work, path=None, force=False):
         revision = work.get('revision')
         if (not revision or work['state'] not in ('available', 'placeholder')
                 or work.get('sync_conflicts')):
@@ -581,7 +756,7 @@ class LibraryRuntime:
         wid = work['work_id']
         target = Path(path) if path else self.path_for(wid)
         marker = self.state['paths'].get(str(target), {})
-        if marker.get('revision_id') == revision['revision_id'] and target.is_dir():
+        if not force and marker.get('revision_id') == revision['revision_id'] and target.is_dir():
             return
         def can_replace_projection():
             if target.is_dir():
@@ -604,7 +779,7 @@ class LibraryRuntime:
         replaced = False
         try:
             self.library.materialize(self.account_id, wid, stage, revision['revision_id'])
-            meta = EpisodeMeta.from_dict(revision['metadata'])
+            meta = EpisodeMeta.from_dict(self._platform_metadata(wid, revision['metadata']))
             meta.work_id, meta.account_id = wid, self.account_id
             meta.account_label = self.account_label
             for field in ('cover_custom', 'banner_custom', 'icon_custom'):
@@ -673,8 +848,21 @@ class LibraryRuntime:
                 self.capture_all()
             self._reconcile_platform_identities()
             path_map = self._work_path_map()
-            for work in self.works():
+            works = self.works()
+            callback = getattr(self, '_progress_callback', None)
+            start = __import__('time').monotonic()
+            reported = start
+            for index, work in enumerate(works, 1):
                 self._materialize(work, path_map.get(work['work_id']))
+                now = __import__('time').monotonic()
+                if callback and (index % 100 == 0 or index == len(works) or now-reported >= 5):
+                    try:
+                        callback({'phase': 'materialize', 'completed': index, 'total': len(works),
+                                  'elapsed_seconds': round(now-start, 2),
+                                  'message': f'正在对齐共享资源 {index}/{len(works)}'})
+                    except Exception:
+                        pass
+                    reported = now
             settings_result = SharedSettings(self).apply()
             self._record_settings_result(settings_result)
             self.state.pop('offline_error', None)
@@ -702,6 +890,9 @@ class LibraryRuntime:
             destination.merge_from(self.library)
         self.state.update(root=str(destination.root), library_id=destination.library_id,
             workspace_base=str(destination.root.parent / '.sticker-maker-workspaces' / self.state['device_id']))
+        self._rows_at = 0
+        self._refresh_cache = None
+        self.state['last_rows'] = []
         self.save()
         try:
             self.refresh(capture=False)
@@ -743,7 +934,7 @@ class LibraryRuntime:
             if work['state'] == 'deleted' or work['work_id'] in self.state['hidden']:
                 continue
             revision = work.get('revision') or (work.get('heads') or [{}])[0]
-            metadata = revision.get('metadata', {})
+            metadata = self._platform_metadata(work['work_id'], revision.get('metadata', {}))
             path = Path(path_map.get(work['work_id']) or self.path_for(work['work_id']))
             has_sync_conflicts = bool(work.get('sync_conflicts'))
             has_identity_conflict = work['work_id'] in set(self.state.get('identity_conflicts') or [])
@@ -803,6 +994,9 @@ class LibraryRuntime:
                         settings_missing.append({'work_id': work['work_id'],
                                                  'missing': work.get('missing', [])})
                     continue
+                if meta.get('kind', 'episode') != 'episode':
+                    # Operation journals are not albums (including tombstones).
+                    continue
                 # Placeholder history collapsed into a resource-backed work is
                 # represented by a deleted alias tombstone.  It is an
                 # implementation detail, not a user-facing deleted work that
@@ -813,7 +1007,6 @@ class LibraryRuntime:
                 if state == 'available' and work['work_id'] in identity_conflict_ids:
                     # Rows are non-editable for this duplicate binding, so
                     # expose the same state in aggregate counts as well.
-                    counts['available'] = max(0, counts.get('available', 0) - 1)
                     state = 'conflict'
                 counts[state] = counts.get(state, 0) + 1
                 item = dict(work, state=state,
@@ -921,7 +1114,7 @@ class LibraryRuntime:
         self._rows_at = 0
         return self.refresh(capture=False)
 
-    def resolve(self, work_id, revision_id, action='choose'):
+    def resolve(self, work_id, revision_id, action='choose', expected_heads=None):
         work = self.library.read_work(self.account_id, work_id)
         candidates = list(work.get('heads') or [])
         selected = next((r for r in candidates if r.get('revision_id') == revision_id), None)
@@ -939,17 +1132,22 @@ class LibraryRuntime:
             meta.update(work_id=wid, published=False, published_at='', number=None,
                         series_id=None, series_name='', album_name=meta.get('album_name', '') + '副本')
             self.library.write_revision(self.account_id, wid, meta, rev['files'], parents=[])
-        elif action == 'choose':
+        elif action in ('choose', 'choose_keep_ratings'):
             if not selected:
                 raise ValueError('请选择有效冲突版本')
-            merged = self.library.resolve(self.account_id, work_id, revision_id)
+            if action == 'choose_keep_ratings':
+                from .reconciliation import choose_preserving_ratings
+                merged = choose_preserving_ratings(self.library, self.account_id,
+                    work_id, revision_id, expected_heads)
+            else:
+                merged = self.library.resolve(self.account_id, work_id, revision_id)
             if is_settings:
                 # resolve 后立即把选定的设置版本物化到本地：本地旧内容 +
                 # 过期 marker 会让下一次 apply 误判（unchanged 跳过或再次
                 # 冲突），"resolve→同步→又冲突"死循环的另一半（2026-09-09）
                 try:
                     from .settings import SharedSettings
-                    SharedSettings(self).force_apply_entity(work_id, revision_id)
+                    SharedSettings(self).force_apply_entity(work_id, merged['revision_id'])
                 except Exception:   # noqa: BLE001
                     pass   # 物化失败不阻断 resolve 本身，冲突卡仍在可重试
             else:
@@ -959,7 +1157,16 @@ class LibraryRuntime:
                 # 第 4 条教训的 episode 版；settings 走 force_apply_entity，
                 # episode 走这里对齐 revision_id，fingerprint 不动——本地
                 # 内容没变）。
-                if merged and merged.get('revision_id'):
+                if action == 'choose_keep_ratings':
+                    # Do not advance a stale projection marker before copying
+                    # the chosen artwork: _materialize's marker fast path would
+                    # otherwise leave the discarded artwork visible forever.
+                    for p, mk in list((self.state.get('paths') or {}).items()):
+                        if (isinstance(mk, dict) and mk.get('work_id') == work_id
+                                and Path(p).resolve().is_relative_to(self.output_root.resolve())):
+                            current = self.library.read_work(self.account_id, work_id)
+                            self._materialize(current, Path(p))
+                elif merged and merged.get('revision_id'):
                     new_id = merged['revision_id']
                     for p, mk in (self.state.get('paths') or {}).items():
                         if isinstance(mk, dict) and mk.get('work_id') == work_id:
@@ -971,8 +1178,45 @@ class LibraryRuntime:
         self._rows_at = 0
         return self.refresh(capture=False)
 
+    def materialize_chosen(self, work_id, revision_id):
+        """Resume an interrupted projection swap, never rewrite revision heads.
+
+        An advanced marker alone is not proof that chosen bytes are on disk.
+        Force only skips that marker shortcut; capture and exact-head checks
+        remain in _materialize, so concurrent authored edits are still preserved.
+        """
+        self.require_account()
+        work = self.library.read_work(self.account_id, work_id)
+        if work['state'] != 'available' or work['revision']['revision_id'] != revision_id:
+            raise ValueError('素材版本已变化，请重新核验')
+        paths = [Path(p) for p, mk in (self.state.get('paths') or {}).items()
+                 if isinstance(mk, dict) and mk.get('work_id') == work_id
+                 and Path(p).resolve().is_relative_to(self.output_root.resolve())]
+        for path in paths or [self.path_for(work_id)]:
+            self._materialize(self.library.read_work(self.account_id, work_id), path, force=True)
+        self._rows_at = 0
+        return self.status()
+
 
 _ACTIVE_RUNTIME_CACHE = {}
+_ACTIVE_RUNTIME_LOCK = threading.RLock()
+
+
+def runtime_for_user_data(user_data):
+    """One state/catalog/refresh cache for every actor on the same device.
+
+    Engine hooks and Publisher used to cache independent instances, allowing
+    stale markers to overwrite each other and duplicating expensive refreshes.
+    Explicit LibraryRuntime(...) instances remain available for peer fixtures.
+    """
+    data = Path(user_data).expanduser().resolve()
+    key = os.path.normcase(str(data))
+    with _ACTIVE_RUNTIME_LOCK:
+        rt = _ACTIVE_RUNTIME_CACHE.get(key)
+        if rt is None:
+            rt = LibraryRuntime(data)
+            _ACTIVE_RUNTIME_CACHE[key] = rt
+        return rt
 
 
 def active_runtime():
@@ -985,9 +1229,4 @@ def active_runtime():
     服务的是发布/补发等直接调用方，进程生命周期内账号不变。
     """
     from ..config.paths import resolve_paths, current_platform
-    ud = str(Path(resolve_paths(current_platform()).user_data))
-    rt = _ACTIVE_RUNTIME_CACHE.get(ud)
-    if rt is None:
-        rt = LibraryRuntime(ud)
-        _ACTIVE_RUNTIME_CACHE[ud] = rt
-    return rt
+    return runtime_for_user_data(resolve_paths(current_platform()).user_data)

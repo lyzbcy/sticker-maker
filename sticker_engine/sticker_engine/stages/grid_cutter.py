@@ -185,7 +185,92 @@ def _components(mask: np.ndarray):
     return comps
 
 
-def cut_grid(grid_image: Path, grid: int, out_dir: Path
+def _solid_bounds(arr, grid, axis):
+    """Detect near-grid, full-span color transitions, not character silhouettes.
+
+    A solid tile can have the same color as the global sampled background.
+    Foreground gutters and component bboxes therefore cannot define its frame.
+    Only a strong transition across >=90% of the sheet near the nominal cut is
+    accepted; otherwise equal-grid framing preserves the complete caption band.
+    """
+    colors = arr[:, :, :3].astype(np.int16)
+    delta = np.abs(np.diff(colors, axis=axis)).sum(axis=2)
+    support = (delta >= 40).mean(axis=1 if axis == 0 else 0)
+    total = arr.shape[axis]
+    cell = total / grid
+    cuts = []
+    for i in range(1, grid):
+        expected = int(i * cell)
+        radius = max(1, int(cell * .12))
+        candidates = [(float(support[pos - 1]), -abs(pos - expected), pos)
+                      for pos in range(max(1, expected - radius), min(total, expected + radius + 1))
+                      if support[pos - 1] >= .90]
+        cuts.append(max(candidates)[2] if candidates else expected)
+    return _trim_solid_gutters(arr, _cell_bounds(cuts, total, grid), axis)
+
+
+def _trim_solid_gutters(arr, bounds, axis):
+    """Trim only thin, globally proven white gutters, not local silhouettes.
+
+    A nearly full-sheet white core anchors a >=70% near-white run touching a
+    cell boundary. Thick white regions and bands crossed by dark foreground
+    are retained. At most one bright adjacent antialias pixel is included.
+    The full grid is essential: a white sleeve in one cell is not evidence.
+    """
+    rgb = arr[:, :, :3].astype(np.int16)
+    white = (rgb.min(axis=2) > 230) & (rgb.max(axis=2)-rgb.min(axis=2) <= 20)
+    support = white.mean(axis=0 if axis == 1 else 1)
+    dark = (rgb.min(axis=2) < 180).any(axis=0 if axis == 1 else 1)
+    result = []
+    for start, end in bounds:
+        lo, hi = start, end
+        limit = max(1, int((end-start)*.04))
+        for left in (True, False):
+            edge = start if left else end-1
+            step = 1 if left else -1
+            positions = []
+            pos = edge
+            if (support[pos] < .7 and not dark[pos]
+                    and start <= pos+step < end and support[pos+step] >= .7):
+                positions.append(pos);pos += step
+            while start <= pos < end and support[pos] >= .7:
+                positions.append(pos);pos += step
+            outside = start-1 if left else end
+            if (not positions and 0 <= outside < len(support)
+                    and support[outside] >= .98 and not dark[edge]):
+                # The transition detector can already put the white core
+                # outside the crop, leaving only its one-pixel bright fringe.
+                positions = [edge]
+                if left:
+                    lo = edge+1
+                else:
+                    hi = edge
+                continue
+            if (not positions or len(positions) > limit
+                    or max(support[x] for x in positions) < .98
+                    or any(dark[x] for x in positions)):
+                continue
+            # An adjacent bright pixel can be a colored gutter AA fringe;
+            # never extend through dark hair/outline, and never exceed 4%.
+            if start <= pos < end and not dark[pos] and len(positions) < limit:
+                positions.append(pos)
+            if left:
+                lo = max(positions)+1
+            else:
+                hi = min(positions)
+        result.append((lo, hi) if lo < hi else (start, end))
+    return result
+
+
+def solid_cell_boxes(arr, grid):
+    """Row-major source boxes shared by solid S2 and explicit grid recovery."""
+    if grid not in (2, 3, 4) or min(arr.shape[:2]) < grid * 8:
+        raise ValueError('彩底网格尺寸或格数无效')
+    xs, ys = _solid_bounds(arr, grid, 1), _solid_bounds(arr, grid, 0)
+    return [(x0, y0, x1, y1) for y0, y1 in ys for x0, x1 in xs]
+
+
+def cut_grid(grid_image: Path, grid: int, out_dir: Path, *, preserve_cell: bool = False
              ) -> Tuple[List[Path], List[str]]:
     """把宫格图切成 grid×grid 张 panel（行优先编号），返回 (paths, notes)。
 
@@ -197,6 +282,18 @@ def cut_grid(grid_image: Path, grid: int, out_dir: Path
     arr = np.asarray(img)
     h, w = arr.shape[:2]
     notes: List[str] = []
+
+    if preserve_cell:
+        xs = _solid_bounds(arr, grid, 1)
+        ys = _solid_bounds(arr, grid, 0)
+        panels = []
+        for row, (y0, y1) in enumerate(ys):
+            for col, (x0, x1) in enumerate(xs):
+                out = out_dir / f'panel_{row * grid + col + 1:02d}.png'
+                img.crop((x0, y0, x1, y1)).save(out)
+                panels.append(out)
+        notes.append(f'彩底整格保留（含底部字幕留白）：X={xs}；Y={ys}；不按人物框收紧')
+        return panels, notes
 
     bg = _detect_background(arr)
     mask = _content_mask(arr, bg)

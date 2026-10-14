@@ -3,12 +3,12 @@ from pathlib import Path
 import threading
 import uuid
 
-from .runtime import LibraryRuntime, account_key
+from .runtime import LibraryRuntime, account_key, runtime_for_user_data
 from .catalog import ResourceLibrary
 from .transfer import TransferManager
 
 COMMANDS = ('status', 'bind_account', 'preview', 'execute', 'connect', 'import', 'reconcile',
-            'refresh', 'resolve', 'delete', 'handoff', 'capture')
+            'refresh', 'resolve', 'delete', 'handoff', 'capture', 'repair_conflicts', 'cleanup_failed', 'materialize', 'repair_settings')
 LOCK = threading.RLock()
 # 当前持锁任务（hooks.invoke 与本文件 register 共用一把 LOCK，两侧都维护）：
 # 拒绝消息据此告诉用户"谁在跑、跑了多久"，而不是一句无主语的"请等待"
@@ -76,7 +76,9 @@ def _progress_emitter(cli, req_id):
 
 
 def dispatch(cli, name, req_id, args):
-    rt = LibraryRuntime(cli._ensure_engine().config.paths.user_data)
+    from .hooks import runtime_for
+    engine = cli._ensure_engine()
+    rt = runtime_for(engine) or runtime_for_user_data(engine.config.paths.user_data)
     manager = TransferManager(rt.local / 'transfers')
     if name == 'status':
         return _cached_status(rt)
@@ -89,11 +91,56 @@ def dispatch(cli, name, req_id, args):
         cli._engine = None
         return result
     if name == 'refresh':
-        return rt.refresh()
+        previous = getattr(rt, '_progress_callback', None)
+        def report(event):
+            cli._emit({'id': req_id, 'type': 'progress', 'stage': 'library',
+                       'percent': None, **event})
+        rt._progress_callback = report
+        try:
+            return rt.refresh()
+        finally:
+            rt._progress_callback = previous
+    if name == 'cleanup_failed':
+        from .failed_drafts import cleanup
+        result=cleanup(rt, bool(args.get('execute')))
+        if args.get('execute'):
+            cli._engine=None
+        return result
+    if name == 'repair_conflicts':
+        from .reconciliation import propose, repair
+        rt.require_account()
+        if args.get('execute'):
+            rt.capture_all()
+        works = [w for w in rt.works() if w['state'] == 'conflict']
+        report = {'preview': not bool(args.get('execute')), 'eligible': [], 'merged': [], 'unresolved': []}
+        for index, work in enumerate(works):
+            plan = propose(rt.library, work)
+            if not plan['eligible']:
+                report['unresolved'].append({'work_id': work['work_id'], 'reason': plan['reason']})
+            elif args.get('execute'):
+                result = repair(rt.library, rt.account_id, work['work_id'], plan['parents'])
+                report['merged' if result['merged'] else 'unresolved'].append(result)
+            else:
+                report['eligible'].append({'work_id': work['work_id'], 'parents': plan['parents']})
+            if index % 50 == 0:
+                _progress_emitter(cli, req_id)({'completed': index+1, 'total': len(works)}, '检查观测/评分冲突')
+        if args.get('execute'):
+            rt.refresh(capture=False)
+            cli._engine = None
+        return report
     if name == 'capture':
         return rt.capture(args.get('episode_dir') or '')
     if name == 'resolve':
-        return rt.resolve(args.get('work_id'), args.get('revision_id'), args.get('action', 'choose'))
+        return rt.resolve(args.get('work_id'), args.get('revision_id'), args.get('action', 'choose'),
+                          expected_heads=args.get('expected_heads'))
+    if name == 'materialize':
+        return rt.materialize_chosen(args.get('work_id'), args.get('revision_id'))
+    if name == 'repair_settings':
+        from .settings import SharedSettings
+        result = SharedSettings(rt).repair_equivalent_prefs(args.get('work_id'), args.get('expected_heads'))
+        result['status'] = rt.refresh(capture=False)
+        cli._engine = None
+        return result
     if name == 'reconcile':
         from .operations import reconcile
         reconcile(rt, args.get('operation_id'), args.get('outcome'))
@@ -183,7 +230,9 @@ def dispatch(cli, name, req_id, args):
             rt.capture_all()
             summary = rt.library.merge_from(ResourceLibrary(path))
             rt.refresh(capture=False)
-            return dict(rt.status(), imported=summary)
+            result = dict(rt.status(), imported=summary)
+            cli._engine = None
+            return result
         root = path / 'episodes' if (path / 'episodes').is_dir() else path
         from ..config.series import load_meta
         sources = []
@@ -212,7 +261,9 @@ def dispatch(cli, name, req_id, args):
         plan = manager.preview(sources, rt.library.root)
         result = manager.execute(plan['plan_id'])
         rt.refresh(capture=False)
-        return dict(rt.status(), imported=result)
+        result = dict(rt.status(), imported=result)
+        cli._engine = None
+        return result
     raise ValueError('未知资源库操作')
 
 

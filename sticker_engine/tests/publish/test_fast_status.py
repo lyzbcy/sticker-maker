@@ -356,8 +356,8 @@ def test_shelf_cancel_keeps_completed_items(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, '_ensure_engine',
                         lambda: NS(config=NS(paths=NS(output_root=tmp_path))))
 
-    # 假 Playwright：第二单「预约」点击成功后触发取消
-    state = {'done': 0}
+    # 假 Playwright：第二单预约POST后触发取消，仍核验当前单再停止。
+    state = {'done': 0, 'booked': set()}
     stop = threading.Event()
     trigger = {}
 
@@ -378,7 +378,16 @@ def test_shelf_cancel_keeps_completed_items(tmp_path, monkeypatch):
             self.context = NS(request=self)   # read_detail 走 page.context.request
         def get(self, url, **kw):
             sid = url.split('stikerid=')[1].split('&')[0]
-            return Response({'base_resp': {'ret': 0}, 'StikerID': sid, 'Status': 5})
+            from datetime import datetime
+            return Response({'base_resp': {'ret': 0}, 'StikerID': sid,
+                             'Status': 6 if sid in state['booked'] else 5,
+                             'OpenTime': datetime.now().strftime('%Y-%m-%d')})
+        def post(self, url, **kw):
+            state['done'] += 1
+            state['booked'].add(kw['params']['stikerid'])
+            if state['done'] == 2:
+                trigger['fire']()
+            return Response({'base_resp': {'ret': 0}})
         def goto(self, *a, **kw): pass
         def get_by_role(self, *a, **kw): return NS(wait_for=lambda **kw: None)
         def locator(self, *a, **kw): return FakeLocator()
@@ -410,7 +419,7 @@ def test_shelf_cancel_keeps_completed_items(tmp_path, monkeypatch):
     assert data['cancelled'] is True
     assert data['published'] == 2          # 前两单已完成并落库
     assert len(data['remaining']) == 1     # 第三单保留未处理
-    assert load_meta(eps[1]).platform_status == '已上架'
+    assert load_meta(eps[1]).platform_status == '已预约上架'
     assert load_meta(eps[2]).platform_status == '审核通过'
 
 

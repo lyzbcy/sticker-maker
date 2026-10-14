@@ -208,6 +208,15 @@ class SharedSettings:
             active = work.get("revision")
             branch_conflict = False
 
+            if (active and not active.get('deleted')
+                    and self._equivalent_prefs(entity, active)):
+                # Legacy YAML key order differs between Python hash seeds.
+                # Adopt semantically identical verified prefs, not an authored
+                # change. Other settings/assets retain their byte fingerprints.
+                markers[entity_id] = self._new_marker(active['revision_id'], fingerprint, entity)
+                unchanged += 1
+                continue
+
             if work.get("state") == "pending":
                 missing.append({"work_id": entity_id, "missing": work.get("missing", [])})
                 continue
@@ -349,6 +358,7 @@ class SharedSettings:
             entity["work_id"]: self._fingerprint(entity["metadata"], entity["files"])
             for entity in entities
         }
+        local_entities_by_id = {entity['work_id']: entity for entity in entities}
         markers = self._markers()
         conflicts: List[str] = []
         missing: List[Any] = list(local_missing)
@@ -379,6 +389,12 @@ class SharedSettings:
                     if candidate.get("metadata", {}).get("setting_type") == "series":
                         series_blocked = True
                     missing.append({"work_id": entity_id, "missing": work.get("missing", [])})
+                    continue
+                local_entity = local_entities_by_id.get(entity_id)
+                if local_entity and not candidate.get('deleted') and self._equivalent_prefs(local_entity, candidate):
+                    markers[entity_id] = self._new_marker(candidate['revision_id'],
+                        local_by_id[entity_id], local_entity)
+                    unchanged += 1
                     continue
                 if work.get("state") == "deleted":
                     # Deleted settings entities carry their previous metadata
@@ -927,6 +943,55 @@ class SharedSettings:
             self._save_state()
         return True
 
+    def _equivalent_prefs(self, left, right):
+        """Compare values only after validating both YAML objects and payloads."""
+        lm, rm = left.get('metadata', {}), right.get('metadata', {})
+        if (lm.get('kind') != 'settings' or lm.get('setting_type') != 'prefs'
+                or lm != rm or left.get('deleted') or right.get('deleted')):
+            return False
+        for item in (left, right):
+            files = item.get('files', {})
+            if set(files) != {'prefs.yaml'}:
+                return False
+            ref = files['prefs.yaml'];digest = ref['sha256']
+            path = self.library.root/'objects'/digest[:2]/digest
+            if path.is_symlink() or not path.is_file():
+                return False
+            raw = path.read_bytes()
+            if len(raw) != ref['size'] or hashlib.sha256(raw).hexdigest() != digest:
+                return False
+            try:
+                payload = yaml.safe_load(raw)
+                if not isinstance(payload, dict) or self._sanitize_prefs(payload) != lm.get('payload'):
+                    return False
+            except (ValueError, yaml.YAMLError):
+                return False
+        return True
+
+    def repair_equivalent_prefs(self, entity_id, expected_heads):
+        """Merge explicitly previewed, same-value prefs only; keep every parent."""
+        self._require_account()
+        work = self.library.read_work(self.account_id, entity_id)
+        heads = work.get('heads') or []
+        ids = sorted(h['revision_id'] for h in heads)
+        if expected_heads is None or ids != sorted(expected_heads):
+            raise ValueError('设置版本头已变化，请重新预览')
+        if work['state'] != 'conflict' or work.get('sync_conflicts') or len(heads) < 2:
+            raise ValueError('请选择完整的共享偏好设置冲突')
+        if not all(self._equivalent_prefs(heads[0], h) for h in heads):
+            raise ValueError('设置值或资源内容不同，保留全部版本待选择')
+        local = self._sanitize_prefs(self._load_yaml(self.root/'prefs.yaml'))
+        if local != heads[0]['metadata']['payload']:
+            raise ValueError('本机偏好已变化，保留本机修改待核验')
+        metadata = copy.deepcopy(heads[0]['metadata'])
+        files = {'prefs.yaml': self._put_bytes(self._dump_yaml(local), '.yaml')}
+        if sorted(h['revision_id'] for h in self.library.read_work(self.account_id, entity_id)['heads']) != ids:
+            raise ValueError('合并前设置版本头已变化，请重新预览')
+        merged = self.library.write_revision(self.account_id, entity_id, metadata, files, parents=ids)
+        self.force_apply_entity(entity_id, merged['revision_id'])
+        return {'work_id': entity_id, 'revision_id': merged['revision_id'], 'parents': ids,
+                'state': self.library.read_work(self.account_id, entity_id)['state']}
+
     def _markers(self) -> Dict[str, Any]:
         state = getattr(self.runtime, "state", None)
         if not isinstance(state, dict):
@@ -1013,7 +1078,7 @@ class SharedSettings:
 
     @staticmethod
     def _sanitize_prefs(data: Mapping[str, Any]) -> Dict[str, Any]:
-        result = {key: copy.deepcopy(data[key]) for key in PREF_KEYS if key in data}
+        result = {key: copy.deepcopy(data[key]) for key in sorted(PREF_KEYS) if key in data}
         # Device-specific browser mode never enters a shared account setting.
         if result.get("reference_lib_path"):
             result["reference_lib_path"] = "reference_library"
@@ -1023,7 +1088,7 @@ class SharedSettings:
     def _dump_yaml(data: Mapping[str, Any]) -> bytes:
         if yaml is None:
             raise RuntimeError("PyYAML 未安装")
-        return yaml.safe_dump(dict(data), allow_unicode=True, sort_keys=False).encode("utf-8")
+        return yaml.safe_dump(dict(data), allow_unicode=True, sort_keys=True).encode("utf-8")
 
     @staticmethod
     def _apply_prefs_payload(payload: Mapping[str, Any]) -> Dict[str, Any]:

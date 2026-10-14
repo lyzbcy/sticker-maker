@@ -129,12 +129,14 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
         prefs.value = res.data.prefs || defaultPrefs()
         if (prefs.value.default_series_id === undefined) prefs.value.default_series_id = null
         firstRun.value = res.data.first_run
-        phase.value = firstRun.value ? 'wizard' : 'main'
+        // First use is an informative badge, never a navigation gate. Users
+        // may browse/import/publish without configuring a generation provider.
+        phase.value = 'main'
       } else {
         // 读不到 prefs = 真正首次使用才走向导；否则直接进主页（产品根修：
         // 向导是可选引导，不是进入软件的门禁）
         prefs.value = defaultPrefs()
-        phase.value = firstRun.value ? 'wizard' : 'main'
+        phase.value = 'main'
       }
     } catch (e) {
       lastError.value = [{ message: `引擎启动失败：${e?.message || '请重新打开软件后重试'}` }]

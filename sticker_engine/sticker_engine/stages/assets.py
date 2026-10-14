@@ -101,7 +101,7 @@ class AssetsStage:
                              message=f"封面：header 格大头照（{cover_src.name}，"
                                      f"头部画幅≈{_COVER_TARGET:.0%}）"))
         else:
-            cover_src = paths[0]   # 教训14 关键：回退不复用横幅源
+            cover_src = _prefer_noword([paths[0]])[0]   # 回退也不带底字
             # 降级分两档（2026-09-08）：combo 单 header 格翻车 → 外传
             # cover_fallback（批量自动发布跳过，同 icon_fallback）；
             # 非 combo 单（本就无 header 格，旧行为即第 1 张缩放且封面
@@ -350,7 +350,44 @@ def pick_header_candidates(paths: list, header_slots=None, meaning_map=None,
         h = int(hashlib.md5(ep_name.encode("utf-8")).hexdigest(), 16)
         start = h % len(slots)
         ordered = slots[start:] + slots[:start]
-        return [Path(paths[s - 1]) for s in ordered]
+        return _prefer_noword([Path(paths[s - 1]) for s in ordered])
+
+    # Vision may rename a header to a word outside HEADER_EMOS. Re-generation
+    # has no runtime slots and its paths are filename-sorted, so use persisted
+    # exact filenames, never positional indexes into those paths.
+    root = Path(ep_dir) if ep_dir is not None else (Path(paths[0]).parent.parent if paths else None)
+    if root is not None:
+        recorded = root / 'header_sources.json'
+        if recorded.exists():
+            try:
+                sources = json.loads(recorded.read_text(encoding='utf-8'))
+                names = [sources[k] for k in sorted(sources, key=int)]
+                if all(isinstance(n, str) and Path(n).name == n and n.endswith('.png') for n in names):
+                    cands = [root / '最终版' / n for n in names]
+                    cands = [p for p in cands if p.is_file()]
+                    if cands:
+                        start = int(hashlib.md5(root.name.encode('utf-8')).hexdigest(), 16) % len(cands)
+                        return _prefer_noword(cands[start:] + cands[:start])
+            except (ValueError, TypeError, OSError):
+                pass
+        else:
+            # Legacy combo provenance must explicitly prove the header slots.
+            # An arbitrary 16-panel album must not be assumed to have them.
+            import re
+            prompt_file = root / '原图' / 'prompt.txt'
+            try:
+                prompt = prompt_file.read_text(encoding='utf-8')
+                slots = [int(s) for s in re.findall(r'\b(\d+)\.\s*HEADER SHOT\b', prompt)]
+                if prompt.startswith('# mode: keyword_combo') and set(slots) == {13, 14, 15, 16}:
+                    words = [str(mm.get(s, mm.get(str(s), ''))).strip() for s in slots]
+                    # A repeated meaning cannot prove the exact deduplicated name.
+                    if all(words) and len(set(mm.values())) == len(mm):
+                        cands = [root / '最终版' / f'{w}.png' for w in words if Path(w).name == w]
+                        if len(cands) == 4 and all(p.is_file() for p in cands):
+                            start = int(hashlib.md5(root.name.encode('utf-8')).hexdigest(), 16) % 4
+                            return _prefer_noword(cands[start:] + cands[:start])
+            except (ValueError, TypeError, OSError):
+                pass
 
     words = [v for v in (mm.get(k) for k in sorted(mm, key=int))
              if _match_header_word(str(v))]
@@ -482,11 +519,17 @@ def make_big_head_cover(src: Path, out: Path, size: int = _COVER_SIZE) -> bool:
             head_h = bh * _COVER_HEAD_RATIO
         side = int(min(max(head_h / _COVER_TARGET, bh * 0.5),
                        min(bh * 1.2, min(im.width, im.height))))
+        # A neck-width heuristic must never cut away wide hair/ears. Already
+        # square head portraits also retain their chin rather than being zoomed
+        # a second time. Allow padding beyond the source canvas instead of
+        # clamping the required window and cutting the opposite edge.
+        side = max(side, int(__import__('math').ceil(bw / .90)))
+        if bw / bh >= .85:
+            side = max(side, int(__import__('math').ceil(bh / .90)))
         cx = (x0 + x1) // 2
-        wx0 = max(0, min(cx - side // 2, im.width - side))
-        wy0 = max(0, min(y0, im.height - side))
-        win = im.crop((wx0, wy0, min(wx0 + side, im.width),
-                       min(wy0 + side, im.height)))
+        wx0 = cx - side // 2
+        wy0 = y0 - max(2, int(side*.03))
+        win = im.crop((wx0, wy0, wx0 + side, wy0 + side))
         scale = size / side
         nw, nh = max(1, round(win.width * scale)), max(1, round(win.height * scale))
         win = win.resize((nw, nh), Image.LANCZOS)

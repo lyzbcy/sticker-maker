@@ -1,5 +1,5 @@
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -117,13 +117,13 @@ class StickerEngine:
             ref_lib_priority=prefs.ref_lib_priority,
         )
 
-    def run(self, progress_callback=None, stop_event=None) -> Episode:
+    def run(self, progress_callback=None, stop_event=None, prefs_override=None) -> Episode:
         """Persist every generated item, including direct scheduler/agent calls."""
         from .library.hooks import runtime_for
         from .library.commands import LOCK, batch_lock_held
         runtime = runtime_for(self)
         if runtime is None:
-            return self._run_impl(progress_callback=progress_callback, stop_event=stop_event)
+            return self._run_with_overrides(progress_callback, stop_event, prefs_override)
         # 批量流水线的工作线程豁免：锁由 run_batch 命令线程持有（RLock
         # 跨线程不可重入，2026-09-09 流水线事故）。max_age 让批量内连续
         # 多弹共享 refresh 缓存，不再每弹冷跑全量扫描（此前每弹多 ~100s）
@@ -139,7 +139,7 @@ class StickerEngine:
                                aborted_reason='共享资源库当前不可用，已停止生成；请恢复同步目录后重试')
             from .library.hooks import reload_engine_config
             reload_engine_config(self, runtime)
-            episode = self._run_impl(progress_callback=progress_callback, stop_event=stop_event)
+            episode = self._run_with_overrides(progress_callback, stop_event, prefs_override)
             if episode.episode_dir and Path(episode.episode_dir).is_dir():
                 try:
                     runtime.capture(episode.episode_dir)
@@ -152,6 +152,34 @@ class StickerEngine:
         finally:
             if need_release:
                 LOCK.release()
+
+    def _run_with_overrides(self, progress_callback, stop_event, overrides):
+        """One generation's experiment settings never overwrite shared defaults."""
+        if overrides is None:
+            return self._run_impl(progress_callback=progress_callback, stop_event=stop_event)
+        allowed = {'prompt_set_id', 'background_mode', 'sticker_text',
+                   'ref_lib_priority', 'story_mode', 'vision_calls'}
+        if not isinstance(overrides, dict) or set(overrides) - allowed:
+            raise ValueError('单弹参数只接受方案、背景、配字及生图模式')
+        for key in ('sticker_text', 'ref_lib_priority', 'story_mode', 'vision_calls'):
+            if key in overrides and type(overrides[key]) is not bool:
+                raise ValueError(f'{key} 必须是布尔值')
+        if 'background_mode' in overrides and overrides['background_mode'] not in ('solid', 'transparent'):
+            raise ValueError('背景必须为solid或transparent')
+        if 'prompt_set_id' in overrides:
+            set_id = overrides['prompt_set_id']
+            if set_id is not None:
+                from .config.prompts import list_sets
+                paths = self.config.paths
+                root = (getattr(paths, 'assets_root', None) or getattr(paths, 'user_data', None))
+                if not isinstance(set_id, str) or root is None or not any(s.id == set_id for s in list_sets(root)):
+                    raise ValueError('指定的Prompt方案不存在')
+        original = self.config
+        self.config = replace(original, prefs=replace(original.prefs, **overrides))
+        try:
+            return self._run_impl(progress_callback=progress_callback, stop_event=stop_event)
+        finally:
+            self.config = original
 
     def _run_impl(
         self,

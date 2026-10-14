@@ -50,6 +50,21 @@ describe('fan first-use regression (isolated IPC fixtures, not actual Codex/publ
     expect(autoPublish.element.checked).toBe(false)
   })
 
+  it('opens the main screen on first use without forcing a Codex tutorial', async () => {
+    const { store, wrapper, send } = await setup('MainScreen', async cmd => {
+      if (cmd === 'load_prefs') return { status: 'ok', data: { first_run: true, prefs: prefs() } }
+      return { status: 'ok', data: {} }
+    })
+    await store.init()
+    expect(store.firstRun).toBe(true)
+    expect(store.phase).toBe('main')
+    expect(send).not.toHaveBeenCalledWith('check_codex', {})
+    expect(wrapper.text()).toContain('豆包')
+    const tutorial = wrapper.findAll('button').find(w => w.text() === '可选使用教程')
+    await tutorial.trigger('click')
+    expect(store.phase).toBe('wizard')
+  })
+
   it('shows login rather than reinstall when Codex is installed but logged out', async () => {
     const { wrapper } = await setup('WizardStepCodex', async () => ({ status: 'ok', data: {
       installed: true, logged_in: false, image_ready: false, guidance_msg: 'codex 已安装，请先登录',

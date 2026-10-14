@@ -950,8 +950,30 @@ class Publisher:
         else:
             # 回退：直接 set_input_files 第一个
             page.set_input_files('input[type="file"]', paths)
-        # 等待上传（按数量动态等）
-        page.wait_for_timeout(max(10000, len(paths) * 2000))
+        # HTTP 上传成功不等于被平台接收：精选重组时平台会拒收已上架的
+        # 原图（ret=-30），留下部分格子。必须确认完整数量，不能提交残缺弹。
+        try:
+            handle = page.wait_for_function(
+                """([selector, expected]) => {
+                  const count = document.querySelectorAll(selector).length;
+                  const errors = ['与已上架表情重复', '上传失败', '文件过大',
+                                  '图片格式不正确'];
+                  for (const el of document.querySelectorAll('*')) {
+                    if (el.children.length || !el.getClientRects().length) continue;
+                    const text = (el.textContent || '').trim();
+                    if (errors.some(e => text.includes(e))) return {count, error:text};
+                  }
+                  return count === expected ? {count, error:''} : false;
+                }""", arg=[S.MEANING_INPUT, len(paths)],
+                timeout=max(30000, len(paths) * 3000))
+            state = handle.json_value()
+            handle.dispose()
+        except Exception as exc:
+            count = page.locator(S.MEANING_INPUT).count()
+            raise RuntimeError(f'表情上传未完整：平台接收 {count}/{len(paths)} 张；未提交') from exc
+        if state.get('error') or state.get('count') != len(paths):
+            raise RuntimeError(f"表情上传未完整：平台接收 {state.get('count', 0)}/{len(paths)} 张；"
+                               f"{state.get('error') or '数量不一致'}；未提交")
 
     # ---- 步骤7：填含义词 ----
 
@@ -987,17 +1009,27 @@ class Publisher:
                 state = None
             n = state.get("n", 0) if isinstance(state, dict) else 0
             filled = state.get("filled", 0) if isinstance(state, dict) else 0
-            if n >= len(assets.meanings) and filled >= len(assets.meanings):
+            if n == len(assets.meanings) and filled == len(assets.meanings):
                 return
             self._warn(f"含义词第 {attempt + 1} 次填写后 "
                        f"{filled}/{len(assets.meanings)} 格有值"
                        f"（渲染出 {n} 格），重填")
+        raise RuntimeError(f'含义词未完整：{filled}/{len(assets.meanings)} 格有值'
+                           f'（平台 {n} 格）；未提交')
 
     # ---- 步骤8-9：专辑名 + 介绍 ----
 
     def _step_fill_album_info(self, page, assets: EpisodeAssets) -> None:
         """步骤8：专辑名；步骤9：介绍（选后验证+兜底，59/60 事故收尾）。"""
         page.fill(S.ALBUM_NAME_INPUT, assets.album_name)
+        # The platform may silently truncate a name without HTML maxlength.
+        # Verify the actual input, not fill()'s successful return value.
+        page.wait_for_timeout(200)
+        actual_name = page.locator(S.ALBUM_NAME_INPUT).input_value(timeout=3000)
+        if actual_name != assets.album_name:
+            raise RuntimeError(
+                f'专辑名称被平台修改：要求“{assets.album_name}”，'
+                f'实际“{actual_name}”；未提交，请调整名称后重试')
         if assets.intro:
             for attempt in range(2):
                 try:

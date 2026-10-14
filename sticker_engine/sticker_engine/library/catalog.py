@@ -459,6 +459,11 @@ class ResourceLibrary:
         p = self._disk_cache_path()
         if p is None:
             return
+        # A read-only list can hit the entire cache without any new analysis.
+        # Do not serialize/rewrite its 143 MB file on every such query. A missing
+        # file is still rebuilt, and write/drop paths continue marking dirty.
+        if not self._disk_dirty and p.is_file():
+            return
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
             tmp = p.with_suffix(".tmp")

@@ -4,7 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from .commands import LOCK, _LOCK_OWNER, _TASK_LABELS
-from .runtime import LibraryRuntime
+from .runtime import LibraryRuntime, runtime_for_user_data
 from .settings import settings_dir
 
 MUTATIONS = {
@@ -46,14 +46,9 @@ def runtime_for(engine):
     # 命令新建 LibraryRuntime，refresh 的 TTL 缓存随实例丢弃永不命中
     # （每条读命令都持全局锁跑 ~40s 全量轻快照扫描）。bind/connect 等
     # 账号变更命令会将 cli._engine 置空，缓存随引擎重建自然失效。
-    cached = getattr(engine, '_library_runtime', None)
-    if cached is not None and str(cached.user_data) == str(Path(data)):
-        return cached if cached.enabled else None
-    rt = LibraryRuntime(Path(data))
-    if not rt.enabled:
-        return None
+    rt = runtime_for_user_data(data)
     engine._library_runtime = rt
-    return rt
+    return rt if rt.enabled else None
 
 
 def reload_engine_config(engine, runtime):
@@ -131,23 +126,40 @@ def invoke(cli, req_id, cmd, args, handler):
         cli._result(req_id, 'fail', errors=[{'message': f'「{owner}」正在进行（已 {held:.0f} 秒），完成后即可继续当前操作；详情见底部活动日志'}])
         return
     _LOCK_OWNER.update(cmd=cmd, at=time.monotonic())
+    rt = None
+    previous_progress = None
     try:
         rt = runtime_for(cli._ensure_engine())
         if rt:
+            previous_progress = getattr(rt, '_progress_callback', None)
+            def library_progress(event):
+                cli._emit({'id': req_id, 'type': 'progress', 'stage': 'prepare',
+                           'percent': None, 'eta_seconds': None, **event})
+            rt._progress_callback = library_progress
             # 2026-09-12 用户反馈"同步中但一直不动、日志不说话"：前置刷新
             # 在首次/有变更时要全量扫描+哈希几分钟，之前全程静默。先说一句
             # 在干嘛（快时一闪而过，慢时用户知道没死）。
+            preparation = ('正在校验账号与资源库连接（仅同步平台状态，不扫描素材）…'
+                           if cmd == 'sync_platform_status' else
+                           '正在同步本地资源库快照（有变更时要一会儿，日志会持续播报）…')
             cli._emit({"id": req_id, "type": "progress", "stage": "prepare",
                        "phase": "prepare", "percent": None, "eta_seconds": None,
-                       "message": "正在同步本地资源库快照（有变更时要一会儿，"
-                                  "日志会持续播报）…"})
+                       "message": preparation})
             # 平台读/写类命令（sync/shelf）不改本地资源文件——前置只需
             # 库快照（capture=False，秒级）；本地资源入库由命令结束后的
             # 后置 refresh(capture=True) 兜底。前置全量捕获（capture_all
             # 1000+ 目录 stat ~106s）是"一键更新卡几分钟"的主因（09-12）。
             capture = cmd not in ('sync_platform_status', 'shelf_passed',
                                   'get_income', 'sync_platform_status_page')
-            status = rt.refresh(capture=capture, max_age=120)
+            if cmd == 'sync_platform_status':
+                # This command observes platform metadata, not artwork. Validate
+                # the binding/mount now; commit_platform_metadata checks each
+                # exact parent. Asset-edit/publish commands retain full refresh.
+                rt.require_account()
+                rt.library
+                status = {}
+            else:
+                status = rt.refresh(capture=capture, max_age=120)
             if cmd in MUTATIONS and isinstance(status, dict) and status.get('offline'):
                 raise ValueError('共享资源库当前不可用，已停止写入；请恢复同步目录后重试')
             # Applying shared prefs/series/bases changes the configuration
@@ -163,8 +175,16 @@ def invoke(cli, req_id, cmd, args, handler):
                     raise ValueError('作品原文件未齐、账号不一致或存在版本冲突，当前不能修改/提交')
                 if cmd == 'publish_episode' and not m['can_publish']:
                     raise ValueError('发布素材不完整，请补齐表情、横幅、封面、图标、含义词和介绍')
+        if cmd == 'sync_platform_status':
+            stop = cli._stop_events.get(req_id)
+            if stop is not None and stop.is_set():
+                cli._result(req_id, 'ok', data={'cancelled': True, 'complete': False,
+                            'list_complete': False, 'updated': 0, 'matched': 0})
+                return
         result = handler(req_id, args)
-        if rt and cmd in MUTATIONS:
+        metadata_only = (cmd == 'sync_platform_status' and isinstance(result, dict)
+                         and result.get('metadata_committed') is True)
+        if rt and cmd in MUTATIONS and not metadata_only:
             # Reload config: an explicit account switch may have changed it.
             current = runtime_for(cli._ensure_engine())
             if current:
@@ -174,5 +194,7 @@ def invoke(cli, req_id, cmd, args, handler):
                     cli._engine = None
         return result
     finally:
+        if rt is not None:
+            rt._progress_callback = previous_progress
         _LOCK_OWNER.update(cmd='', at=0.0)
         LOCK.release()

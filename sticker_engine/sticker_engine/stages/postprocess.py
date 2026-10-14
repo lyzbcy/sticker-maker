@@ -270,6 +270,221 @@ def ensure_size(img, target: int = _TARGET_SIZE):
     return img
 
 
+def solid_background_color(img, fallback=True):
+    """Sample bright, non-white edge pixels; never sample a character's center."""
+    import numpy as np
+    a = np.asarray(img.convert('RGBA'))
+    h, w = a.shape[:2]
+    n = max(1, min(h, w) // 25)
+    edge = np.concatenate([a[:n].reshape(-1, 4), a[-n:].reshape(-1, 4),
+                           a[:, :n].reshape(-1, 4), a[:, -n:].reshape(-1, 4)])
+    rgb = edge[:, :3].astype(int)
+    good = (edge[:, 3] > 200) & (rgb.mean(axis=1) > 170) & (rgb.min(axis=1) < 245)
+    if good.sum() < 8:
+        return (255, 240, 230, 255) if fallback else None
+    return tuple(int(v) for v in np.median(rgb[good], axis=0)) + (255,)
+
+
+def _clear_attached_grid_lines(a, color):
+    """Remove thin rim-spanning dividers even when an outline touches them.
+
+    Only columns/rows with a clear inward pastel corridor are writable. Clothing,
+    hair and white outlines adjoining the divider keep their original pixels.
+    This does not infer foreground membership from connected-component area.
+    """
+    import numpy as np
+    from scipy import ndimage
+    cleared_axes = set()
+    for transpose in (False, True):
+        view = a.transpose(1, 0, 2) if transpose else a
+        h, w = view.shape[:2]
+        rim = max(1, round(h * .06))
+        probe = max(3, round(h * .02))
+        white = (view[:, :, :3].min(axis=2) > 230) & (view[:, :, 3] > 200)
+        spanning = white.mean(axis=1) >= .7
+        spanning[rim:h-rim] = False
+        labels, _ = ndimage.label(spanning)
+        for sl in ndimage.find_objects(labels):
+            if sl is None:
+                continue
+            lo, hi = sl[0].start, sl[0].stop
+            if hi-lo > max(1, round(h * .04)):
+                continue
+            # Skip the divider's two-pixel antialias fringe, not foreground.
+            inner = (view[min(h,hi+2):min(h,hi+2+probe)] if lo < rim
+                     else view[max(0,lo-2-probe):max(0,lo-2)])
+            if not inner.size:
+                continue
+            rgb = inner[:, :, :3].astype(int)
+            neutral = (rgb.max(axis=2)-rgb.min(axis=2) <= 20) & (rgb.min(axis=2) >= 180)
+            bg = ((np.abs(rgb-np.array(color[:3])).sum(axis=2) <= 65)
+                  & (inner[:, :, 3] > 200) & ~neutral)
+            clear = bg.all(axis=0)
+            # Leave a two-pixel buffer around any adjoining foreground.
+            clear = ~ndimage.binary_dilation(~clear, iterations=2)
+            if clear.mean() < .7:
+                continue
+            band = view[max(0, lo-2):min(h, hi+2)]
+            band[:, clear] = color
+            cleared_axes.add(transpose)
+    if len(cleared_axes) == 2:
+        # Intersecting dividers can leave a detached corner at the protected
+        # corridor junction. Only tiny components touching BOTH image edges
+        # qualify, and only after actual horizontal AND vertical line removal.
+        h, w = a.shape[:2]
+        white = (a[:, :, :3].min(axis=2) > 230) & (a[:, :, 3] > 200)
+        labels, _ = ndimage.label(white)
+        for i, sl in enumerate(ndimage.find_objects(labels), 1):
+            if sl is None:
+                continue
+            sy, sx = sl
+            corner = (sy.start == 0 or sy.stop == h) and (sx.start == 0 or sx.stop == w)
+            if corner and sy.stop-sy.start <= max(2,round(h*.04)) and sx.stop-sx.start <= max(2,round(w*.04)):
+                mask = ndimage.binary_dilation(labels == i, iterations=2)
+                a[mask] = color
+    return a
+
+
+def normalize_solid_background(img):
+    """Flatten only edge-connected pastel pixels. Preserve enclosed pixels byte-for-byte.
+
+    A white outline is a barrier, not background. Unknown/dark backgrounds stay
+    untouched; this is not a general-purpose segmentation or a quality verdict.
+    """
+    import numpy as np
+    from scipy import ndimage
+    src = img.convert('RGBA')
+    a = np.array(src)
+    color = solid_background_color(src, fallback=False)
+    if color is None:
+        return src
+    # A one-pixel green grid fringe in the human-rated 比心 sample is pastel,
+    # not white. Remove only a full-axis, very thin, uniform colored edge with
+    # a verified pastel corridor inward. White outlines/neutral clothing and
+    # edges interrupted by darker foreground do not qualify.
+    for transpose in (False, True):
+        view = a.transpose(1, 0, 2) if transpose else a
+        height, width = view.shape[:2]
+        thickness = max(1, round(height * .01))
+        for reverse in (False, True):
+            edge_view = view[::-1] if reverse else view
+            band = edge_view[:thickness]
+            rgb = band[:, :, :3].astype(int)
+            med = np.median(rgb, axis=1, keepdims=True)
+            uniform = (np.abs(rgb-med).max(axis=2) <= 18).mean(axis=1)
+            bright = (rgb.min(axis=2) > 170) & (band[:, :, 3] > 200)
+            colored = (rgb.max(axis=2)-rgb.min(axis=2) > 20).mean(axis=1)
+            corridor = edge_view[thickness:thickness+3]
+            corridor_rgb = corridor[:, :, :3].astype(int)
+            corridor_bg = ((np.abs(corridor_rgb-np.array(color[:3])).sum(axis=2) <= 65)
+                           & (corridor[:, :, 3] > 200)
+                           & (corridor_rgb.max(axis=2)-corridor_rgb.min(axis=2) > 20))
+            if (corridor.shape[0] == 3 and (uniform >= .98).all()
+                    and bright.all() and (colored >= .98).all() and corridor_bg.all()
+                    and (np.abs(med-np.array(color[:3])).sum(axis=2) > 65).any()):
+                band[:] = color
+    # Grid separators can sit a few pixels INSIDE a preserve_cell crop. Only
+    # remove long near-white components wholly inside a thin outer rim;
+    # a connected hair/outline component reaching the interior is preserved.
+    h, w = a.shape[:2]
+    # Detached dividers can survive at ~9% of the width, outside the old 6%
+    # search rim. Component shape/interior/clothing guards
+    # still apply; this is not wholesale removal of white pixels in a margin.
+    rim_y, rim_x = max(1, round(h * .12)), max(1, round(w * .12))
+    rim = np.zeros((h, w), dtype=bool)
+    rim[:rim_y] = rim[-rim_y:] = True
+    rim[:, :rim_x] = rim[:, -rim_x:] = True
+    white = (a[:, :, :3].min(axis=2) > 230) & (a[:, :, 3] > 200)
+    labels, count = ndimage.label(white)
+    for label, sl in enumerate(ndimage.find_objects(labels), 1):
+        if sl is None:
+            continue
+        sy, sx = sl
+        if (sy.stop - sy.start) < h * .7 and (sx.stop - sx.start) < w * .7:
+            continue
+        part = labels[sl] == label
+        if part.sum() <= h * w * .12 and (rim[sl][part]).mean() >= .98:
+            # A white cuff can itself be a thin rim-spanning component. Do not
+            # erase it when the inward neighborhood contains neutral clothing
+            # or any other foreground rather than the sampled pastel.
+            neighborhood = ndimage.binary_dilation(labels == label, iterations=5) & (labels != label)
+            rgb = a[:, :, :3].astype(int)
+            neutral = (rgb.max(axis=2)-rgb.min(axis=2) <= 20) & (rgb.min(axis=2) >= 180)
+            # A distant head near a detached grid line must not protect a
+            # floating white dash. Require a substantial adjoining shaded
+            # neutral region, not a one-pixel antialias fringe or nearby hair.
+            shaded = neutral & (rgb.min(axis=2) <= 230)
+            shaded = ndimage.binary_erosion(shaded, iterations=2)
+            if np.any(neighborhood & shaded):
+                continue
+            # Include only a two-pixel antialias fringe, still bounded to the
+            # outer rim; otherwise faint gray divider fragments remain.
+            line = ndimage.binary_dilation(labels == label, iterations=2) & rim
+            a[line] = color
+    a = _clear_attached_grid_lines(a, color)
+    rgb = a[:, :, :3].astype(int)
+    # Shaded white clothing is not necessarily >245 in every channel. A head
+    # shot can touch the frame, so flood-fill connectivity alone is not enough:
+    # neutral whites/greys remain a barrier even when open to the image edge.
+    neutral = (rgb.max(axis=2) - rgb.min(axis=2) <= 20) & (rgb.min(axis=2) >= 180)
+    near = ((np.abs(rgb - np.array(color[:3])).sum(axis=2) <= 65)
+            & (rgb.mean(axis=2) > 170) & (rgb.min(axis=2) < 245)
+            & (a[:, :, 3] > 200) & ~neutral)
+    seed = np.zeros(near.shape, dtype=bool)
+    seed[0] = seed[-1] = True
+    seed[:, 0] = seed[:, -1] = True
+    reachable = ndimage.binary_propagation(seed & near, mask=near)
+    if reachable.mean() < .03:
+        return Image.fromarray(a)
+    a[reachable] = color
+    return Image.fromarray(a)
+
+
+def prepare_caption_canvas(img):
+    """Center actual artwork on verified flat backgrounds; retain whole scenes.
+
+    Only uniform external pastel margins are trimmed. Every foreground component
+    (hands, feet, outlines, props and other characters) remains in the crop.
+    Unknown/nonuniform scenes retain the prior whole-source fit.
+    """
+    src = img.convert('RGBA')
+    w, h = src.size
+    content_h = max(1, int(h * .82))
+    color = solid_background_color(src, fallback=False)
+    margin = 0
+    if color is not None:
+        import numpy as np
+        a = np.array(src)
+        foreground = ((np.abs(a[:, :, :3].astype(int)-np.array(color[:3])).max(axis=2)>12)
+                      & (a[:, :, 3]>8))
+        border = np.concatenate((foreground[0],foreground[-1],foreground[:,0],foreground[:,-1]))
+        # A scene horizon / gradient / busy border is not a verified solid field.
+        if foreground.any() and (~border).mean() >= .88 and (~foreground).mean() >= .40:
+            yy,xx = np.where(foreground)
+            if xx.max()-xx.min()>=12 and yy.max()-yy.min()>=12:
+                box=(max(0,int(xx.min())-2),max(0,int(yy.min())-2),
+                     min(w,int(xx.max())+3),min(h,int(yy.max())+3))
+                src=src.crop(box)
+                margin=max(2,round(min(w,h)*.02))
+    scale = min((w-2*margin) / src.width, (content_h-2*margin) / src.height)
+    size = (max(1, round(src.width * scale)), max(1, round(src.height * scale)))
+    canvas = Image.new('RGBA', (w, h), color or solid_background_color(img))
+    scaled = src.resize(size, Image.Resampling.LANCZOS)
+    canvas.alpha_composite(scaled, ((w-size[0]) // 2, (content_h-size[1]) // 2))
+    return canvas
+
+
+def conversational_meaning(text):
+    """Human-identified action labels -> their suggested chat phrases.
+
+    This is a small explicit correction, not invented scene interpretation or
+    a qualification rule. Unknown/custom words (including 抓住爱) stay intact
+    and still require a real use-case review.
+    """
+    return {'俏皮招手':'哈喽','傲娇不满':'随你便','双手点赞':'你真棒',
+            '困意来袭':'困困'}.get(text,text)
+
+
 def draw_caption(img, text: str):
     """solid 底图配字（2026-09-09 用户需求：配字表达力更强，用户更愿用）。
 
@@ -302,6 +517,9 @@ def draw_caption(img, text: str):
                 continue  # A missing/corrupt face must not suppress other installed fonts.
     if font is None:
         return img
+    # Model instructions alone did not reserve the band (real candidate 601).
+    # Make it structurally disjoint from the full illustration, including feet.
+    img = prepare_caption_canvas(img)
     d = ImageDraw.Draw(img)
     stroke_w = 0   # 2026-09-09 用户定稿：琥珀自带粗圆，不再描边加粗
     for _ in range(6):   # 超宽收缩：文字总宽 ≤ 86% 图宽
@@ -346,13 +564,15 @@ class PostprocessStage:
         if transparent is None:
             transparent = ctx.episode.transparent_default
         grid_size = ctx.episode.grid_size
+        solid = str(getattr(ctx.config.prefs, "background_mode", "transparent")) == "solid"
         # 1) 裁切（或 1×1 直接用）
         # 2026-08-27：等分切割 → 内容感知切割（投影找沟 + 连通域归属），
         # 解决 codex 网格不齐/贴纸越界时"切到邻格内容、自己被切半"的问题
         if should_crop(grid_size):
+            cut_options = {'preserve_cell': True} if solid else {}
             panels, cut_notes = cut_grid(
                 ctx.grid_image, grid_size,
-                ctx.episode_dir / "原图" / "_panels")
+                ctx.episode_dir / "原图" / "_panels", **cut_options)
             for note in cut_notes:
                 ctx.log(LogEntry(stage="S2", status="OK", message=f"切图：{note}"))
         else:
@@ -372,6 +592,14 @@ class PostprocessStage:
             meanings = {i + 1: Path(p).stem for i, p in enumerate(panels)}
         else:
             meanings = {1: Path(panels[0]).stem}
+        if solid and bool(getattr(ctx.config.prefs, 'sticker_text', True)):
+            chat = {i:conversational_meaning(word) for i,word in meanings.items()}
+            # A replacement must not collapse two distinct slots onto the same
+            # final filename/meaning. Ask for distinct wording before writing.
+            for i,word in chat.items():
+                if word != meanings[i] and any(j!=i and other==word for j,other in chat.items()):
+                    raise ValueError(f'聊天文案“{word}”与其他格重复，请选用不同短句后再生成')
+            meanings = chat
         ctx.meaning_map = meanings
         # C3 修复：把含义词顺序落盘到 meaning_map.json
         # （初心第44行：发布时要按故事线顺序，C 的 publisher 读此文件排序上传）
@@ -387,7 +615,6 @@ class PostprocessStage:
         # prompt 已让 AI 直接画匹配场景的环境底（柔和彩底或简单环境），
         # S2 完全不抠图不碰底色——v2 的品红→马卡龙染色兜底保留（万一
         # AI 先验又画品红，仍能救），但预期不再触发。
-        solid = str(getattr(ctx.config.prefs, "background_mode", "transparent")) == "solid"
         if solid:
             need_key = False
         seen_names = set()
@@ -397,6 +624,8 @@ class PostprocessStage:
         # 透明底不配——字会脏图）。文字=含义词（meaning_map 已有，0 token）
         sticker_text = bool(getattr(ctx.config.prefs, "sticker_text", True))
         solid_bg = None
+        header_sources = {}
+        cell_sources = {}
         for idx, panel in enumerate(panels, start=1):
             img = Image.open(panel).convert("RGBA")
             if solid:
@@ -445,12 +674,16 @@ class PostprocessStage:
                 name = f"{meaning}{i}"
                 i += 1
             seen_names.add(name)
+            cell_sources[str(idx)] = f"{name}.png"
             # solid 无字版存档（2026-09-09）：封面/图标必须无字（平台对
             # 图标明文"去除文字信息"，66 单驳回先例），S3 裁剪优先取这里
             if solid:
+                img = normalize_solid_background(img)
                 noword_dir = ctx.episode_dir / "原图" / "_noword"
                 noword_dir.mkdir(parents=True, exist_ok=True)
                 img.save(noword_dir / f"{name}.png")
+            if idx in (ctx.header_slots or []):
+                header_sources[str(idx)] = f"{name}.png"
             # solid 配字（2026-09-09）：含义词写在底部留白带（生图时已
             # 要求 AI 预留）；底色由 draw_caption 在文字区就近采样
             if solid and sticker_text:
@@ -460,6 +693,11 @@ class PostprocessStage:
             out = final_dir / f"{name}.png"
             img.save(out)
             ctx.stickers.append(Sticker(path=out, meaning=name, panel_index=idx))
+        if header_sources:
+            (ctx.episode_dir / 'header_sources.json').write_text(
+                json.dumps(header_sources, ensure_ascii=False, indent=2), encoding='utf-8')
+        (ctx.episode_dir / 'cell_sources.json').write_text(
+            json.dumps(cell_sources, ensure_ascii=False, indent=2), encoding='utf-8')
         ctx.log(LogEntry(
             stage="S2", status="OK",
             message=f"后处理完成：{len(ctx.stickers)} 张，抠图={need_key}"))

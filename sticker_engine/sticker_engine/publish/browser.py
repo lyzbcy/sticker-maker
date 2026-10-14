@@ -158,19 +158,31 @@ class BrowserSession:
 
     # ---- 登录 ----
 
-    def ensure_login(self, page, on_status=None) -> bool:
+    @property
+    def can_reuse_session(self) -> bool:
+        """Reuse HTTP cookies only after the same account proof as UI login."""
+        return not self._required_account or self._trusted_account == self._required_account
+
+    def ensure_login(self, page, on_status=None, should_stop=None) -> bool:
         """确保已登录（账号密码自动登录，storage_state 只作加速缓存）。
 
         on_status(message)：登录过程上报（供进度直播）。
         """
         self.last_login_error = ""
-        page.goto(S.HOME_URL, timeout=self.config.navigation_timeout_ms)
-        time.sleep(2)
+        stopped = should_stop or (lambda: False)
+        if stopped():
+            return False
+        page.goto(S.HOME_URL, wait_until='domcontentloaded',
+                  timeout=self.config.navigation_timeout_ms)
+        if stopped():
+            return False
         if self._is_logged_in(page) and (not self._required_account or self._trusted_account == self._required_account):
             return True
 
         # storage_state 失效 → 账号密码自动登录
         account, password = self._load_credentials()
+        if stopped():
+            return False
         if account and password:
             if on_status:
                 on_status("登录态已过期，正在用保存的账号密码自动登录…")
@@ -197,10 +209,17 @@ class BrowserSession:
         return self.config.account, self.config.password
 
     def _is_logged_in(self, page) -> bool:
-        """是否已登录（页面有"提交作品"按钮）。"""
+        """A rendered submit button is not proof that the server session lives.
+
+        The home shell renders its header before its XHR detects an expired
+        session. Validate the platform's fresh read-only response before keeping
+        the cached session; otherwise use the existing password-login flow.
+        """
         try:
             page.wait_for_selector(f'text="{S.SUBMIT_WORK_BUTTON_TEXT}"', timeout=5000)
-            return True
+            from .platform_data import read_json, LIST_URL
+            body = read_json(page, LIST_URL)
+            return isinstance(body.get('List'), list)
         except Exception:
             return False
 
@@ -213,23 +232,31 @@ class BrowserSession:
         """
         # 0) 超时页上有「重新登录」按钮，先进登录页
         try:
-            relogin = page.query_selector('button:has-text("重新登录")')
-            if relogin:
-                relogin.click()
-                time.sleep(2)
+            # The timeout page redirects asynchronously and its control is an
+            # anchor in the current platform UI, not always a <button>.
+            page.wait_for_function("""() => [...document.querySelectorAll('a,button,span,input')].some(el =>
+              (el.textContent||'').trim()==='重新登录' ||
+              (el.textContent||'').trim()==='账号密码登录' || el.type==='password')""", timeout=15000)
+            relogin = page.get_by_text('重新登录', exact=True)
+            if relogin.count():
+                relogin.first.click(timeout=10000)
+                page.wait_for_load_state('domcontentloaded', timeout=20000)
         except Exception:
             pass
 
         # 1) 切到「账号密码登录」tab（默认可能是扫码）
         try:
-            tab = page.query_selector('span:has-text("账号密码登录")')
-            if tab:
-                tab.click()
-                time.sleep(1.5)
+            tab = page.get_by_text('账号密码登录', exact=True)
+            tab.first.wait_for(state='visible', timeout=10000)
+            tab.first.click(timeout=10000)
         except Exception:
             pass   # 可能已在账号密码面板
 
         # 2) 填账号密码（placeholder 定位 + 派发事件）
+        try:
+            page.locator('input[type="password"]').first.wait_for(state='visible', timeout=10000)
+        except Exception:
+            pass
         filled = page.evaluate("""([account, password]) => {
           let okAccount = false, okPassword = false;
           for (const input of document.querySelectorAll('input')) {

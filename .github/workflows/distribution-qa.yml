@@ -53,13 +53,14 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-installer-registry.ps1
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           Set-Location desktop
+          $version=(Get-Content package.json -Raw | ConvertFrom-Json).version
           node scripts/build-win.cjs
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           $target=Join-Path $env:RUNNER_TEMP 'fan-app'
-          powershell -NoProfile -ExecutionPolicy Bypass -File build/installer/installer-ui.ps1 -InstallerPath "$PWD/release/sticker-maker-win-v0.5.1-backend.exe" -InstallDir $target -Version 0.5.1 -Acceptance -CapturePath "$PWD/../verification/clean-install.png" -ReportPath "$PWD/../verification/clean-install.json"
+          powershell -NoProfile -ExecutionPolicy Bypass -File build/installer/installer-ui.ps1 -InstallerPath "$PWD/release/sticker-maker-win-v$version-backend.exe" -InstallDir $target -Version $version -Acceptance -CapturePath "$PWD/../verification/clean-install.png" -ReportPath "$PWD/../verification/clean-install.json"
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           $exe=Join-Path $target '表情包一键制作.exe'
-          if((Get-Item -LiteralPath $exe).VersionInfo.FileVersion -ne '0.5.1'){throw 'wrong installed version'}
+          if((Get-Item -LiteralPath $exe).VersionInfo.FileVersion -ne $version){throw 'wrong installed version'}
           $env:STICKER_ENGINE_USER_DATA=Join-Path $env:RUNNER_TEMP 'isolated-library'
           '{"id":"runtime","cmd":"runtime_check","args":{}}' | & "$target/resources/sticker-engine-cli/sticker-engine-cli.exe" | Tee-Object ../verification/installed-runtime.txt
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}

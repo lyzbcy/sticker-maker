@@ -403,6 +403,9 @@ def test_publish_submit_failure_returns_submit_step(tmp_path):
     """_step_submit 返回 False → step=submit, success=False。"""
     ep = make_episode(tmp_path)
     publisher, session, page = _make_publisher(tmp_path)
+    # This unit exercises submit outcome, not an unconfigured mock upload form.
+    _patch_all_steps(publisher)
+    publisher._verify_form = MagicMock(return_value=[])
     page.inner_text.return_value = "完全无关的文案"
     page.url = "https://sticker.weixin.qq.com/cgi-bin/mmemoticon-bin/readtemplate?t=form/apply"
     publisher._step_submit = MagicMock(return_value=False)
@@ -500,7 +503,7 @@ def test_step_fill_album_info_uses_constants_and_intro(tmp_path):
     assets = EpisodeAssets.from_dir(ep)
     publisher, session, page = _make_publisher(tmp_path)
     # 选后验证版：fill 带 timeout kwarg；mock input_value 返回非空
-    page.locator.return_value.input_value.return_value = "你好表情"
+    page.locator.return_value.input_value.side_effect = ["episode_test", "你好表情"]
     publisher._step_fill_album_info(page, assets)
     page.fill.assert_any_call(S.ALBUM_NAME_INPUT, "episode_test")
     page.fill.assert_any_call(S.INTRO_TEXTAREA, "你好表情", timeout=5000)

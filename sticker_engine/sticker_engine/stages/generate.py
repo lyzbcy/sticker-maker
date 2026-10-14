@@ -89,9 +89,8 @@ _LAST_THEME_KEY = None
 def _apply_background_mode(prompt_text: str, mode: str) -> str:
     """背景模式（2026-09-13 v4 用户定稿，分段式组合）：
 
-    solid=生图时就让 AI 直接画合适的环境背景（不再是品红+后期染色）：
-    每格自选柔和环境/彩底，与角色和场景语义匹配（例：睡觉→夜色星空、
-    干饭→暖黄餐桌光），底部 18% 留白带配字。S2 不抠图不碰底色。
+    solid=每格单一柔和彩色实底，禁止环境/纹理/渐变；人物完整位于上部
+    82%，底部18%仅保留同一底色，供软件配字。S2不抠图不碰底色。
     transparent=品红底（S2 洋红抠图），现状不动。
     v3 教训：v3 让 AI 自选彩底但模板正文仍写品红——4 千字 prompt 里
     单点替换+末尾加强仍被"贴纸=品红"训练先验压过（AI 照画品红，靠 S2
@@ -102,23 +101,22 @@ def _apply_background_mode(prompt_text: str, mode: str) -> str:
     replaced = prompt_text.replace(
         "- Background: solid magenta (#ff00ff), completely flat — no shadows, "
         "no gradients, no scenery",
-        "- Background: EACH panel gets its OWN background that MATCHES the "
-        "scene — either a soft solid pastel color OR a gentle simple "
-        "environment fitting the action (e.g. sleepy panel -> soft night-blue "
-        "with tiny stars; eating panel -> warm cream with tiny hearts; "
-        "working panel -> light desk beige), chosen to complement the "
-        "character; keep it soft, clean and low-detail so the character "
-        "stays the clear focus; neighboring panels use DIFFERENT backgrounds; "
-        "NEVER magenta, never purple, never pure white; keep the bottom 18% "
-        "of every panel as empty background of that same style (reserved "
-        "space for caption text)")
+        "- Background: each panel independently has ONE FLAT SOLID PASTEL COLOR, "
+        "different from its neighbors; no scenery, no environment, no "
+        "gradients, no background objects or texture. Keep the character "
+        "fully inside its cell with clean margins; the bottom 18% is ONLY "
+        "the same flat background color, reserved for software captions. "
+        "Never magenta or pure white.")
     return replaced + (
         "\nREMINDER (background, high priority): every panel background is a "
-        "soft pastel solid color OR a simple gentle environment that fits the "
-        "panel's scene, always different between neighboring panels, with the "
-        "bottom 18% of the panel left empty for caption text. NEVER fill any "
-        "panel with magenta or purple. Absolutely no text, letters, numbers "
-        "or watermarks in any panel")
+        "single FLAT SOLID PASTEL COLOR. No scenery, gradients or background "
+        "objects. Use an exact evenly spaced grid; each cell contains ONLY "
+        "its own complete character(s), never any neighbor's face or body. "
+        "All hair, chin, hands and props remain inside the upper 82% with "
+        "clean side margins. The bottom 18% contains ONLY that cell's flat "
+        "background; no body, props or decoration enters this caption band. "
+        "Absolutely no text, letters, numbers or watermarks; the software "
+        "will add the meaning caption later.")
 
 
 class GenerateStage:
@@ -179,6 +177,10 @@ class GenerateStage:
                        f"参考图库优先已开启，但库存 {have} 张 < 需要 {need} 张，"
                        f"自动改用{self.MODE_LABELS[mode]}（可往参考图库补图）")
         prompt, refs = self._build_prompt_and_refs(ctx, mode)
+        # Apply to the provider input, not just the archived prompt. Previously
+        # solid mode still sent magenta instructions and only recolored in S2.
+        prompt = _apply_background_mode(
+            prompt, str(getattr(ctx.config.prefs, 'background_mode', 'transparent')))
         bases = self._gather_bases(ctx)
         chars = "、".join(ctx.selected_characters) if ctx.selected_characters else "默认角色"
         self._emit(ctx, f"输入就绪：prompt {len(prompt)} 字 · 参考图 {len(refs)} 张 · 角色[{chars}]")
@@ -201,9 +203,7 @@ class GenerateStage:
             "# mode: " + mode.value + nl +
             "# prompt_set: " + ps.id + " (" + ps.name + ")" + nl)
         (ctx.episode_dir / "原图" / "prompt.txt").write_text(
-            prompt_header + _apply_background_mode(
-                prompt, str(getattr(ctx.config.prefs, "background_mode",
-                                    "transparent"))), encoding="utf-8")
+            prompt_header + prompt, encoding="utf-8")
         # 参考图=弹药：成功后把用过的库图归档（复用会产出雷同贴纸，2026-08-27 产品定型）
         if mode == GenerationMode.REF_LIBRARY and getattr(ctx.config.prefs, "ref_consume", True):
             self._archive_used_refs(ctx, refs, bases)

@@ -75,7 +75,71 @@ describe('作品库微信风表格', () => {
     send.mockClear()
     await wrapper.find('.sync-btn').trigger('click')
     await flushPromises()
-    expect(send).toHaveBeenCalledWith('sync_platform_status')
+    expect(send).toHaveBeenCalledWith('sync_platform_status', { fetch_reasons: false })
+  })
+
+  it('uses 弹 for counts rather than 单', async () => {
+    EPISODES[0].platform_status = '审核通过'
+    const wrapper = mountPanel()
+    await flushPromises()
+    expect(wrapper.get('.shelf-btn').text()).toContain('1 弹')
+    expect(wrapper.text()).not.toMatch(/\d+ 单/)
+    EPISODES[0].platform_status = '已上架'
+    wrapper.unmount()
+  })
+
+  it.each([false, true])('预约上架结果与取消结果使用弹 cancelled=%s', async (cancelled) => {
+    EPISODES[0].platform_status = '审核通过'
+    const send = window.api.send
+    send.mockImplementation(async (cmd) => {
+      if (cmd === 'list_episodes') return { status: 'ok', data: { episodes: EPISODES } }
+      if (cmd === 'list_series') return { status: 'ok', data: { series: [] } }
+      if (cmd === 'shelf_passed') return { status: 'ok', data: {
+        published: 1, cancelled, failed: [], remaining: cancelled ? ['其他作品'] : [],
+      } }
+      return { status: 'ok', data: {} }
+    })
+    const wrapper = mountPanel()
+    try {
+      await flushPromises()
+      await wrapper.get('.shelf-btn').trigger('click')
+      await flushPromises()
+      expect(send).toHaveBeenCalledWith('shelf_passed', {})
+      expect(wrapper.text()).toContain(cancelled ? '成功预约 1 弹' : '已预约上架 1 弹')
+      expect(wrapper.text()).not.toMatch(/\d+ 单/)
+      const store = useEngineStore()
+      expect(store.activity.some(a => a.message.includes('1 弹'))).toBe(true)
+    } finally {
+      EPISODES[0].platform_status = '已上架'
+      wrapper.unmount()
+    }
+  })
+
+  it('快速上架结果显示待核对原因、剩余作品和状态保存告警', async () => {
+    EPISODES[0].platform_status = '审核通过'
+    window.api.send.mockImplementation(async cmd => {
+      if (cmd === 'list_episodes') return { status: 'ok', data: { episodes: EPISODES } }
+      if (cmd === 'list_series') return { status: 'ok', data: { series: [] } }
+      if (cmd === 'shelf_passed') return { status: 'ok', data: {
+        source: 'api', published: 1, cancelled: false,
+        failed: [{ name: '作品2', reason: '预约结果待核对，未重复请求' }],
+        remaining: ['作品3'], warnings: [{ message: '请同步平台状态' }],
+      } }
+      return { status: 'ok', data: {} }
+    })
+    const wrapper = mountPanel()
+    try {
+      await flushPromises()
+      await wrapper.get('.shelf-btn').trigger('click')
+      await flushPromises()
+      expect(wrapper.text()).toContain('快速接口，已逐弹核验')
+      expect(wrapper.text()).toContain('预约结果待核对，未重复请求')
+      expect(wrapper.text()).toContain('剩余 1 弹未处理')
+      expect(wrapper.text()).toContain('请同步平台状态')
+    } finally {
+      EPISODES[0].platform_status = '已上架'
+      wrapper.unmount()
+    }
   })
 
   it('删除：先确认再物理删除', async () => {
