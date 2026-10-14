@@ -4,6 +4,10 @@
 
 # 分发验收
 
+## 0.5.15候选与正式更新验收（2026-10-14）
+本机最终候选已安装并核验PE/asar/IPC版本、3份payload SHA、fast_shelf/cli/hooks冻结语义、真实预约与状态持久化，699后端+98桌面回归通过。旧0.5.14完整安装备份保留；公开包与本机候选的SHA分别记录，不假称相同产物。
+清洁CI已去掉升级目标0.5.1硬编码，保持真实旧版替换与作品sentinel验证；依赖锁校正为官方registry的实际版本、步骤失败立即停止。run38535103836双平台验收结果及后续正式Release/Pages/公开包下载以current-state.md为准。发布完成前公网version.json仍保持0.5.1。
+
 粉丝路径见fan-guide.md：下载安装→安装生图组件→自己登录→选角色→做1组→本地ZIP→可选微信投稿。批量默认不投稿；不附赠账号/额度。
 
 正式Windows安装包约444MB，Mac约499MB；从GitHubRelease获取（包括浏览器运行时，粉丝无需Python/Node）。安装器为主题WPF前端+静默NSIS后端。Source/UI/Frozen三层分开测试。旧版0.5.0迁移需先手动安装一次修复版。
