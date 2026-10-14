@@ -1,5 +1,5 @@
 """Real request contract, no replay, cancellation, and exact status persistence."""
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace as NS
 from unittest.mock import Mock
 import threading
@@ -99,7 +99,7 @@ def harness(tmp_path,monkeypatch,api=None,runtime=True):
     import sticker_engine.library.hooks as hooks
     import sticker_engine.library.operations as operations
     import playwright.sync_api as pw
-    api=api or API();api.day=datetime.now().strftime('%Y-%m-%d')
+    api=api or API();api.day=datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d')
     eps=[]
     for n in range(3):
         path=tmp_path/f'episode_{n}'

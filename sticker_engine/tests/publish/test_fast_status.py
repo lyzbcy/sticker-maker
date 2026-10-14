@@ -357,7 +357,7 @@ def test_shelf_cancel_keeps_completed_items(tmp_path, monkeypatch):
                         lambda: NS(config=NS(paths=NS(output_root=tmp_path))))
 
     # 假 Playwright：第二单预约POST后触发取消，仍核验当前单再停止。
-    state = {'done': 0, 'booked': set()}
+    state = {'done': 0, 'booked': set(), 'open_dates': {}}
     stop = threading.Event()
     trigger = {}
 
@@ -378,13 +378,13 @@ def test_shelf_cancel_keeps_completed_items(tmp_path, monkeypatch):
             self.context = NS(request=self)   # read_detail 走 page.context.request
         def get(self, url, **kw):
             sid = url.split('stikerid=')[1].split('&')[0]
-            from datetime import datetime
             return Response({'base_resp': {'ret': 0}, 'StikerID': sid,
                              'Status': 6 if sid in state['booked'] else 5,
-                             'OpenTime': datetime.now().strftime('%Y-%m-%d')})
+                             'OpenTime': state['open_dates'].get(sid, '')})
         def post(self, url, **kw):
             state['done'] += 1
             state['booked'].add(kw['params']['stikerid'])
+            state['open_dates'][kw['params']['stikerid']] = kw['params']['opentime'][:10]
             if state['done'] == 2:
                 trigger['fire']()
             return Response({'base_resp': {'ret': 0}})
