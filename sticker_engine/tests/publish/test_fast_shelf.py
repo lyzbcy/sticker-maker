@@ -107,7 +107,8 @@ def harness(tmp_path,monkeypatch,api=None,runtime=True):
                                   platform_item_id=f'sid{n}',platform_status='审核通过'))
         eps.append(path)
     engine=NS(config=NS(paths=NS(output_root=tmp_path)))
-    rt=NS(account_id='account',rows=lambda:[{'work_id':f'w{n}','can_shelf':True} for n in range(3)])
+    rt=NS(account_id='account',rows=lambda:[{'work_id':f'w{n}','can_shelf':True} for n in range(3)],
+          commit_platform_metadata=Mock(),finish_platform_sync=Mock())
     monkeypatch.setattr(cli,'_ensure_engine',lambda:engine)
     monkeypatch.setattr(hooks,'runtime_for',lambda _:rt if runtime else None)
     intents=[];finished=[]
@@ -140,6 +141,7 @@ def test_command_uses_api_persists_booked_and_cancels_remaining(tmp_path,monkeyp
     assert load_meta(h.eps[1]).platform_status=='已预约上架'
     assert load_meta(h.eps[2]).platform_status=='审核通过'
     assert h.finished==[('op-w0',True),('op-w1',True)]
+    assert h.rt.commit_platform_metadata.call_count==2 and h.rt.finish_platform_sync.call_count==2
 
 def test_command_unknown_stops_batch_and_keeps_unresolved_intent(tmp_path,monkeypatch):
     api=API();api.accept=False;api.timeout=True

@@ -182,7 +182,7 @@ def invoke(cli, req_id, cmd, args, handler):
                             'list_complete': False, 'updated': 0, 'matched': 0})
                 return
         result = handler(req_id, args)
-        metadata_only = (cmd == 'sync_platform_status' and isinstance(result, dict)
+        metadata_only = (cmd in {'sync_platform_status', 'shelf_passed'} and isinstance(result, dict)
                          and result.get('metadata_committed') is True)
         if rt and cmd in MUTATIONS and not metadata_only:
             # Reload config: an explicit account switch may have changed it.

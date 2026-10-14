@@ -43,6 +43,24 @@ def test_changed_shared_head_is_not_silently_overwritten(tmp_path):
     assert rt.works()[0]['revision']['metadata']['album_name'] == 'remote'
 
 
+def test_shelf_commit_replaces_stale_approved_observation_and_row(tmp_path):
+    rt,path=fixture(tmp_path)
+    meta=load_meta(path)
+    meta.platform_status='审核通过';meta.platform_updated_at='2026-10-14 16:18:08'
+    save_meta(path,meta);rt.commit_platform_metadata(path,meta);rt.finish_platform_sync()
+    rows=rt.rows()
+    rt.state.setdefault('platform_observations',{})[rt.account_id+'/'+meta.work_id]={
+        'platform_item_id':meta.platform_item_id,'platform_status':'审核通过',
+        'platform_updated_at':meta.platform_updated_at}
+    # A shelf result changes only platform observations, not authored artwork.
+    meta.platform_status='已预约上架';save_meta(path,meta)
+    rt.commit_platform_metadata(path,meta);rt.finish_platform_sync()
+    assert rt.rows()[0]['platform_status']=='已预约上架'
+    assert rt.rows()[0]['can_shelf'] is False
+    assert rt.works()[0]['revision']['metadata']['platform_status']=='已预约上架'
+    assert rt.account_id+'/'+meta.work_id not in rt.state['platform_observations']
+
+
 def test_later_capture_still_detects_local_artwork_edits(tmp_path):
     rt, path = fixture(tmp_path)
     old_files = rt.works()[0]['revision']['files']

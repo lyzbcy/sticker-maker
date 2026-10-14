@@ -1210,7 +1210,7 @@ def cmd_shelf_passed(req_id, args):
 
     try:
         with _platform_exclusive("一键发布(上架)", req_id):
-            _run_shelf_passed(req_id, args, root, sync_status, _say)
+            return _run_shelf_passed(req_id, args, root, sync_status, _say)
     except _PlatformBusy as e:
         _result(req_id, "fail", errors=[{"message": str(e)}])
 
@@ -1337,6 +1337,11 @@ def _run_shelf_passed(req_id, args, root, sync_status, _say, stop=None,
                             meta.platform_status = receipt['status_text']
                             meta.published = True
                             save_meta(ep_dir, meta)
+                            if runtime:
+                                # Replace the approved observation as well as the
+                                # projection, otherwise rows() overlays stale status5.
+                                runtime.commit_platform_metadata(ep_dir, meta)
+                                runtime.finish_platform_sync()
                         except Exception as exc:
                             warnings.append({'name': album, 'message':
                                 f'平台预约已核验，本地状态保存失败，请同步平台状态：{type(exc).__name__}: {exc}'})
@@ -1388,6 +1393,7 @@ def _run_shelf_passed(req_id, args, root, sync_status, _say, stop=None,
             "cancelled": cancelled, "remaining": remaining,
             "failed": [{"name": n, "reason": r} for n, r in failed],
             "warnings": warnings, "source": "api", "reservations": reservations})
+        return {'metadata_committed': bool(runtime)}
     finally:
         _stop_events.pop(req_id, None)
 
