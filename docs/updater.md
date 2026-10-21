@@ -1,8 +1,10 @@
-> 现状：稳定（0.5.1已正式发行）
+> 现状：稳定（0.6.2已正式发行）
 > 负责人：捞鱼工作室 / Codex
-> 最后更新时间：2026-10-13
+> 最后更新时间：2026-10-21
 
 # 更新器
+
+0.6.2正式清单仍使用原URL `https://lyzbcy.github.io/sticker-maker/version.json`；Windows/Mac公开完整下载SHA、选包、受信URL及旧0.5.15/0.5.17更新判断已实际验证，对当前0.6.2不重复提示。网站改用gh-pages静态分支，三个自定义Actions工作流停用；平台内置Pages任务计费0。回执verification/public-release-0.6.2/updater-public-verification.json。本次未执行用户现有安装的替换，不将选包/校验通过冒称真实安装升级通过。
 
 入口desktop/src/main/updater.js；日期update-state.js；Win交接update-handoff.js+install-update.ps1；Mac install.command。
 

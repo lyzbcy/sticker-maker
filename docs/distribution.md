@@ -1,8 +1,17 @@
-> 现状：0.5.15已正式发布，双平台与本机验收完成
+> 现状：0.6.2已正式发布，双平台公开下载与更新清单校验完成
 > 负责人：捞鱼工作室 / Codex
-> 最后更新时间：2026-10-14
+> 最后更新时间：2026-10-21
 
 # 分发验收
+
+## 0.6.2正式发布（2026-10-21）
+[Release](https://github.com/lyzbcy/sticker-maker/releases/tag/v0.6.2)对应源码d7c0b23。Windows主题安装器207169062字节（较上一公开版448486444字节减少53.81%），Mac ARM64包230049160字节（较508264026字节减少54.74%）。Windows正式封装中内嵌后端与已验收205 MB候选相同，3份主程序/asar/冻结引擎载荷SHA与候选打包目录一致；安装界面已渲染检查。本次没有替换用户现有正式安装。
+
+双端公开文件均匿名完整下载，大小与SHA同本地最终文件、GitHub资产digest和官网version.json一致；实际更新器对0.5.15/0.5.17识别更新、对0.6.2不重复提示，Win/Mac选包和文件校验通过。官网页面与清单均为0.6.2。详细证据verification/public-release-0.6.2；Release附SHA256SUMS.txt与release-metadata.json。
+
+发布默认使用本地Windows和SSH原生Mac构建，三个仓库Actions工作流均disabled_manually，并移除push/tag自动触发。官网的GitHub Pages配置为legacy、gh-pages分支根目录，静态文件含.nojekyll；GitHub平台自带Pages发布任务39561606954成功，计费毫秒0，没有运行双端构建Actions。后续发布上传已验收资产后，再将desktop/site整棵树提交到gh-pages，必要时调用POST /repos/lyzbcy/sticker-maker/pages/builds，并回读公网确认，不启用历史编译工作流。
+
+Windows SHA256：`57cd5226993ee8a1b13072be2c98b07ccdb7d939a13cdbe423594b8c145cac01`；Mac SHA256：`4a1bd5f0ebab4c44f92432d1fd4eacb86257b4d6bf761932ac19817c17b011f2`。Mac使用ad-hoc签名，未Apple公证。
 
 ## 0.6.2本地瘦身候选（2026-10-21）
 默认发行构建不重复打包Chromium，保留Playwright库/驱动与图像处理引擎，优先使用本机Edge/Chrome；缺少或需要备用浏览器时在问题与警告页安装可选组件。Windows候选205 MB，较0.6.1候选448 MB减少54.27%；Mac ARM64候选230 MB。双端共用源码，本轮Windows本机与Mac SSH原生构建、运行、签名及隔离安装验收完成，严格未使用Actions。没有替换正式安装或公开发布新版本。见[处理记录](desktop-usability-20261021.md)及verification/docx-tasks-20261021；下方正式0.5.15的包大小属于历史已发布版本。

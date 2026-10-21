@@ -41,3 +41,7 @@ Windows后端含Agent与反馈服务共762通过、4项既有跳过；Mac后端7
 严格按文档第五项处理：本轮未运行Actions、未推送远端标签或公开发布。Windows安装包204909564字节，Mac包230049160字节；两份最终文件已放在 outputs/desktop-usability-0.6.2，SHA见验收目录artifacts.json。
 
 Mac构建目录在本机Library/Caches，源码使用校验过的冻结工作副本，不在Syncthing目录内写入node_modules或构建缓存。可复用脚本是 scripts/build-local-mac.py，支持从失败的构建阶段续接；使用Mac本机Python3.12虚拟环境与Node，完成测试、冻结、打包、ad-hoc签名、真实IPC、隔离安装及ZIP交付。Mac包未做Apple公证，属于本地签名候选；没有替换任一设备的正式安装。
+
+## 用户追加授权后的正式发布
+
+用户随后要求「发布呀」，现已公开v0.6.2。正式Windows主题封装207169062字节，内嵌后端SHA与上述候选一致；Mac原包230049160字节，改为正式文件名。官网与更新清单0.6.2、两份匿名完整下载SHA、GitHub资产digest和实际更新器选包验证通过，见verification/public-release-0.6.2。三个仓库Actions工作流停用，Win/Mac仍为本地构建；官网改用静态分支，GitHub内置Pages发布任务计费0。未替换用户现有正式安装或处理真实作品数据。

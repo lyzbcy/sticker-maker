@@ -1,5 +1,12 @@
 # 当前状态（唯一进度快照）
 
+## 正式发布（2026-10-21，0.6.2）
+- 已按用户「发布呀」授权公开 [v0.6.2](https://github.com/lyzbcy/sticker-maker/releases/tag/v0.6.2)，源码标签指向 d7c0b23。正式 Windows 主题安装器207169062字节，Mac ARM64包230049160字节；版本清单与官网均已回读0.6.2。
+- 两份公开文件经匿名完整下载，SHA与本地最终文件、GitHub资产digest、更新清单一致；实际更新器识别0.5.15/0.5.17可更新，对0.6.2不重复提示，双端选包与下载校验通过。Windows安装器解出的后端与已验收候选一致，3份主程序/asar/冻结引擎载荷SHA与已验收打包目录一致。
+- Windows本机、Mac SSH原生构建；三个仓库工作流均已停用且移除push/tag自动触发。官网改用gh-pages静态分支；GitHub自带Pages发布任务39561606954成功，计费毫秒为0，未运行双端构建Actions。
+- 证据：verification/public-release-0.6.2/release-receipt.json、public-downloads.json、updater-public-verification.json；原候选双端功能/测试证据仍在verification/docx-tasks-20261021。正式安装包和SHA亦公开于Release。
+- 本轮仅发布软件，未替换用户现有正式安装；Mac仍为ad-hoc签名、未公证。真实作品未迁移、删除、投稿或预约，评分和资源位置配置保留。后续如要实际升级/切换旧库，先核对当前运行任务和资源锁，再记录独立安装或迁移回执。
+
 ## 桌面文档五项任务（2026-10-21，0.6.2 双端本地候选）
 - 已读取桌面《微信表情几件事.docx》及双端架构/日志规范，逐项处理见 desktop-usability-20261021.md；原件SHA与需求在 verification/docx-tasks-20261021/requirements.json。
 - 教程5步均可顶部退出；制作/作品库/全部表情/问题与警告为常驻标签，问题页说明影响并提供处理入口。日志本机批量写入、7天/20 MB轮转、排障开关、脱敏导出；反馈摘要预览与发送一致，不再固定30条/暗截1000字符。
@@ -67,7 +74,7 @@
 第9弹最初因继承127.0.0.1:7897死代理失败；直连CLI测试成功后，仅清理本次启动环境重启软件，原失败保留，全局Codex配置SHA不变。重启后真实生成609（16张、萌系大头），未投稿。
 入口只留路由，当前事实集中于本页；人工评分表日志留verification/human-batch-phase16-20261014；精选逐图核验/新投稿留selected-index-phase17-20261014；死代理纠正历史留production-phase15-20261014。
 
-## 版本、测试与资源库
+## 版本、测试与资源库（2026-10-14历史快照，当前发布见顶部）
 |项目|已验证状态|证据|
 |---|---|---|
 |源码/本机实装|源码/主程序PE/asar/引擎IPC均0.5.15；安装exit0、3份payload SHA与构建逐项一致，接口及持久化列表实际验收|../verification/shelf-integration-20261014/installation.json、installed-shelf-final.json|
