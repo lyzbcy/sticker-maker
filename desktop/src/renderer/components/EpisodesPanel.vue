@@ -15,7 +15,7 @@
       <button v-if="syncing" class="cancel-btn" @click="cancelPlatformTask">✕ 取消同步</button>
       <button v-if="shelfCount > 0" class="shelf-btn" :disabled="shelving"
               @click="shelfPassed"
-              :title="`把 ${shelfCount} 个审核通过的作品预约今日上架`">
+              :title="`把 ${shelfCount} 个审核通过或预约失败的作品预约今日上架（不重新投稿）`">
         {{ shelving ? '发布中…' : `🚀 一键发布（${shelfCount} 弹）` }}
       </button>
       <button v-if="shelving" class="cancel-btn" @click="cancelPlatformTask">✕ 取消发布</button>
@@ -249,9 +249,9 @@ async function cancelPlatformTask() {
   }
 }
 
-// 一键发布：审核通过的单逐个预约今日上架
+// 一键发布：审核通过或预约失败的原作品，逐个重新预检后预约。
 const shelfCount = computed(() =>
-  store.episodes.filter(ep => (ep.platform_status || '') === '审核通过' && ep.can_shelf !== false).length)
+  store.episodes.filter(ep => ['审核通过', '预约上架失败'].includes(ep.platform_status || '') && ep.can_shelf !== false).length)
 const shelving = ref(false)
 const shelfTip = ref('')
 async function shelfPassed() {
@@ -431,9 +431,9 @@ function statusText(ep) {
 }
 function statusClass(ep) {
   const s = ep.platform_status || (ep.published ? '已提交' : '未提交')
-  if (s.includes('上架')) return 'st-live'
-  if (s.includes('待审核')) return 'st-review'
-  if (s.includes('未通过')) return 'st-reject'
+  if (s === '已上架') return 'st-live'
+  if (['待审核', '审核中', '审核通过', '已预约上架'].includes(s)) return 'st-review'
+  if (['预约上架失败', '强制下架', '限制投稿', '未通过审核', '审核未通过'].includes(s)) return 'st-reject'
   if (s.includes('已保存')) return 'st-saved'
   if (s.includes('未完成')) return 'st-incomplete'
   return 'st-local'

@@ -15,7 +15,7 @@ from .config.schema import Paths, Prefs, ModeProbsConfig
 from .config.paths import resolve_paths, current_platform
 from .config.loader import load_prefs_from_file, save_prefs, _clean_price_probs
 
-VERSION = "0.5.15"
+VERSION = "0.6.2"
 
 _engine = None
 _stop_events = {}
@@ -82,6 +82,8 @@ def _log(level, message, **meta):
         "message": str(message),
         "meta": _scrub_log_value(meta),
     })
+    _emit({'type': 'log', 'stage': 'agent', 'level': str(level), 'message': str(message),
+           'meta': _scrub_log_value(meta)})
 
 
 def _safe_logs():
@@ -479,7 +481,8 @@ def cmd_runtime_check(req_id, args):
     import keyring
     from playwright.sync_api import sync_playwright
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
+        from .publish.browser_runtime import launch_browser
+        browser = launch_browser(pw, headless=True)
         try:
             page = browser.new_page()
             page.set_content("<h1>StickerMaker runtime ready</h1>")
@@ -912,7 +915,7 @@ def cmd_list_episodes(req_id, args):
     episodes = []
     if root.exists():
         for ep_dir in sorted(root.iterdir(), reverse=True):
-            if ep_dir.is_dir() and ep_dir.name.startswith("episode"):
+            if ep_dir.is_dir() and (ep_dir.name.startswith("episode") or (ep_dir / "project.json").exists()):
                 stickers = list((ep_dir / "最终版").glob("*.png")) if (ep_dir / "最终版").exists() else []
                 cover = ep_dir / "封面" / "封面.png"
                 if not cover.exists():
@@ -950,7 +953,7 @@ def cmd_list_series(req_id, args):
     from .config.series import load_series
     series = load_series()
     _result(req_id, "ok", data={"series": [{
-        **s.to_dict(), "next_number": s.peek_next_number(),
+        **s.to_dict(), "next_number": s.peek_next_number(), "next_album_name": s.album_name(s.peek_next_number()),
     } for s in series]})
 
 
@@ -965,12 +968,15 @@ def cmd_save_series(req_id, args):
             return
     saved = save_series_list_from_dicts(items)
     _result(req_id, "ok", data={"series": [{
-        **s.to_dict(), "next_number": s.peek_next_number(),
+        **s.to_dict(), "next_number": s.peek_next_number(), "next_album_name": s.album_name(s.peek_next_number()),
     } for s in saved]})
 
 
 def _episode_characters(episode_dir: Path) -> list:
     """从 本次制作角色.md 读角色列表（无文件返回空）。"""
+    from .project import read_project, read_characters
+    if read_project(episode_dir) is not None:
+        return read_characters(episode_dir)
     f = Path(episode_dir) / "本次制作角色.md"
     if not f.exists():
         return []
@@ -1014,13 +1020,14 @@ def _episode_meanings(episode_dir: Path) -> list:
     """读含义词列表（按 meaning_map.json 数字序；降级用文件名）。"""
     episode_dir = Path(episode_dir)
     final = episode_dir / "最终版"
-    mm = episode_dir / "meaning_map.json"
-    if mm.exists():
-        try:
-            data = json.loads(mm.read_text(encoding="utf-8"))
-            return [str(data[k]) for k in sorted(data, key=lambda x: int(x))]
-        except (json.JSONDecodeError, ValueError, OSError):
-            pass
+    from .project import read_meanings
+    try:
+        data = read_meanings(episode_dir)
+        if not data:
+            raise ValueError("没有含义词映射")
+        return [str(data[k]) for k in sorted(data, key=lambda x: int(x))]
+    except (json.JSONDecodeError, ValueError, OSError):
+        pass
     if final.exists():
         return [p.stem for p in sorted(final.glob("*.png"), key=lambda x: x.stem)]
     return []
@@ -1028,6 +1035,8 @@ def _episode_meanings(episode_dir: Path) -> list:
 
 def _regen_episode_assets(episode_dir: Path, meta, series=None) -> list:
     """按 meta 的素材模式重新生成横幅/封面/图标。返回 warnings 列表。"""
+    from .project import require_sources
+    require_sources(episode_dir)
     from .stages.assets import (make_banner, resize_save, make_big_head_cover,
                                 _is_head_shot, pick_header_candidates, _prefer_noword)
     import shutil as _shutil
@@ -1049,6 +1058,10 @@ def _regen_episode_assets(episode_dir: Path, meta, series=None) -> list:
 
     # ---- 横幅 ----
     banner_out = episode_dir / "横幅" / "横幅.png"
+    for _field in ("cover_custom", "banner_custom", "icon_custom"):
+        _raw = getattr(meta, _field)
+        if _raw and not Path(_raw).is_absolute():
+            setattr(meta, _field, str(episode_dir / _raw))
     if meta.banner_mode == "custom" and meta.banner_custom:
         _copy_or_warn(meta.banner_custom, banner_out, "横幅")
     elif meta.banner_mode == "role" and role_key and role_map[role_key].get("banner"):
@@ -1120,6 +1133,8 @@ def _regen_episode_assets(episode_dir: Path, meta, series=None) -> list:
 
 
 def cmd_repolish_finals(req_id, args):
+    from .project import require_sources
+    require_sources(Path(args.get("episode_dir") or ""))
     """对已生成作品的成品跑 P2 双层防御（抠边缘连通背景 + trim 残留带）。
 
     救活 P2 上线前生成的单（如 61-68 的"多余边框线"驳回）：原图备份到
@@ -1242,7 +1257,9 @@ def _run_shelf_passed(req_id, args, root, sync_status, _say, stop=None,
             output_result(req_id, 'fail', errors=[{'message': sync_result.get('error') or
                     '平台名单未完整读取，本次未执行上架，请重新更新。'}])
             return
-        fresh_passed = set(sync_result.get('fresh_passed', []))
+        # Keep fresh_passed's strict audit meaning; status10 is shelfable too.
+        fresh_shelfable = set(sync_result.get('fresh_shelfable', sync_result.get('fresh_passed', [])))
+        from .publish.platform_data import SHELFABLE_STATUSES
         from .library.hooks import runtime_for
         runtime = runtime_for(engine)
         safe_works = ({w['work_id'] for w in runtime.rows()
@@ -1251,18 +1268,18 @@ def _run_shelf_passed(req_id, args, root, sync_status, _say, stop=None,
         passed = []
         seen_ids = set()
         for ep_dir in sorted(root.iterdir()) if root.exists() else []:
-            if not (ep_dir.is_dir() and ep_dir.name.startswith("episode")):
+            if not (ep_dir.is_dir() and (ep_dir.name.startswith("episode") or (ep_dir / "project.json").exists())):
                 continue
             meta = load_meta(ep_dir)
             if runtime and (meta.account_id != runtime.account_id or meta.work_id not in safe_works):
                 continue
-            if str(ep_dir) in fresh_passed and meta.platform_item_id and meta.platform_status == "审核通过":
+            if str(ep_dir) in fresh_shelfable and meta.platform_item_id and meta.platform_status in SHELFABLE_STATUSES:
                 if meta.platform_item_id not in seen_ids:
                     seen_ids.add(meta.platform_item_id)
                     passed.append((ep_dir, meta))
         if not passed:
             output_result(req_id, "ok", data={"published": 0,
-                                               "message": "没有「审核通过待发布」的作品"})
+                                               "message": "没有「审核通过或预约失败可重试」的作品"})
             return
         raw_limit = args.get('limit')
         if raw_limit is not None:
@@ -1273,7 +1290,7 @@ def _run_shelf_passed(req_id, args, root, sync_status, _say, stop=None,
             passed = passed[:limit]
         if not passed:
             output_result(req_id, "ok", data={"published": 0,
-                                               "message": "没有「审核通过待发布」的作品"})
+                                               "message": "没有「审核通过或预约失败可重试」的作品"})
             return
         if args.get('dry_run'):
             skipped_names = [m.album_name or p.name for p, m in passed]
@@ -1283,7 +1300,7 @@ def _run_shelf_passed(req_id, args, root, sync_status, _say, stop=None,
                 'remaining': skipped_names, 'failed': [],
             })
             return
-        _say(f"共 {len(passed)} 个作品审核通过，开始逐个上架…")
+        _say(f"共 {len(passed)} 个作品可上架（审核通过或预约失败重试），开始逐个预约…")
 
         if stop.is_set():   # sync 阶段被取消：不启动浏览器、不登录
             output_result(req_id, 'ok', data={'published': 0, 'cancelled': True,
@@ -1713,6 +1730,8 @@ def cmd_get_episode(req_id, args):
         _result(req_id, "fail", errors=[{"message": f"作品目录不存在：{episode_dir}"}])
         return
     from .config.series import load_meta
+    from .project import read_project
+    project_data = read_project(episode_dir) or {}
     meta = load_meta(episode_dir)
     final = episode_dir / "最终版"
     stickers = []
@@ -1726,6 +1745,8 @@ def cmd_get_episode(req_id, args):
              'can_edit', 'can_publish', 'can_shelf')} if resource else {}),
         "name": episode_dir.name, "path": str(episode_dir),
         "meta": meta.to_dict(),
+        "project_mode": project_data.get("mode"),
+        "cleanup_pending": bool(project_data.get("cleanup_pending")),
         "stickers": stickers,
         "characters": _episode_characters(episode_dir),
         "banner": _exists("横幅/横幅.png"),
@@ -1784,7 +1805,11 @@ def cmd_update_episode_meta(req_id, args):
         if warnings:
             _log("warn", "素材重生成警告：" + "；".join(warnings), command_id=req_id)
 
-    _result(req_id, "ok", data={"meta": meta.to_dict(), "warnings": warnings})
+    from .project import read_project, rename_project, seal_project
+    if read_project(episode_dir) is not None:
+        episode_dir = rename_project(episode_dir, meta.album_name)
+        seal_project(episode_dir)
+    _result(req_id, "ok", data={"meta": meta.to_dict(), "warnings": warnings, "path": str(episode_dir)})
 
 
 def cmd_regen_intro(req_id, args):
@@ -1818,7 +1843,8 @@ def _solid_panel_sources(episode_dir, finals):
     if mapping_file.is_file():
         mapping = json.loads(mapping_file.read_text(encoding='utf-8'))
     else:
-        meanings = json.loads((episode_dir / 'meaning_map.json').read_text(encoding='utf-8'))
+        from .project import read_meanings
+        meanings = read_meanings(episode_dir)
         if not isinstance(meanings, dict) or set(meanings) != keys:
             raise ValueError('原始分格与含义词序号不完整')
         # Legacy evidence is accepted only when each unique meaning exactly
@@ -1839,6 +1865,8 @@ def _solid_panel_sources(episode_dir, finals):
 
 
 def cmd_regen_assets(req_id, args):
+    from .project import require_sources
+    require_sources(Path(args.get("episode_dir") or ""))
     """按 meta 素材设置重新生成横幅/封面/图标。"""
     episode_dir = Path(args.get("episode_dir") or "")
     if not episode_dir.is_dir():
@@ -2084,7 +2112,7 @@ def collect_reject_records(root: Path) -> list:
     from .config.series import load_meta
     records = []
     for ep_dir in sorted(root.iterdir()) if root.exists() else []:
-        if not (ep_dir.is_dir() and ep_dir.name.startswith("episode")):
+        if not (ep_dir.is_dir() and (ep_dir.name.startswith("episode") or (ep_dir / "project.json").exists())):
             continue
         meta = load_meta(ep_dir)
         reason = (meta.platform_reject_reason or "").strip()
@@ -2235,7 +2263,7 @@ def cmd_list_all_stickers(req_id, args):
     groups, series_seen = [], []
     seen = {}   # wid -> [(idx, is_main)]（同 wid 多投影目录全记录，收尾统一裁决）
     for ep_dir in sorted(root.iterdir(), reverse=True) if root.exists() else []:
-        if not (ep_dir.is_dir() and ep_dir.name.startswith("episode")):
+        if not (ep_dir.is_dir() and (ep_dir.name.startswith("episode") or (ep_dir / "project.json").exists())):
             continue
         meta = load_meta(ep_dir)
         wid = getattr(meta, "work_id", "") or ""
@@ -2322,7 +2350,7 @@ def cmd_build_all_ratings_prompt(req_id, args):
     blocks = []
     _seen_wids = set()
     for ep_dir in sorted(root.iterdir(), reverse=True) if root.exists() else []:
-        if not (ep_dir.is_dir() and ep_dir.name.startswith("episode")):
+        if not (ep_dir.is_dir() and (ep_dir.name.startswith("episode") or (ep_dir / "project.json").exists())):
             continue
         meta = load_meta(ep_dir)
         # 双投影去重（同 work_id 只取一个目录；时间戳目录先到但主目录
@@ -2418,7 +2446,8 @@ def cmd_save_rating(req_id, args):
     if pfile.exists():
         prompt_txt = pfile.read_text(encoding="utf-8")
     mm_path = ep_dir / "meaning_map.json"
-    meaning_map = {}
+    from .project import read_meanings
+    meaning_map = read_meanings(ep_dir)
     if mm_path.exists():
         try:
             meaning_map = _json.loads(mm_path.read_text(encoding="utf-8"))
@@ -2573,15 +2602,16 @@ def cmd_install_chromium(req_id, args):
         _emit({"id": req_id, "type": "progress", "stage": "install",
                "message": message, "percent": percent})
 
-    progress("正在下载发布浏览器（Chromium，约 150MB，只需一次）...", 0.05)
+    progress("正在下载可选浏览器组件，大小与耗时取决于平台和网络，请稍候…", 0.05)
     try:
         if getattr(sys, "frozen", False):
             # 打包版：直接调 playwright 自带的 node driver
             from playwright._impl._driver import compute_driver_executable, get_driver_env
-            cmd = [str(compute_driver_executable()), "install", "chromium"]
+            node, driver = compute_driver_executable()
+            cmd = [str(node), str(driver), "install", "--no-shell", "chromium"]
             env = get_driver_env()
         else:
-            cmd = [sys.executable, "-m", "playwright", "install", "chromium"]
+            cmd = [sys.executable, "-m", "playwright", "install", "--no-shell", "chromium"]
             env = None
         proc = sp.Popen(cmd, stdout=sp.PIPE, stderr=sp.STDOUT, text=True,
                         encoding="utf-8", errors="replace", env=env)
@@ -2601,6 +2631,13 @@ def cmd_install_chromium(req_id, args):
         })
     except Exception as exc:
         _result(req_id, "fail", errors=[{"message": f"安装浏览器失败：{type(exc).__name__}: {exc}"}])
+
+
+def cmd_browser_runtime_status(req_id, args):
+    from .publish.browser_runtime import browser_status
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as playwright:
+        _result(req_id, 'ok', data=browser_status(playwright))
 
 
 def cmd_get_logs(req_id, args):
@@ -2674,12 +2711,13 @@ def cmd_check_publish(req_id, args):
     try:
         from playwright.sync_api import sync_playwright
         with sync_playwright() as playwright:
-            executable = Path(playwright.chromium.executable_path)
-            ready = executable.exists()
+            from .publish.browser_runtime import browser_status
+            status = browser_status(playwright)
+            ready = status['ready']
         _result(req_id, "ok" if ready else "fail", data={
             "ready": ready,
-            "browser_path": str(executable) if ready else None,
-            "guidance": "" if ready else "未找到发布浏览器，请先安装 Google Chrome 或 Playwright Chromium。",
+            "browser_path": status.get('executable_path'),
+            "guidance": status.get('guidance', ''),
         })
     except Exception as exc:
         _result(req_id, "fail", data={
@@ -2943,6 +2981,7 @@ HANDLERS = {
     "featured": cmd_featured,
     "load_promotion": cmd_load_promotion, "save_promotion": cmd_save_promotion,
     "get_logs": cmd_get_logs, "clear_logs": cmd_clear_logs,
+    "browser_runtime_status": cmd_browser_runtime_status,
     "check_publish": cmd_check_publish, "publish_episode": cmd_publish_episode,
     "save_publish_credentials": cmd_save_publish_credentials,
     "publish_credentials_status": cmd_publish_credentials_status,
@@ -2954,6 +2993,8 @@ HANDLERS = {
 
 from .library.commands import register as _register_library_commands
 _register_library_commands(sys.modules[__name__])
+from .library.project_commands import register as _register_project_commands
+_register_project_commands(sys.modules[__name__])
 
 
 def _handle_in_thread(req_id, cmd, args):

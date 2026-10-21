@@ -10,7 +10,9 @@ async function sendFeedback(payload, { version, fetchFn = fetch, endpoint = FEED
   if (!endpoint) return { ok: false, error: '反馈接收服务尚未配置，请先复制诊断信息联系作者。' }
   sending = true
   try {
-    const content = `表情包一键制作 ${version}\n${scrubText(payload.category).slice(0, 40)}\n${message}\n${scrubText(payload.logs).slice(-1000)}`
+    const content = `表情包一键制作 ${version}\n${scrubText(payload.category).slice(0, 40)}\n${message}\n${scrubText(payload.logs)}`
+    if (Buffer.byteLength(content, 'utf8') > 9000) return { ok:false, error:'诊断摘要过长，请缩短留言或导出完整日志。' }
+    if (Buffer.byteLength(JSON.stringify({ request_id:'0'.repeat(36), msgtype:'text', text:{content} })) > 12000) return { ok:false, error:'诊断摘要编码后过长，请导出完整日志并缩短留言。' }
     const digest = crypto.createHash('sha256').update(content).digest('hex')
     const pendingFile = storageDir && path.join(storageDir, 'feedback-pending.json')
     let pending = memoryPending
@@ -27,7 +29,8 @@ async function sendFeedback(payload, { version, fetchFn = fetch, endpoint = FEED
       await fs.rename(pendingFile + '.tmp', pendingFile)
     }
     memoryPending = pending
-    const response = await fetchFn(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: pending.id, msgtype: 'text', text: { content } }), signal: AbortSignal.timeout(55000) })
+    const body = JSON.stringify({ request_id: pending.id, msgtype: 'text', text: { content } })
+    const response = await fetchFn(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(55000) })
     const data = await response.json()
     if (!response.ok || data.errcode !== 0) {
       if (data.state === 'failed' || ['rate_limited', 'invalid_length', 'invalid_request', 'invalid_message', 'invalid_product'].includes(data.error)) {

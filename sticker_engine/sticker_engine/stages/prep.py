@@ -75,15 +75,34 @@ class PrepStage:
         # 4) 建 episode 目录（秒级时间戳在双生图工位下会同秒碰撞，
         # 存在即追加序号——投影/资源库只认目录内容，改名无副作用）
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        episode_dir = ctx.config.paths.output_root / f"episode_{ts}"
+        direct = (ctx.config.paths.output_root / "projects.json").is_file()
+        from ..project import named_destination
+        episode_dir = (named_destination(ctx.config.paths.output_root, "制作中表情")
+                       if direct else ctx.config.paths.output_root / f"episode_{ts}")
         _uniq = 1
-        while episode_dir.exists():
-            _uniq += 1
-            episode_dir = ctx.config.paths.output_root / f"episode_{ts}_{_uniq}"
-        episode_dir.mkdir(parents=True, exist_ok=False)
+        while True:
+            try:
+                episode_dir.mkdir(parents=True, exist_ok=False)
+                break
+            except FileExistsError:
+                _uniq += 1
+                episode_dir = (named_destination(ctx.config.paths.output_root, '制作中表情')
+                               if direct else ctx.config.paths.output_root / f'episode_{ts}_{_uniq}')
         for sub in ["原图", "最终版", "参考图"]:
             (episode_dir / sub).mkdir(exist_ok=True)
         ctx.episode_dir = episode_dir
+        if direct:
+            from ..project import create_project
+            from ..config.series import EpisodeMeta
+            from ..library.runtime import runtime_for_user_data
+            runtime = runtime_for_user_data(ctx.config.paths.user_data)
+            create_project(episode_dir, EpisodeMeta(account_id=runtime.account_id,
+                           account_label=runtime.account_label).to_dict(), characters=chars)
+            from ..project import update_project
+            update_project(episode_dir, lambda d: d.update(recipe=dict(
+                engine_version='0.6.0', grid_size=ctx.episode.grid_size,
+                background_mode=getattr(prefs,'background_mode','transparent'),
+                sticker_text=bool(getattr(prefs,'sticker_text',True)))))
         # 5) 写角色卡
         contains_laoyu = "捞鱼" in chars
         (episode_dir / "本次制作角色.md").write_text(

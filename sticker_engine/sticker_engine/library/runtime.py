@@ -15,6 +15,7 @@ import threading
 from pathlib import Path
 
 from ..config.series import EpisodeMeta, load_meta, save_meta
+from ..publish.platform_data import SHELFABLE_STATUSES
 from .catalog import ResourceLibrary
 from .resources import hash_file
 from .settings import SharedSettings
@@ -616,7 +617,7 @@ class LibraryRuntime:
                     row['can_shelf'] = (row.get('resource_state') in ('available', 'placeholder')
                         and not row.get('offline')
                         and not row.get('sync_conflicts') and not row.get('identity_conflict')
-                        and row.get('platform_status') == '审核通过')
+                        and row.get('platform_status') in SHELFABLE_STATUSES)
                 self._rows_at = __import__('time').monotonic()
             else:
                 self._rows_at = 0
@@ -954,7 +955,7 @@ class LibraryRuntime:
                 can_edit=ready, can_publish=upload,
                 can_shelf=(not has_sync_conflicts and not has_identity_conflict
                            and work['state'] not in ('pending', 'conflict') and
-                           metadata.get('platform_status') == '审核通过'),
+                           metadata.get('platform_status') in SHELFABLE_STATUSES),
                 sticker_count=len(finals), cover=str(cover) if cover else '',
                 complete=bool(finals), missing=work.get('missing', []) or metadata.get('missing_resources', []),
                 sync_conflicts=work.get('sync_conflicts', []),
@@ -1213,8 +1214,14 @@ def runtime_for_user_data(user_data):
     key = os.path.normcase(str(data))
     with _ACTIVE_RUNTIME_LOCK:
         rt = _ACTIVE_RUNTIME_CACHE.get(key)
-        if rt is None:
-            rt = LibraryRuntime(data)
+        disk = read_json(data / "resource_library" / "device.json")
+        direct = disk.get("storage_mode") == "projects"
+        if rt is None or (rt.__class__.__name__ == "ProjectRuntime") != direct:
+            if direct:
+                from .projects import ProjectRuntime
+                rt = ProjectRuntime(data)
+            else:
+                rt = LibraryRuntime(data)
             _ACTIVE_RUNTIME_CACHE[key] = rt
         return rt
 

@@ -7,6 +7,18 @@ import { sendFeedback } from '../src/main/feedback'
 let store, now=2000000
 beforeEach(()=>{store=fs.mkdtempSync(path.join(os.tmpdir(),'sticker-feedback-fixture-'));now+=60000;vi.spyOn(Date,'now').mockReturnValue(now)})
 describe('feedback backend (no actual messages)', () => {
+ it('sends the entire preview rather than silently truncating at 1000 characters',async()=>{
+  const logs=Array.from({length:100},(_,i)=>`step ${i}: context preserved`).join('\n')
+  const fetchFn=vi.fn().mockResolvedValue({ok:true,json:async()=>({errcode:0})})
+  const result=await sendFeedback({message:'preview fixture',logs},{storageDir:store,version:'0.6.2',endpoint:'https://feedback.test/intake',fetchFn})
+  expect(result.ok).toBe(true)
+  expect(JSON.parse(fetchFn.mock.calls[0][1].body).text.content.endsWith(logs)).toBe(true)
+ })
+ it('rejects oversized diagnostics before storing a pending identity or contacting the service',async()=>{
+  const fetchFn=vi.fn()
+  const result=await sendFeedback({message:'fixture',logs:'测'.repeat(4000)},{storageDir:store,version:'0.6.2',endpoint:'https://feedback.test/intake',fetchFn})
+  expect(result.ok).toBe(false);expect(fetchFn).not.toHaveBeenCalled();expect(fs.existsSync(path.join(store,'feedback-pending.json'))).toBe(false)
+ })
  it('preserves an explicit unconfigured-service error without contacting a bot', async () => {
   const fetchFn=vi.fn();const result=await sendFeedback({message:'fixture'}, {endpoint:'',fetchFn});
   expect(result.ok).toBe(false);expect(result.error).toContain('尚未配置');expect(fetchFn).not.toHaveBeenCalled()

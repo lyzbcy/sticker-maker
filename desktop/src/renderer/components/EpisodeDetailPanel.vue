@@ -3,7 +3,7 @@
     <header>
       <button class="back" @click="store.phase = 'episodes'">← 作品库</button>
       <h2 class="title">{{ meta.album_name || ep.album_name || ep.name }}</h2>
-      <span class="ep-badge platform" v-if="platformStatus">平台：{{ platformStatus }}</span>
+      <span class="ep-badge platform" :class="{ 'platform-failed': platformStatus === '预约上架失败' }" v-if="platformStatus">平台：{{ platformStatus }}</span>
       <span class="ep-badge published" v-else-if="isPublished">✓ 已发布</span>
       <span v-if="ep.resource_state" class="ep-badge resource" :class="`resource-${ep.resource_state}`">
         资源：{{ resourceStateText }}
@@ -20,8 +20,14 @@
     </section>
 
     <div class="body">
+      <ProjectSlimPanel :path="ep.path" :mode="ep.project_mode" :can-edit="canEdit" :cleanup-pending="ep.cleanup_pending" @changed="store.refreshEpisode()" />
+      <section v-if="platformStatus === '预约上架失败'" class="card reject-card" data-test="shelf-failed">
+        <h3 class="card-title">预约上架失败</h3>
+        <p>作品已投稿，但本次预约未成功；不是已上架，也不是审核驳回。</p>
+        <p>平台允许这类原作品重新预约。请返回作品库，点击「一键发布」重试上架；软件会先刷新状态并按原作品 ID 核验。不重新投稿，也不在失败后自动循环重试。</p>
+      </section>
       <!-- 审核驳回警示卡（有驳回理由时显示，多条理由全部列出） -->
-      <section v-if="meta.platform_reject_reason" class="card reject-card">
+      <section v-if="meta.platform_reject_reason && platformStatus !== '预约上架失败'" class="card reject-card">
         <h3 class="card-title">⛔ 审核未通过——平台驳回理由（共 {{ reasonCount(meta.platform_reject_reason, meta.album_name || ep.name) }} 条）</h3>
         <div v-for="(item, idx) in parseReasonItems(meta.platform_reject_reason, meta.album_name || ep.name)"
              :key="idx" class="reject-item">
@@ -61,7 +67,7 @@
             <select v-model="pickedSeries" class="name-input series-select" :disabled="!canEdit">
               <option value="">— 选择要编入的系列 —</option>
               <option v-for="s in store.seriesList" :key="s.id" :value="s.id">
-                {{ s.name }}（将命名为「{{ s.name }}{{ s.next_number }}」）
+                {{ s.name }}（将命名为「{{ s.next_album_name || `${s.name}${s.next_number}` }}」）
               </option>
             </select>
             <button class="btn-sm" :disabled="!canEdit || !pickedSeries" @click="assignSeries">编入</button>
@@ -122,7 +128,7 @@
           </div>
         </div>
         <div class="row-actions">
-          <button class="btn-sm" :disabled="!canEdit || regenAssetsBusy" @click="regenAssets">
+          <button class="btn-sm" :disabled="!canEditSources || regenAssetsBusy" @click="regenAssets">
             {{ regenAssetsBusy ? '生成中…' : '↻ 按以上设置重新生成素材' }}
           </button>
           <span v-if="assetWarnings.length" class="warn-text">{{ assetWarnings.join('；') }}</span>
@@ -172,10 +178,10 @@
         <!-- 未通过审核：按驳回理由精准修复 + 平台编辑器重提（用户 SOP） -->
         <div v-if="(meta.platform_status || ep.platform_status || '').includes('未通过')" class="republish-box">
           <p class="republish-title">⛔ 这弹被驳回——按驳回理由修改后再提交：</p>
-          <button class="republish-btn" :disabled="!canEdit || !canPublish || fixingRepublish" @click="fixAndRepublish(true)">
+          <button class="republish-btn" :disabled="!canEditSources || !canPublish || fixingRepublish" @click="fixAndRepublish(true)">
             {{ fixingRepublish ? '正在修改并重新提交（约几分钟）…' : '✅ 修改完毕，去平台重新提交' }}
           </button>
-          <button class="btn-sm" :disabled="!canEdit || fixingRepublish" @click="fixAndRepublish(false)">
+          <button class="btn-sm" :disabled="!canEditSources || fixingRepublish" @click="fixAndRepublish(false)">
             只修复本地素材
           </button>
           <p class="republish-note">
@@ -186,7 +192,7 @@
         </div>
         <div class="row-actions">
           <button class="publish-btn" data-test="publish" :disabled="store.publishing || !canPublish" @click="publish">
-            {{ store.publishing ? '正在提交…' : (isPublished ? '再次提交微信' : '一键提交微信') }}
+            {{ store.publishing ? '正在提交…' : platformStatus === '预约上架失败' ? '已投稿，请核查预约失败' : (isPublished ? '再次提交微信' : '一键提交微信') }}
           </button>
           <button class="btn-sm btn-reset" :disabled="!ep.path" @click="openFinder">在文件夹中显示</button>
           <!-- 弹药闭环：本组贴纸去重回流参考图库（已上架作品=市场验证过的良品） -->
@@ -198,7 +204,7 @@
           </button>
         </div>
         <p v-if="captureTip" class="pub-ok" data-test="capture-tip">{{ captureTip }}</p>
-        <p v-if="!canPublish" class="resource-action-hint">当前资源版本未验证完整，平台写入已暂停；请先刷新资源或处理冲突。</p>
+        <p v-if="!canPublish && platformStatus !== '预约上架失败'" class="resource-action-hint">当前资源版本未验证完整，平台写入已暂停；请先刷新资源或处理冲突。</p>
         <p v-if="replenishResult" class="pub-ok" style="font-size: 12px;">
           {{ replenishResult }}
         </p>
@@ -223,6 +229,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useEngineStore } from '../store/engine'
+import ProjectSlimPanel from './ProjectSlimPanel.vue'
 import { parseReasonItems, reasonCount } from '../utils/reason'
 
 const store = useEngineStore()
@@ -250,8 +257,9 @@ const canEdit = computed(() => {
   if (typeof ep.value.can_edit === 'boolean') return ep.value.can_edit
   return true
 })
+const canEditSources = computed(() => canEdit.value && ep.value?.project_mode !== 'delivery')
 const canPublish = computed(() => {
-  if (!ep.value) return false
+  if (!ep.value || platformStatus.value === '预约上架失败') return false
   if (['pending', 'conflict', 'deleted', 'placeholder', 'offline'].includes(ep.value.resource_state)) return false
   if (typeof ep.value.can_publish === 'boolean') return ep.value.can_publish
   if (ep.value.resource_state === 'placeholder') return false
@@ -739,6 +747,7 @@ header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; fle
 .republish-btn:hover:not(:disabled) { background: var(--forest-hover); }
 .republish-btn:disabled { opacity: .6; cursor: wait; }
 .republish-note { margin: 8px 0 0; font-size: 11px; color: var(--muted); line-height: 1.6; }
+.ep-badge.platform-failed { color: var(--brick); background: rgba(181, 72, 42, .12); }
 .reject-card { border: 1px solid rgba(181, 72, 42, .35); background: rgba(181, 72, 42, .05); }
 .reject-card .card-title { color: var(--brick); }
 .reject-item { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 8px; }

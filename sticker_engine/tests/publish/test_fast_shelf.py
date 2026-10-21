@@ -67,11 +67,19 @@ def test_wrong_reservation_date_is_not_counted_as_success():
     with pytest.raises(ShelfOutcomeUnknown):execute(api)
     assert len(api.posts)==1
 
-@pytest.mark.parametrize('state',[2,6,7])
+@pytest.mark.parametrize('state',[2,6,7,9,11])
 def test_fresh_nonapproved_status_never_sends(state):
     api=API();api.status['sid']=state;before=Mock()
     with pytest.raises(ShelfNotEligible):execute(api,before_write=before)
     assert not api.posts and not before.called
+
+
+def test_failed_reservation_after_post_is_not_success_and_never_replayed():
+    api = API()
+    api.on_post = lambda: api.status.update(sid=10)
+    with pytest.raises(ShelfOutcomeUnknown):
+        execute(api)
+    assert len(api.posts) == 1
 
 def test_cancel_before_send_has_no_intent_or_request():
     api=API();before=Mock()

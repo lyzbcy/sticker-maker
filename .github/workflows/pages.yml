@@ -1,11 +1,6 @@
 name: Deploy introduction site
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "desktop/site/**"
-      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:

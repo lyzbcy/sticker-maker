@@ -43,8 +43,14 @@ def resolve_paths(platform: str, app_name: str = "StickerEngine") -> Paths:
             workspace = Path(device.get('workspace_base') or user_data / 'resource_library/workspaces')
             if not workspace.is_absolute():
                 raise ValueError('本机工作缓存路径必须是绝对路径')
-            output_root = workspace / library / account / "episodes"
-            assets_root = workspace / library / account / 'settings'
+            if device.get('storage_mode') == 'projects':
+                output_root = Path(device['project_root'])
+                if not output_root.is_absolute():
+                    raise ValueError('工程根目录必须是绝对路径')
+                assets_root = output_root / '.project-data' / 'settings' / account
+            else:
+                output_root = workspace / library / account / "episodes"
+                assets_root = workspace / library / account / 'settings'
     return Paths(
         user_data=user_data,
         output_root=output_root,

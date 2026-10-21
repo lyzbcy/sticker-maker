@@ -19,6 +19,9 @@
       <button class="error-dismiss" type="button" @click="errorMessage = ''">知道了</button>
     </p>
 
+    <ResourceLocationPanel :initial-status="library" @changed="refreshLibrary" />
+    <ProjectStoragePanel :direct="library.storage_mode === 'projects'" :migration-id="library.project_migration_id" :retired="library.project_old_copies_retired" @changed="refreshLibrary" />
+
     <section v-if="offline || warnings.length" class="library-card status-alert" data-test="library-alert">
       <div class="section-heading">
         <div>
@@ -52,8 +55,8 @@
           <dd data-test="library-root">{{ library.root || '未连接' }}</dd>
         </div>
         <div>
-          <dt>本机工作缓存</dt>
-          <dd data-test="workspace-path">{{ library.workspace_path || '未连接' }}</dd>
+          <dt>{{ library.storage_mode === 'projects' ? '存储方式' : '本机工作缓存' }}</dt>
+          <dd data-test="workspace-path">{{ library.storage_mode === 'projects' ? '直接读写工程，无完整工作副本' : library.workspace_path || '未连接' }}</dd>
         </div>
         <div>
           <dt>库 ID</dt>
@@ -72,7 +75,7 @@
         </div>
       </dl>
       <p v-if="library.connected" class="sync-note">本机已保存到共享目录，请等待 Syncthing 完成同步后再在另一台电脑接手。</p>
-      <p v-if="library.connected" class="sync-note">Syncthing 只需同步资源库目录，旁边的工作缓存无需同步。</p>
+      <p v-if="library.connected" class="sync-note">{{ library.storage_mode === 'projects' ? '同步整个工程集合；同一工程请在一台电脑上编辑，完成同步后再切换。' : 'Syncthing 只需同步资源库目录，旁边的工作缓存无需同步。' }}</p>
       <div v-if="library.accounts?.length" class="account-list" data-test="library-accounts">
         <span>库内账号：</span>
         <span v-for="account in library.accounts" :key="account.account_id" class="account-chip">
@@ -132,10 +135,10 @@
       <p v-if="accountTip" class="success-text">{{ accountTip }}</p>
     </section>
 
-    <section class="library-card">
+    <section v-if="library.storage_mode !== 'projects'" class="library-card">
       <div class="section-heading">
         <div>
-          <h4>超级导出</h4>
+          <h4>超级导出（旧资源库）</h4>
           <p class="hint">先扫描预览，再执行复制。备份不改变当前读写位置；迁移成功后才会切换。</p>
         </div>
       </div>
@@ -373,6 +376,8 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import ProjectStoragePanel from './ProjectStoragePanel.vue'
+import ResourceLocationPanel from './ResourceLocationPanel.vue'
 
 const emptyStatus = () => ({
   connected: false, offline: false, root: '', library_id: '', account_id: '', account_label: '', accounts: [],

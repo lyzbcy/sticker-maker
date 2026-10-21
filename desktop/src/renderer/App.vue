@@ -1,6 +1,7 @@
 <template>
   <div class="app">
     <div class="window-drag" aria-hidden="true"></div>
+    <WorkspaceTabs v-if="['main','episodes','allStickers','health'].includes(store.phase)" />
     <div v-if="store.phase === 'launch'" class="center">
       <div class="launch-pill">启动中…</div>
     </div>
@@ -11,9 +12,10 @@
     <EpisodeDetailPanel v-else-if="store.phase === 'episodeDetail'" class="page-fade" />
     <SettingsPanel v-else-if="store.phase === 'settings'" class="page-fade" />
     <ToolsPanel v-else-if="store.phase === 'tools'" class="page-fade" />
+    <HealthPanel v-else-if="store.phase === 'health'" class="page-fade" />
     <AboutPanel v-else-if="store.phase === 'about'" class="page-fade" @back="store.phase = 'main'" />
     <FeedbackPanel v-else-if="store.phase === 'feedback'" @back="store.phase = 'main'" />
-    <button v-if="store.phase !== 'feedback' && store.phase !== 'main'" class="feedback-entry" @click="store.phase = 'feedback'">遇到问题反馈</button>
+    <button v-if="!['feedback','main','health'].includes(store.phase)" class="feedback-entry" @click="store.phase = 'feedback'">遇到问题反馈</button>
     <StatusBar />
     <!-- 求好评小弹窗（发布≥2次触发，15 天不打扰） -->
     <ReviewAskModal :visible="store.reviewAskVisible" @dismiss="store.dismissReviewAsk()" />
@@ -34,6 +36,8 @@ import AboutPanel from './components/AboutPanel.vue'
 import StatusBar from './components/StatusBar.vue'
 import FeedbackPanel from './components/FeedbackPanel.vue'
 import ReviewAskModal from './components/ReviewAskModal.vue'
+import WorkspaceTabs from './components/WorkspaceTabs.vue'
+import HealthPanel from './components/HealthPanel.vue'
 
 const store = useEngineStore()
 onMounted(() => store.init())

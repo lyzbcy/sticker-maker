@@ -77,6 +77,9 @@ class Series:
     def album_name(self, number: int) -> str:
         # 平台规则：表情名称不能含空格（2026-08-29 抓到的驳回理由：
         # 「表情名称应避免出现空格，需要修改」——61/62/63 因此被拒）
+        if self.name in ('星星布丁', '星星布丁第', '星星布丁系列'):
+            from ..project import chinese_number
+            return f"星星布丁第{chinese_number(number)}弹"
         return f"{self.name}{number}"
 
 
@@ -210,6 +213,10 @@ def meta_path(episode_dir: Path) -> Path:
 
 
 def load_meta(episode_dir: Path) -> EpisodeMeta:
+    from ..project import read_project
+    project = read_project(episode_dir)
+    if project is not None:
+        return EpisodeMeta.from_dict(project["metadata"])
     p = meta_path(episode_dir)
     if p.exists():
         try:
@@ -224,6 +231,13 @@ def save_meta(episode_dir: Path, meta: EpisodeMeta) -> None:
     episode_dir.mkdir(parents=True, exist_ok=True)
     if not meta.created_at:
         meta.created_at = time.strftime("%Y-%m-%d %H:%M:%S")
+    from ..project import read_project, update_project
+    project = read_project(episode_dir)
+    if project is not None:
+        def change(data):
+            data["metadata"].update(meta.to_dict())
+        update_project(episode_dir, change, project["revision_id"])
+        return
     meta_path(episode_dir).write_text(
         json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
 

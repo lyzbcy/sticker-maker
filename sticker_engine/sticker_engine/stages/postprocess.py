@@ -570,9 +570,12 @@ class PostprocessStage:
         # 解决 codex 网格不齐/贴纸越界时"切到邻格内容、自己被切半"的问题
         if should_crop(grid_size):
             cut_options = {'preserve_cell': True} if solid else {}
+            from ..project import read_project
+            panel_root = (ctx.episode_dir / '.cache' / 'panels' if read_project(ctx.episode_dir)
+                          else ctx.episode_dir / '原图' / '_panels')
             panels, cut_notes = cut_grid(
                 ctx.grid_image, grid_size,
-                ctx.episode_dir / "原图" / "_panels", **cut_options)
+                panel_root, **cut_options)
             for note in cut_notes:
                 ctx.log(LogEntry(stage="S2", status="OK", message=f"切图：{note}"))
         else:
@@ -604,9 +607,8 @@ class PostprocessStage:
         # C3 修复：把含义词顺序落盘到 meaning_map.json
         # （初心第44行：发布时要按故事线顺序，C 的 publisher 读此文件排序上传）
         import json
-        (ctx.episode_dir / "meaning_map.json").write_text(
-            json.dumps({str(k): v for k, v in meanings.items()}, ensure_ascii=False, indent=2),
-            encoding="utf-8")
+        from ..project import write_meanings
+        write_meanings(ctx.episode_dir, meanings)
         # 3) 条件抠图 + 重命名 → 写最终版
         final_dir = ctx.episode_dir / "最终版"
         final_dir.mkdir(exist_ok=True)

@@ -79,6 +79,9 @@ def dispatch(cli, name, req_id, args):
     from .hooks import runtime_for
     engine = cli._ensure_engine()
     rt = runtime_for(engine) or runtime_for_user_data(engine.config.paths.user_data)
+    if rt.state.get('storage_mode') == 'projects' and name in {
+            'preview', 'execute', 'import', 'connect', 'repair_settings', 'repair_conflicts', 'cleanup_failed'}:
+        raise ValueError('当前为规范工程模式：直接复制工程文件夹进行备份，或使用连接规范工程目录')
     manager = TransferManager(rt.local / 'transfers')
     if name == 'status':
         return _cached_status(rt)

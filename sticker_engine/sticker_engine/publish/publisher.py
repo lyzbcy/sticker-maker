@@ -57,6 +57,8 @@ class EpisodeAssets:
     def from_dir(cls, episode_dir: Path) -> "EpisodeAssets":
         episode_dir = Path(episode_dir)
         final = episode_dir / "最终版"
+        from ..project import read_project, read_meanings, read_characters
+        project = read_project(episode_dir)
 
         # ---- 含义词排序：优先 meaning_map.json 的 key 顺序 ----
         meaning_map_path: Optional[Path] = None
@@ -73,9 +75,9 @@ class EpisodeAssets:
         stickers: List[Path] = []
         meanings: List[str] = []
         if final.exists():
-            if meaning_map_path is not None:
+            if meaning_map_path is not None or project is not None:
                 try:
-                    mm = json.loads(meaning_map_path.read_text(encoding="utf-8"))
+                    mm = read_meanings(episode_dir)
                     # key 可能是 "1".."16" 或 int，按数字升序
                     sorted_keys = sorted(mm.keys(), key=lambda k: int(k))
                     final_pngs = {p.stem: p for p in final.glob("*.png")}
@@ -134,6 +136,12 @@ class EpisodeAssets:
                     album_name = named
             except Exception:
                 pass   # meta 损坏时退回目录名（前置校验会拦住时间戳名）
+
+        if project is not None:
+            album_name = project["metadata"].get("album_name") or episode_dir.name
+            intro = str(project["metadata"].get("intro") or "")[:80]
+            characters = read_characters(episode_dir)
+            contains_laoyu = "捞鱼" in characters
 
         return cls(
             episode_dir=episode_dir,
@@ -265,6 +273,10 @@ class Publisher:
 
     def publish(self, episode_dir, headless: Optional[bool] = None, edit: bool = False,
                 fix_fields=None, keep_session: bool = False) -> dict:
+        from ..config.series import load_meta
+        if load_meta(Path(episode_dir)).platform_status == '预约上架失败':
+            return {'success': False, 'step': 'prepare',
+                    'error': '预约上架失败：作品已经投稿，请查看平台原作品详情，处理失败提示后同步状态；不重新投稿。'}
         from ..library.runtime import active_runtime
         from ..library.commands import LOCK
         runtime = active_runtime()

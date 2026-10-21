@@ -71,6 +71,7 @@ export const useEngineStore = defineStore('engine', () => {
   const publishProgress = ref(null)
   const publishResult = ref(null)
   const logs = ref([])
+  const activeTasks = ref({})
   // codex 生图额度（首页卡片）：窗口剩余%/可生张数估算/重置时间
 const codexUsage = ref(null)
 async function loadCodexUsage() {
@@ -300,7 +301,8 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
   }
 
   // 底边栏活动日志：滚动保留最近 ACTIVITY_CAP 条
-  function pushActivity(entry) {
+  function pushActivity(entry, persist = true) {
+    if (persist) api?.recordActivity?.({ stage:entry.stage, message:entry.message })?.catch?.(() => {})
     activity.value.push({ t: Date.now(), stage: '', message: '', ...entry })
     if (activity.value.length > ACTIVITY_CAP) {
       activity.value.splice(0, activity.value.length - ACTIVITY_CAP)
@@ -465,6 +467,7 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
         episode_dir: selectedEpisode.value.path, ...args,
       })
       if (res && res.status === 'ok') {
+        if (res.data?.path) selectedEpisode.value.path = res.data.path
         await refreshEpisode()
         return res.data || true
       }
@@ -572,8 +575,12 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
 
   // 监听 progress（run 期间更新）+ 底边栏活动日志（任何时候都记录）
   if (api) {
+    api.onTask?.(task => {
+      if(task.state === 'end') delete activeTasks.value[task.id]
+      else activeTasks.value[task.id] = { ...activeTasks.value[task.id], ...task }
+    })
     api.onProgress((ev) => {
-      pushActivity({ stage: ev.stage, message: ev.message })
+      pushActivity({ stage: ev.stage, message: ev.message }, false)
       if (ev.stage === 'install' && installing.value) {
         installLog.value.push(ev.message)
       } else if (publishing.value) {
@@ -617,7 +624,7 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
     phase, firstRun, prefs, codexStatus, characters, episodes, episodesLoading,
     running, progress, lastEpisode, lastError, runStartedAt, activity,
     installing, installLog,
-    publishing, publishProgress, publishResult, logs, agentStatus, agentPrompt,
+    publishing, publishProgress, publishResult, logs, activeTasks, agentStatus, agentPrompt,
     seriesList, selectedEpisode, settingsTab, codexUsage, loadCodexUsage,
     income, loadIncome,
     reviewAskVisible, shouldAskForReview, dismissReviewAsk,

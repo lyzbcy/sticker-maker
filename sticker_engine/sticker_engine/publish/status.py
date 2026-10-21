@@ -27,8 +27,9 @@ _STALL_ROWS = 20        # 连续 N 行已上架/下架 → 停止翻页（用户
 # 状态词按精确匹配顺序排：否定词在前（"审核通过"是"审核未通过"的子串场景
 # 由关键词表+先判长词避免）。2026-09-01 事故：缺"审核通过"导致过审单在
 # 列表解析时被当非数据行跳过，本地状态永远停在旧"待审核"
-_STATUS_WORDS = ("未通过审核", "审核未通过", "审核通过", "已上架",
-                 "待审核", "已保存", "已下架")
+# API 与 DOM 使用同一份完整枚举；长词优先，避免子串误判。
+from .platform_data import STATUS
+_STATUS_WORDS = tuple(sorted(set(STATUS.values()) | {"审核未通过"}, key=len, reverse=True))
 
 
 @dataclass
@@ -205,7 +206,7 @@ def normalize_name(name: str) -> str:
 def episode_has_files(path) -> bool:
     """本地作品目录里是否有实际资源文件（meta.json 不算）——0 文件占位符不算。"""
     try:
-        return any(f.is_file() and f.name != "meta.json" for f in Path(path).rglob("*"))
+        return any(f.is_file() and f.name not in ("meta.json", "project.json", ".project.lock") for f in Path(path).rglob("*"))
     except OSError:
         return False
 
@@ -357,7 +358,7 @@ def _sync_status_legacy(engine, on_status: Optional[Callable[[str], None]] = Non
     root = Path(engine.config.paths.output_root)
     locals_ = []
     for ep_dir in sorted(root.iterdir()) if root.exists() else []:
-        if ep_dir.is_dir() and ep_dir.name.startswith("episode"):
+        if ep_dir.is_dir() and (ep_dir.name.startswith("episode") or (ep_dir / "project.json").exists()):
             meta = load_meta(ep_dir)
             if library_runtime and meta.account_id != library_runtime.account_id:
                 continue
@@ -585,7 +586,9 @@ def _sync_status_legacy(engine, on_status: Optional[Callable[[str], None]] = Non
         meta.platform_updated_at = now
         if r.reject_reason:
             meta.platform_reject_reason = r.reject_reason
-        if r.status in ("已上架", "待审核", "已保存"):
+        if r.status == "预约上架失败":
+            meta.platform_reject_reason = ""
+        if r.status in ("已上架", "待审核", "已保存", "审核中", "审核通过", "已预约上架", "已下架", "预约上架失败"):
             meta.published = True
         save_meta(hit["dir"], meta)
         matched += 1

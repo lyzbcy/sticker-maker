@@ -21,6 +21,8 @@
       </nav>
     </header>
 
+    <ResourceLocationPanel compact />
+
     <!-- ============ 空闲态 ============ -->
     <div v-if="!store.running && !store.lastEpisode && !store.lastError" class="idle">
       <!-- 主操作：渐变 hero（左文案 + 右「贴纸拼图」预览装饰） -->
@@ -222,6 +224,7 @@ import { useEngineStore } from '../store/engine'
 import ProgressBar from './ProgressBar.vue'
 import ResultPreview from './ResultPreview.vue'
 import FeaturedShowcase from './FeaturedShowcase.vue'
+import ResourceLocationPanel from './ResourceLocationPanel.vue'
 
 const store = useEngineStore()
 

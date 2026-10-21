@@ -5,6 +5,7 @@
 # 产物均为 onedir：dist/sticker-engine-cli/sticker-engine-cli(.exe)
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 import sys
+import os
 import shutil
 from pathlib import Path
 
@@ -24,8 +25,10 @@ datas = [
     ('sticker_engine/resources', 'resources'),
     ('sticker_engine/agent/AGENT_PROMPT.md', 'sticker_engine/agent'),
 ] + collect_data_files('playwright')
-if sys.platform != 'darwin':
-    datas.append(('build/browsers','browsers'))
+if sys.platform != 'darwin' and os.environ.get('STICKER_BUNDLE_BROWSERS') == '1':
+    # Keep downloaded build runtimes outside a Syncthing source checkout when
+    # requested; the packaged browser location remains unchanged.
+    datas.append((os.environ.get('STICKER_BUILD_BROWSERS','build/browsers'),'browsers'))
 
 a = Analysis(
     ['cli_entry.py'],
@@ -72,5 +75,6 @@ coll = COLLECT(
 # Analysis reclassifies Mach-O resources and tries to sign an incomplete cache
 # bundle, which corrupts framework structure. Copy the complete runtime only
 # after COLLECT; symlinks and executable modes must survive.
-if sys.platform == 'darwin':
-    shutil.copytree(Path(SPECPATH)/'build/browsers',Path(DISTPATH)/'sticker-engine-cli/_internal/browsers',symlinks=True)
+if sys.platform == 'darwin' and os.environ.get('STICKER_BUNDLE_BROWSERS') == '1':
+    shutil.copytree(Path(os.environ.get('STICKER_BUILD_BROWSERS', str(Path(SPECPATH)/'build/browsers'))),
+                    Path(DISTPATH)/'sticker-engine-cli/_internal/browsers', symlinks=True)

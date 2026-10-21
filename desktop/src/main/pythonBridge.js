@@ -72,11 +72,10 @@ class PythonBridge extends EventEmitter {
     })
     this.proc.stdout.setEncoding('utf-8')
     this.proc.stdout.on('data', (data) => {
-      console.log('[cli stdout]', data.toString().trim())
       this._onData(data)
     })
     this.proc.stderr.on('data', (data) => {
-      console.error('[cli stderr]', data.toString())
+      this.logger?.log({ stage:'engine', level:'error', message:data.toString() })
     })
     this.proc.on('exit', (code) => {
       this.emit('exit', code)
@@ -121,6 +120,11 @@ class PythonBridge extends EventEmitter {
   }
 
   _handleEvent(ev) {
+    if (ev.type === 'log') this.logger?.log({ stage:ev.stage || 'engine', level:ev.level, message:ev.message, details:ev.meta })
+    if (ev.type === 'progress') this.logger?.log({ stage:ev.stage || 'engine', message:ev.message,
+      requestId:ev.id, details:ev })
+    else if (ev.type === 'error' || ev.status === 'fail' || ev.status === 'error') this.logger?.log({
+      stage:'engine', level:'error', requestId:ev.id, message:ev.errors?.map(e => e.message).join('；') || ev.message || '引擎命令失败' })
     const id = ev.id
     const pending = this.pending.get(id)
     if (ev.type === 'progress') {
@@ -150,6 +154,7 @@ class PythonBridge extends EventEmitter {
   }
 
   send(cmd, args = {}, progressCb = null) {
+    this.logger?.log({ stage:'command', message:cmd, details: { command:cmd } })
     return new Promise((resolve, reject) => {
       if (!this.proc) {
         reject(new Error('CLI 未启动'))

@@ -4,6 +4,8 @@
 
 # 粉丝上手：先做一组，再决定是否投稿
 
+0.6.2本地候选新增顶部「全部表情」「问题与警告」标签，教程每步都能退出；换电脑可直接在主页选择资源位置。新版优先使用本机Edge/Chrome，缺少时在问题页安装浏览器组件；日志自动保留在本机，可开启排障模式或导出。下方下载说明仍对应历史正式发行，候选尚未公开发布。
+
 0.5.1已正式发行。下载入口：https://lyzbcy.github.io/sticker-maker/ 。Windows x64与Apple Silicon（M系列）分别提供独立包。
 
 1. Windows 下载 `sticker-maker-win-v0.5.1-setup.exe`，双击。安装界面优先推荐非系统盘，也可以点“更换位置”；桌面快捷方式和完成后打开由你选择。Apple Silicon（M系列）Mac 下载独立 Mac 包，不要打开 Windows 的 exe。

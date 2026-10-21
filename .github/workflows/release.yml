@@ -1,4 +1,4 @@
-# 双平台发布流水线：push tag v* 触发，一次出 Mac zip + Windows NSIS 安装包
+# 保留历史双平台流水线，默认停用；正式发布使用本地 Win / SSH Mac 构建。
 # 产物结构：
 #   sticker-maker-mac-v{v}.zip        —— 表情包一键制作.app + install.command（与 v0.2.0 手动包一致，老客户端一键更新兼容）
 #   sticker-maker-win-v{v}-setup.exe   —— NSIS 安装器（静默参数 /S）
@@ -6,9 +6,7 @@
 name: release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -38,7 +36,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Set embedded browser path
+      - name: Set isolated test browser path
         shell: bash
         run: echo "PLAYWRIGHT_BROWSERS_PATH=${{ github.workspace }}/sticker_engine/build/browsers" >> "$GITHUB_ENV"
 
@@ -49,7 +47,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]" pyinstaller
           python -m pytest tests ../server -q
-          python -m playwright install chromium
+          python -m playwright install --no-shell chromium
           pyinstaller sticker-engine-cli.spec --noconfirm
 
       - name: Build Electron app

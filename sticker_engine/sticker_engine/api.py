@@ -144,7 +144,8 @@ class StickerEngine:
                 try:
                     runtime.capture(episode.episode_dir)
                     from .library.settings import SharedSettings
-                    SharedSettings(runtime).capture()
+                    if runtime.state.get("storage_mode") != "projects":
+                        SharedSettings(runtime).capture()
                 except Exception as exc:
                     episode.success = False
                     episode.aborted_reason = f"作品保留在本机，但写入资源库失败：{exc}"
@@ -239,7 +240,7 @@ class StickerEngine:
                             from pathlib import Path as _P
                             from .config.series import load_meta as _lm0
                             for _d in _P(_root).iterdir() if _P(_root).exists() else []:
-                                if _d.is_dir() and _d.name.startswith("episode"):
+                                if _d.is_dir() and (_d.name.startswith("episode") or (_d / "project.json").exists()):
                                     _m = _lm0(_d)
                                     if _m.number:
                                         _occupied.add(_m.number)
@@ -268,6 +269,19 @@ class StickerEngine:
                         rewrite_intro_with_album(ctx.episode_dir, _album)
                 except Exception:
                     pass
+        if ctx.episode_dir is not None:
+            from .project import read_project, rename_project
+            if read_project(ctx.episode_dir) is not None:
+                from .library.hooks import runtime_for
+                from .config.series import load_meta
+                runtime = runtime_for(self)
+                runtime.capture(ctx.episode_dir)
+                old_dir = ctx.episode_dir
+                ctx.episode_dir = rename_project(old_dir, load_meta(old_dir).album_name or "未命名表情")
+                if old_dir != ctx.episode_dir:
+                    from .project import relocate_result
+                    ctx.stickers = relocate_result(ctx.stickers, old_dir, ctx.episode_dir)
+                    ctx.assets = relocate_result(ctx.assets, old_dir, ctx.episode_dir)
         ep = Episode(
             episode_dir=ctx.episode_dir, stickers=ctx.stickers,
             meaning_map=ctx.meaning_map, assets=ctx.assets,

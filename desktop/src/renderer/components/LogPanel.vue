@@ -3,7 +3,7 @@
     <div class="section-head">
       <div>
         <h3>运行日志</h3>
-        <p>仅保留内存中的最近 50 条，关闭软件后自动消失。</p>
+        <p>此面板显示 Agent 最近50条内存记录；完整应用诊断日志会保存在本机，可在「问题与警告」导出。</p>
       </div>
       <div class="actions">
         <button @click="copyLogs">复制</button>

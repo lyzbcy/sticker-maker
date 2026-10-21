@@ -7,7 +7,7 @@ An HTTP/UI success is not a confirmed booking; require exact-ID status 6/7.
 import time
 from datetime import datetime, timedelta, timezone
 
-from .platform_data import ORIGIN, STATUS, detail_url, read_detail
+from .platform_data import ORIGIN, STATUS, SHELFABLE_CODES, detail_url, read_detail
 
 
 class ShelfCancelled(RuntimeError):
@@ -28,8 +28,8 @@ def reserve_today(page, item_id, *, should_stop=lambda: False,
     if should_stop():
         raise ShelfCancelled('已取消：未发送预约请求')
     detail = read_detail(page, item_id)
-    if detail['Status'] != 5:
-        raise ShelfNotEligible('当前已不是审核通过状态，请更新后重试')
+    if detail['Status'] not in SHELFABLE_CODES:
+        raise ShelfNotEligible('当前不是审核通过或预约上架失败状态，请更新后重试')
     if should_stop():
         raise ShelfCancelled('已取消：未发送预约请求')
     current = now or datetime.now(timezone(timedelta(hours=8)))

@@ -335,10 +335,8 @@ def pick_header_candidates(paths: list, header_slots=None, meaning_map=None,
     mm = dict(meaning_map or {})
     if not mm and ep_dir is not None:
         try:
-            f = Path(ep_dir) / "meaning_map.json"
-            if f.exists():
-                mm = {int(k): str(v) for k, v
-                      in json.loads(f.read_text(encoding="utf-8")).items()}
+            from ..project import read_meanings
+            mm = {int(k): str(v) for k,v in read_meanings(ep_dir).items()}
         except Exception:   # noqa: BLE001
             mm = {}
     if header_slots:
@@ -637,15 +635,13 @@ def make_local_intro(album_name: str, meanings: list) -> str:
 
 def rewrite_intro_with_album(episode_dir: Path, album_name: str) -> str:
     """系列命名后重写介绍（cmd_run/engine.run 成功路径调用）。"""
-    mm = episode_dir / "meaning_map.json"
+    from ..project import read_meanings
     meanings = []
-    if mm.exists():
-        try:
-            import json
-            data = json.loads(mm.read_text(encoding="utf-8"))
-            meanings = [str(v) for _, v in sorted(data.items(), key=lambda kv: int(kv[0]))]
-        except Exception:   # noqa: BLE001
-            meanings = []
+    try:
+        data = read_meanings(episode_dir)
+        meanings = [str(v) for _,v in sorted(data.items(),key=lambda kv:int(kv[0]))]
+    except (ValueError,OSError):
+        pass
     intro = make_local_intro(album_name, meanings)
     (episode_dir / "介绍.txt").write_text(intro, encoding="utf-8")
     return intro

@@ -133,7 +133,7 @@ def test_rating_roundtrip_with_production_context(tmp_path):
     proc = subprocess.Popen(
         [sys.executable, "-m", "sticker_engine.cli"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, cwd=Path(__file__).parent.parent.parent, env=env)
+        text=True, encoding='utf-8', cwd=Path(__file__).parent.parent.parent, env=env)
     out, _ = proc.communicate(input=json.dumps({
         "id": "r1", "cmd": "save_rating",
         "args": {"episode_dir": str(ctx.episode_dir), "overall": 4,

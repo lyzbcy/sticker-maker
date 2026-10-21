@@ -90,6 +90,8 @@ _TOMBSTONE_SETTING_TYPES = frozenset({"prompt", "base", "series"})
 def settings_dir(runtime: Any) -> Path:
     """Return the per-library, per-account local settings directory."""
 
+    if getattr(runtime, "state", {}).get("storage_mode") == "projects":
+        return runtime.settings_root
     account_id = str(getattr(runtime, "account_id", "") or "")
     if not account_id or not _ID_RE.fullmatch(account_id):
         raise ValueError("请先绑定有效的平台账号")

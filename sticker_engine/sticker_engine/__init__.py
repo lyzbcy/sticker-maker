@@ -3,7 +3,9 @@ import os
 from pathlib import Path
 
 if hasattr(sys, "_MEIPASS"):
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(Path(sys._MEIPASS) / "browsers")
+    bundled = Path(sys._MEIPASS) / "browsers"
+    if bundled.is_dir():
+        os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(bundled))
 
 from .api import StickerEngine, Episode
 from .config.schema import Config

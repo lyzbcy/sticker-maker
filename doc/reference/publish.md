@@ -1,5 +1,12 @@
 # 微信发布参考
 
+## 0.5.17 预约失败重约（2026-10-19，修正0.5.16的排除规则）
+- 平台精确ID详情验证：Status10仍开放“上架”。预约名单允许Status5审核通过、Status10预约上架失败；本地失败状态仍红色、published=True，禁止重新投稿。
+- platform_data.SHELFABLE_CODES/SHELFABLE_STATUSES为后端唯一资格集合。同步返回fresh_shelfable供上架使用，fresh_passed不改变仅审核通过的语义。前端计数、资源库rows/finish_platform_sync与CLI筛选保持一致。
+- 用户明确发起一键发布时刷新名单，按原ID再次预检，只发一次预约POST。6/7且今日OpenTime才算成功；仍为10或读取失败保持未知、不自动循环重试。已有未知操作仍要求核销，不能仅因Status10自动清除。
+- 账号/资源冲突/离线、双投影去重、取消和limit门禁保留；不需要本机素材的纯上架允许正常平台占位记录，仍不开放重新投稿。
+- 证据verification/reservation-retry-20261019；旧0.5.16将10排除的说明仅为历史记录，不再作为当前规则。
+
 ## 0.5.15 一键上架接口化（2026-10-14）
 - `publish/fast_shelf.py`由`cli._run_shelf_passed`调用，复用已核验登录会话。POST `stikeroper`的`stikerid/opentime/oper=open`来自当前平台代码和真实页面请求，使用北京时间今日时刻；无逐弹导航/日期控件/固定6.5秒等待。
 - 上架前仍刷新完整名单、校验账号/资源状态，并按精确平台ID重新读取审核通过状态。双投影同ID去重；`limit/dry_run/headless`与互斥保持。
@@ -114,3 +121,11 @@
 3. 已知项（不修）：本机若有旧命名作品目录（如 `周三涵做表情61`，非
    `episode_*` 且无 meta.json），`_match_rows` 不扫描 → matched=0；
    Windows 主力机不受影响。
+# 0.5.16 预约上架失败状态（2026-10-19）
+
+平台 Status10=预约上架失败：已经投稿，预约未成功；不等于已上架或审核驳回。API与DOM共用platform_data.STATUS全部11项枚举，只有精确“已上架”显示绿色。预约失败同步保留原平台ID和published=True，清除旧驳回理由，不进入fresh_passed。详情单独解释并禁用重投，Publisher入口也拦截该状态；不新建作品替代原作品。
+
+预约依旧只接受新鲜精确ID详情Status5；Status10不发送POST。发送后若详情返回10，不能计作成功，既有结果未知核销及不重放机制保持。修复本地识别不代表平台失败原因已解决；到原作品详情查看失败提示，处理后重新同步，不自动重约。
+
+回归与回滚：verification/scheduled-failure-20261019/VERIFICATION.txt。
+

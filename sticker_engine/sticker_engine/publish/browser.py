@@ -105,8 +105,8 @@ class BrowserSession:
             self._playwright = sync_playwright().start()
             self._owns_playwright = True
         launch_args = ["--remote-debugging-port=9223"]
-        self._browser = self._playwright.chromium.launch(
-            headless=headless, args=launch_args)
+        from .browser_runtime import launch_browser
+        self._browser = launch_browser(self._playwright, headless=headless, args=launch_args)
         # 复用 storage_state（若存在）——仅作加速缓存，失效自动转密码登录
         storage = self.config.storage_state
         ctx_kwargs = {"storage_state": str(storage)} if storage.exists() else {}

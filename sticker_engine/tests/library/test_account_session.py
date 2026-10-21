@@ -14,6 +14,8 @@ def test_unverified_cached_session_is_not_reused_for_bound_account(tmp_path, mon
     cfg = PublishConfig(); cfg.storage_state.parent.mkdir(parents=True, exist_ok=True)
     cfg.storage_state.write_text('{}')
     pw = MagicMock()
+    browser_binary = tmp_path / 'isolated-browser'; browser_binary.touch()
+    monkeypatch.setattr('sticker_engine.publish.browser_runtime.browser_options', lambda: [('fixture',browser_binary)])
     session = BrowserSession(cfg, playwright=pw)
     monkeypatch.setattr(session, '_load_credentials', lambda: ('a@example.com', 'pw'))
     session.start(headless=False)

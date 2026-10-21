@@ -21,7 +21,7 @@
     <div class="bar" @click="expanded = !expanded">
       <span class="dot" :class="dotClass"></span>
       <span class="status-text">{{ statusText }}</span>
-      <span class="elapsed" v-if="store.running && elapsed">{{ elapsed }}</span>
+      <span class="elapsed" v-if="elapsed">{{ elapsed }}{{ taskPercent }}</span>
       <span class="expand">{{ expanded ? '收起 ▾' : '日志 ▴' }}</span>
     </div>
   </div>
@@ -47,9 +47,10 @@ onMounted(() => { timer = setInterval(() => { nowTick.value = Date.now() }, 1000
 onUnmounted(() => clearInterval(timer))
 
 const hasError = computed(() => !store.running && !!store.lastError?.length)
+const task = computed(() => Object.values(store.activeTasks || {}).sort((a,b) => a.startedAt-b.startedAt)[0])
 
 const dotClass = computed(() => {
-  if (store.running) return 'run'
+  if (store.running || task.value) return 'run'
   if (hasError.value) return 'err'
   return 'ok'
 })
@@ -60,6 +61,7 @@ const lastMessage = computed(() => {
 })
 
 const statusText = computed(() => {
+  if (task.value) return `${task.value.stage ? '['+task.value.stage+'] ' : ''}${task.value.message || '正在处理…'}`
   if (store.running) return lastMessage.value || '运行中…'
   if (hasError.value) return store.lastError?.[0]?.message || '出错了'
   if (store.lastEpisode) return `上次任务完成 · ${store.lastEpisode.stickers ?? 0} 张`
@@ -67,11 +69,16 @@ const statusText = computed(() => {
 })
 
 const elapsed = computed(() => {
-  if (!store.runStartedAt) return ''
-  const secs = Math.max(0, Math.floor((nowTick.value - store.runStartedAt) / 1000))
+  const startedAt = task.value?.startedAt || (store.running && store.runStartedAt)
+  if (!startedAt) return ''
+  const secs = Math.max(0, Math.floor((nowTick.value - startedAt) / 1000))
   const m = Math.floor(secs / 60)
   const s = secs % 60
   return `已用时 ${m}:${String(s).padStart(2, '0')}`
+})
+const taskPercent = computed(() => {
+  const value=task.value?.percent
+  return typeof value === 'number' ? ` · 步骤进度 ${Math.round(value <= 1 ? value*100 : value)}%` : task.value ? ' · 剩余时间待估算' : ''
 })
 
 function fmtTime(t) {

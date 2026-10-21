@@ -1,6 +1,6 @@
 [project]
 name = "sticker-engine"
-version = "0.5.15"
+version = "0.6.2"
 description = "表情包一键制作 - 核心生图引擎"
 requires-python = ">=3.9"
 dependencies = [
@@ -10,7 +10,7 @@ dependencies = [
     "PyYAML>=6.0",
     "Flask>=3.0.0",
     "APScheduler>=3.10.0",
-    "playwright>=1.46.0",
+    "playwright>=1.49.0",
     "keyring>=25.0.0",
 ]
 

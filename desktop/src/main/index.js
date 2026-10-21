@@ -5,6 +5,8 @@ const { PythonBridge } = require('./pythonBridge')
 
 let bridge
 let mainWindow
+let diagnosticLog
+let operationSequence = 0
 
 // 单实例锁：防止多开（Agent 端口 7432 会冲突，双开还会重复跑引擎）
 // 开发模式用独立 userData（2026-09-03 事故：用户同时开着安装版「表情包一键制作.exe」，
@@ -30,6 +32,7 @@ if (!app.requestSingleInstanceLock()) {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
+    show: process.env.STICKER_DESKTOP_HIDE_WINDOW !== '1',
     width: 960, height: 680, minWidth: 800, minHeight: 600,
     title: '表情包一键制作',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
@@ -38,12 +41,15 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
       contextIsolation: true, nodeIntegration: false,
+      backgroundThrottling: process.env.STICKER_DESKTOP_HIDE_WINDOW !== '1',
+      offscreen: process.env.STICKER_DESKTOP_HIDE_WINDOW === '1',
       // 仅 dev 关 webSecurity：dev 页面是 http://localhost:5173，默认策略
       // 拦截 http 页面加载 file:// 缩略图 → 全部作品/详情破图（"Not allowed
       // to load local resource"）。生产 loadFile 本身就是 file:// 同源，不受影响。
       webSecurity: !process.env.VITE_DEV_SERVER_URL,
     },
   })
+  mainWindow.on('closed', () => { mainWindow = null })
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
   } else {
@@ -58,16 +64,21 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // 去掉默认菜单栏（Windows 上会显示英文 File/Edit/View，粉丝版不需要）
   Menu.setApplicationMenu(null)
   app.setAppUserModelId('com.lyzbcy.sticker-maker')
 
   const isPackaged = app.isPackaged
+  const { DiagnosticLog } = require('./diagnosticLog')
+  diagnosticLog = new DiagnosticLog(path.join(app.getPath('userData'), 'diagnostics'))
+  await diagnosticLog.init()
   bridge = new PythonBridge(isPackaged ? 'packaged' : 'dev')
+  bridge.logger = diagnosticLog
   console.log('[main] isPackaged=', isPackaged, 'cliPath=', isPackaged ? 'packaged' : 'dev')
   bridge.start()
   bridge.on('exit', (code) => {
+    diagnosticLog.log({ stage:'engine', level:code ? 'error' : 'info', message:`引擎退出 code=${code}` })
     console.log('[main] python cli exited code=', code)
     mainWindow && mainWindow.webContents.send('python-exit', { code })
   })
@@ -76,15 +87,24 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('python-command', async (event, { cmd, args }) => {
+    const labels = { run:'制作表情', run_batch:'批量制作', publish_episode:'投稿', sync_platform_status:'同步状态', shelf_passed:'一键上架', install_codex:'安装生图组件', install_chromium:'安装浏览器', list_episodes:'读取作品', project_location_inspect:'识别资源位置', project_location_connect:'连接资源' }
+    const tracked = !!labels[cmd] || /^(project_|library_)(?!status)/.test(cmd)
+    const task = { id:String(++operationSequence), command:cmd, startedAt:Date.now(), message:labels[cmd] || '处理资源任务' }
+    const notify = data => { if(tracked && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('task-status', { ...task, ...data }) }
+    notify({ state:'start' })
     try {
       const result = await bridge.send(cmd, args, (ev) => {
         mainWindow && mainWindow.webContents.send('python-progress', ev)
+        notify({ state:'progress', message:ev.message, stage:ev.stage, percent:ev.percent })
       })
+      diagnosticLog.log({ stage:'command', message:`${cmd} ${result.status || '完成'}，耗时 ${((Date.now()-task.startedAt)/1000).toFixed(1)} 秒` })
       return result
     } catch (err) {
       // 失败原因统一拍平成 errors 数组（此前只有 error 字段，
       // 前端读 errors[0].message 读不到 → 全显示"未知原因"）
       return PythonBridge.flattenError(err)
+    } finally {
+      notify({ state:'end' })
     }
   })
 
@@ -106,7 +126,7 @@ app.whenReady().then(() => {
   // I2 修复：目录选择（参考图库位置）
   ipcMain.handle('select-directory', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: '选择参考图库文件夹',
+      title: '选择文件夹',
       properties: ['openDirectory'],
     })
     if (result.canceled || result.filePaths.length === 0) return { canceled: true }
@@ -155,6 +175,21 @@ app.whenReady().then(() => {
     return sendFeedback(payload, { version: app.getVersion(), fetchFn: net.fetch, storageDir: app.getPath('userData') })
   })
 
+  ipcMain.handle('diagnostics-snapshot', async () => diagnosticLog.snapshot())
+  ipcMain.handle('diagnostics-mode', async (_e, value) => diagnosticLog.setDebug(value))
+  ipcMain.handle('diagnostics-activity', (_e, entry) => {
+    diagnosticLog.log({ stage:entry?.stage || 'ui', message:entry?.message || '', level:entry?.level || 'info' })
+  })
+  ipcMain.handle('diagnostics-export', async () => {
+    const result = await dialog.showSaveDialog(mainWindow, { title:'导出脱敏诊断日志', defaultPath:'表情包诊断日志.jsonl', filters:[{ name:'诊断日志', extensions:['jsonl'] }] })
+    if (result.canceled || !result.filePath) return { canceled:true }
+    const snapshot = await diagnosticLog.snapshot(20*1024*1024, true)
+    await fs.promises.writeFile(result.filePath, snapshot.text, 'utf8')
+    return { ok:true, lines:snapshot.lines }
+  })
+  process.on('uncaughtExceptionMonitor', error => diagnosticLog.log({ stage:'app', level:'error', message:error.stack || error.message }))
+  app.on('render-process-gone', (_event, _contents, details) => diagnosticLog.log({ stage:'renderer', level:'error', message:`界面进程退出 ${details.reason}` }))
+
   ipcMain.handle('check-for-updates', async () => {
     const { checkForUpdates } = require('./updater')
     return checkForUpdates(mainWindow, { manual: true })
@@ -176,9 +211,6 @@ app.whenReady().then(() => {
     if (shouldAutoCheckToday()) checkForUpdates(mainWindow)
   }, 2000)
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
 })
 
 /** 每日首检门控：userData/update-check.json 记录上次自动检查日期，
@@ -188,7 +220,14 @@ function shouldAutoCheckToday() {
   catch { return false }
 }
 
-app.on('window-all-closed', async () => {
-  if (bridge) await bridge.stopAll()
-  if (process.platform !== 'darwin') app.quit()
+app.on('window-all-closed', () => { if(process.platform !== 'darwin') app.quit(); else bridge?.stopAll() })
+app.on('activate', () => { if(BrowserWindow.getAllWindows().length === 0) { bridge?.start(); createWindow() } })
+let quitting = false
+app.on('before-quit', event => {
+  if (quitting) return
+  event.preventDefault(); quitting = true
+  ;(async () => {
+    if(bridge) await bridge.stopAll()
+    if(diagnosticLog) { diagnosticLog.log({stage:'app',message:'应用正常退出'}); await diagnosticLog.close() }
+  })().finally(() => app.quit())
 })

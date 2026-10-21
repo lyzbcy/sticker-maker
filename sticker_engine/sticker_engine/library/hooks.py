@@ -113,6 +113,17 @@ def reload_engine_config(engine, runtime):
 
 
 def invoke(cli, req_id, cmd, args, handler):
+    if cmd == 'save_rating':
+        # Legacy ratings retain their immediate-save behavior. Direct projects
+        # serialize the small rating write and update just this file's manifest.
+        runtime = runtime_for(cli._ensure_engine())
+        if runtime and getattr(runtime, 'state', {}).get('storage_mode') == 'projects':
+            from ..project import project_lock
+            with project_lock(Path(args.get('episode_dir') or '')):
+                result = handler(req_id, args)
+                runtime.capture(Path(args.get('episode_dir') or ''))
+                return result
+        return handler(req_id, args)
     if cmd not in MUTATIONS:
         return handler(req_id, args)
     # 2026-09-05 评审根修：CLI 多线程分发 + 非阻塞抢锁 → 前端启动时并发
@@ -141,6 +152,7 @@ def invoke(cli, req_id, cmd, args, handler):
             # 在干嘛（快时一闪而过，慢时用户知道没死）。
             preparation = ('正在校验账号与资源库连接（仅同步平台状态，不扫描素材）…'
                            if cmd == 'sync_platform_status' else
+                           '正在校验当前工程…' if getattr(rt,'state',{}).get('storage_mode')=='projects' else
                            '正在同步本地资源库快照（有变更时要一会儿，日志会持续播报）…')
             cli._emit({"id": req_id, "type": "progress", "stage": "prepare",
                        "phase": "prepare", "percent": None, "eta_seconds": None,
@@ -181,7 +193,11 @@ def invoke(cli, req_id, cmd, args, handler):
                 cli._result(req_id, 'ok', data={'cancelled': True, 'complete': False,
                             'list_complete': False, 'updated': 0, 'matched': 0})
                 return
+        edited_work_id = m['work_id'] if rt and cmd in RESOURCE_EDITS else None
         result = handler(req_id, args)
+        if edited_work_id and rt and getattr(rt, 'state', {}).get('storage_mode') == 'projects':
+            # A rename may have moved the folder; resolve by stable identity.
+            rt.capture(rt.path_for(edited_work_id))
         metadata_only = (cmd in {'sync_platform_status', 'shelf_passed'} and isinstance(result, dict)
                          and result.get('metadata_committed') is True)
         if rt and cmd in MUTATIONS and not metadata_only:

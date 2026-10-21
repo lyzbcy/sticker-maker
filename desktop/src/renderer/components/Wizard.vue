@@ -1,5 +1,6 @@
 <template>
   <div class="wizard">
+    <header class="tutorial-header"><h2>可选使用教程</h2><button class="btn-skip" data-test="exit-tutorial" @click="skipAll">退出教程，返回主页</button></header>
     <div class="progress-dots">
       <span v-for="i in 5" :key="i" :class="{ active: i === step + 1, done: i <= step }">
         <i class="dot"></i>
@@ -87,6 +88,8 @@ async function finish() {
 
 <style scoped>
 .wizard { max-width: 640px; margin: 0 auto; padding: 32px 20px; }
+.tutorial-header { position:sticky; top:32px; z-index:5; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; background:var(--bg-cream); padding:10px 0; }
+.tutorial-header h2 { margin:0; font-size:18px; }
 
 .progress-dots { display: flex; justify-content: center; gap: 10px; margin-bottom: 22px; }
 .progress-dots span {

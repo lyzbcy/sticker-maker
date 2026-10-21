@@ -19,6 +19,10 @@ LIST_URL = ORIGIN + '/cgi-bin/mmemoticon-bin/home?lang=zh_CN&f=json'
 STATUS = {1: '已保存', 2: '待审核', 3: '审核中', 4: '未通过审核', 5: '审核通过',
           6: '已预约上架', 7: '已上架', 8: '已下架', 9: '强制下架',
           10: '预约上架失败', 11: '限制投稿'}
+# Verified 2026-10-19: Status10's exact-ID detail still offers 上架.
+# This permits a new explicit reservation, not re-submission or automatic replay.
+SHELFABLE_CODES = frozenset((5, 10))
+SHELFABLE_STATUSES = frozenset(STATUS[code] for code in SHELFABLE_CODES)
 GROUPS = {'paneliconurl': '聊天页图标', 'bannerurl': '横幅',
           'storebannerurl': '横幅', 'storeiconurl': '封面',
           'stikername': '表情名称', 'stikerdesc': '表情介绍',
@@ -169,7 +173,8 @@ def record_reason(meta, reason):
 
 def _match_rows(rows, root, account_id=None):
     from .status import normalize_name, episode_has_files
-    locals_ = [(p, load_meta(p)) for p in sorted(Path(root).glob('episode*')) if p.is_dir()]
+    from ..project import episode_directories
+    locals_ = [(p, load_meta(p)) for p in episode_directories(root)]
     if account_id:
         locals_ = [(p, m) for p, m in locals_ if m.account_id == account_id]
     counts = Counter(normalize_name(r['Name']) for r in rows)
@@ -266,7 +271,7 @@ def sync_rows(page, root, rows, say, fetch_reasons=True, force_reasons=False,
               'unknown_statuses': unknown,
               'persistence_failures': [],
               'reasons_fetched': 0, 'reasons_skipped': 0, 'reason_failures': [],
-              'fresh_passed': [], 'created': created}
+              'fresh_passed': [], 'fresh_shelfable': [], 'created': created}
     queue = []
 
     def persist(path, meta):
@@ -317,10 +322,12 @@ def sync_rows(page, root, rows, say, fetch_reasons=True, force_reasons=False,
         meta.platform_updated_at = time.strftime('%Y-%m-%d %H:%M:%S')
         if state != '未通过审核':
             meta.platform_reject_reason = ''
-        if state in ('已上架', '待审核', '审核中', '审核通过', '已预约上架', '已下架'):
+        if state in ('已上架', '待审核', '审核中', '审核通过', '已预约上架', '已下架', '预约上架失败'):
             meta.published = True
         if state == '审核通过':
             result['fresh_passed'].append(str(path))
+        if row['Status'] in SHELFABLE_CODES:
+            result['fresh_shelfable'].append(str(path))
         if state == '未通过审核' and fetch_reasons:
             if (not force_reasons and meta.platform_reject_reason
                     and meta.platform_reject_checked_cycle == meta.platform_review_cycle):

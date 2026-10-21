@@ -240,6 +240,7 @@ onMounted(() => {
   // 2026-09-11：设置页也加载角色——savePrefs 的校验依赖角色数据，
   // 不加载则一切开关保存都误报"至少需要一个带角色图的角色"
   store.loadCharacters()
+  if (tab.value === 'publish') switchPublish()
   if (store.prefs) {
     browserHeadless.value = !!store.prefs.browser_headless
     stickerPrice.value = Number(store.prefs.sticker_price) || 0
