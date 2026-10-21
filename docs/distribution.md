@@ -5,6 +5,8 @@
 # 分发验收
 
 ## 0.6.2正式发布（2026-10-21）
+本地正式包现集中保留于outputs/releases/0.6.2（含SHA256SUMS.txt、release-metadata.json），0.5.17回滚安装包保留一份于outputs/releases/0.5.17。发布后已清理重复构建/下载/解包产物与旧候选包；保留验收回执、源码回滚副本和原安装备份，历史回执中的构建路径不保证二进制仍存在。清理明细见verification/development-cleanup-20261021。
+
 [Release](https://github.com/lyzbcy/sticker-maker/releases/tag/v0.6.2)对应源码d7c0b23。Windows主题安装器207169062字节（较上一公开版448486444字节减少53.81%），Mac ARM64包230049160字节（较508264026字节减少54.74%）。Windows正式封装中内嵌后端与已验收205 MB候选相同，3份主程序/asar/冻结引擎载荷SHA与候选打包目录一致；安装界面已渲染检查。本次没有替换用户现有正式安装。
 
 双端公开文件均匿名完整下载，大小与SHA同本地最终文件、GitHub资产digest和官网version.json一致；实际更新器对0.5.15/0.5.17识别更新、对0.6.2不重复提示，Win/Mac选包和文件校验通过。官网页面与清单均为0.6.2。详细证据verification/public-release-0.6.2；Release附SHA256SUMS.txt与release-metadata.json。

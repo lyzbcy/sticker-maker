@@ -57,6 +57,11 @@ pet-runs/
 node_modules/
 .codex/
 .browser-data/
+.browser-data-*/
+
+# Local packaging/candidate artifacts are reproducible and must not enter source control.
+/desktop/release/
+/outputs/
 
 # === 调试/临时产出 ===
 *_debug.png
