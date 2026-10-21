@@ -1,0 +1,17 @@
+{
+  "version": "0.6.2",
+  "downloadUrl": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.6.2/sticker-maker-mac-v0.6.2.zip",
+  "sha256": "4a1bd5f0ebab4c44f92432d1fd4eacb86257b4d6bf761932ac19817c17b011f2",
+  "platforms": {
+    "mac": {
+      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.6.2/sticker-maker-mac-v0.6.2.zip",
+      "sha256": "4a1bd5f0ebab4c44f92432d1fd4eacb86257b4d6bf761932ac19817c17b011f2"
+    },
+    "win": {
+      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.6.2/sticker-maker-win-v0.6.2-setup.exe",
+      "sha256": "57cd5226993ee8a1b13072be2c98b07ccdb7d939a13cdbe423594b8c145cac01"
+    }
+  },
+  "releaseNotes": "工程按专辑名直接保存，可预览转换旧库并自选删除原图瘦身；新增资源位置选择；教程随时退出、全部表情常驻；本地缓冲日志、脱敏导出和更完整的反馈；安装包瘦身，优先使用系统Edge/Chrome，支持可选浏览器组件；修复预约失败作品的状态显示与重新上架名单。",
+  "lastUpdated": "2026-10-21"
+}
