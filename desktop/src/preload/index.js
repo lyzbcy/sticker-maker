@@ -17,7 +17,9 @@ const api = {
     'python-command', { cmd, args: JSON.parse(JSON.stringify(args ?? {})) }),
   stop: (targetId) => ipcRenderer.invoke('python-stop', targetId),
   onProgress: (cb) => {
-    ipcRenderer.on('python-progress', (_, ev) => cb(ev))
+    const listener=(_,ev)=>cb(ev)
+    ipcRenderer.on('python-progress', listener)
+    return ()=>ipcRenderer.removeListener('python-progress',listener)
   },
   onExit: (cb) => {
     ipcRenderer.on('python-exit', (_, data) => cb(data))

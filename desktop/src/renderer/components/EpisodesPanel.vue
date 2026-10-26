@@ -455,6 +455,7 @@ async function doSync() {
     if (res && res.status === 'ok') {
       const wall = (Date.now() - started) / 1000
       syncSummary.value = { ...res.data, wall_seconds: wall.toFixed(1) }
+        store.acceptIncome(res.data?.income)
       syncTiming.value = recordSyncTiming(res.data, wall, syncTiming.value)
       try { localStorage.setItem('sticker-sync-timing-v1', JSON.stringify(syncTiming.value)) } catch {}
       await store.loadEpisodes()

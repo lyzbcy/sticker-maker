@@ -85,11 +85,18 @@ async function loadCodexUsage() {
 // 表情收益汇总（首页收益卡）：get_income 直通，含 summary.total_heat/total_tips
 // 与 est_income_yuan/fetched_at；MainScreen 模板均用 ?. 防护，失败不阻塞
 const income = ref(null)
+const incomeError = ref('')
+function acceptIncome(data) {
+  if (data?.summary && !data.error) {
+    income.value = data
+    incomeError.value = data.persistence_error ? '本次收益已读取，但保存失败：' + data.persistence_error : ''
+  } else incomeError.value = data?.error || '本次未取得新收益，显示上次成功数据'
+}
 async function loadIncome() {
   if (!api) return
   try {
     const res = await api.send('get_income', {})
-    if (res?.status === 'ok' && res.data) income.value = res.data
+    if (res?.status === 'ok' && res.data?.summary) acceptIncome(res.data)
   } catch { /* 收益拉取失败不阻塞首页 */ }
 }
 
@@ -608,13 +615,15 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
     // 更新下载进度 → 底边栏活动流（下载中实时百分比/兆数）
     if (api.onUpdateProgress) {
       api.onUpdateProgress((ev) => {
-        if (ev.stage === 'download') {
+        if (ev.stage === 'checking') {
+          pushActivity({ stage: '更新', message: '正在重新检查最新版本…' })
+        } else if (ev.stage === 'download') {
           pushActivity({
             stage: '更新',
-            message: `正在下载新版本… ${ev.percent}%（${ev.receivedMB}/${ev.totalMB} MB）`,
+            message: `正在下载${ev.version ? ' ' + ev.version : '新版本'}… ${ev.percent}%（${ev.receivedMB}/${ev.totalMB} MB）`,
           })
         } else if (ev.stage === 'verify') {
-          pushActivity({ stage: '更新', message: '下载完成，正在校验安装包…' })
+          pushActivity({ stage: '更新', message: `下载完成，正在校验${ev.version ? ' ' + ev.version : ''}安装包…` })
         }
       })
     }
@@ -626,7 +635,7 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
     installing, installLog,
     publishing, publishProgress, publishResult, logs, activeTasks, agentStatus, agentPrompt,
     seriesList, selectedEpisode, settingsTab, codexUsage, loadCodexUsage,
-    income, loadIncome,
+    income, incomeError, acceptIncome, loadIncome,
     reviewAskVisible, shouldAskForReview, dismissReviewAsk,
     init, checkCodex, installCodex, loadCharacters, ensureProbabilityDefaults,
     savePrefs, runGenerate, runBatch, batchInfo, stopRun, loadEpisodes, clearResult, pushActivity,

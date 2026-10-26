@@ -9,6 +9,13 @@
       <span v-if="copyTip" class="copy-tip">{{ copyTip }}</span>
     </header>
 
+    <section v-if="remakeText" class="remake-plan">
+      <h3>精品定制重制 · 免费发布</h3><p>原图与评分不改。复制逐图方案交给生图工具重绘，确认新图后导入新作品。</p>
+      <p role="status">{{ duplicateMessage }}</p>
+      <textarea v-model="remakeText" rows="12" aria-label="精品重绘提示词" style="width:100%;box-sizing:border-box"></textarea>
+      <button class="copy-btn" @click="copyRemake">复制重制提示词</button>
+      <button class="copy-btn" @click="remakeText = ''">关闭</button>
+    </section>
     <div class="filters">
       <label class="f-item">
         <span class="f-label">系列</span>
@@ -37,6 +44,7 @@
         <div v-for="st in g.stickers" :key="st.path" class="cell">
           <img :src="fileUrl(st.path)" loading="lazy" :title="st.meaning" @error="onErr" />
           <span class="meaning">{{ st.meaning }}</span>
+          <button class="copy-btn" @click="remake(g, st)">精品重制方案</button>
           <div class="stars">
             <button v-for="s in 5" :key="s" class="star"
                     :class="{ on: (g.ratings[st.meaning] || {}).score >= s }"
@@ -54,8 +62,26 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useEngineStore } from '../store/engine'
+import { remakePrompt } from '../utils/featuredRemake'
 
 const store = useEngineStore()
+const remakeText = ref(''), duplicateMessage = ref('')
+let remakeGeneration = 0
+async function remake(group, sticker) {
+  const generation = ++remakeGeneration
+  const rating = group.ratings?.[sticker.meaning]
+  remakeText.value = remakePrompt(group, sticker, rating ? `人工分 ${rating.score ?? '未填'}；${rating.note || ''}` : '')
+  duplicateMessage.value = '正在只读检查本地字节重复…'
+  try {
+    const r = await window.api.send('check_sticker_duplicate', { path:sticker.path })
+    if (generation !== remakeGeneration) return
+    duplicateMessage.value = r?.status === 'ok' ? `发现 ${r.data.matches.length} 份字节相同图片（检查 ${r.data.checked} 张，跳过 ${r.data.skipped} 张）；不是平台相似度判定。` : (r?.errors?.[0]?.message || '重复检查失败')
+  } catch(e) { if(generation === remakeGeneration) duplicateMessage.value = e.message }
+}
+async function copyRemake() {
+  try { await navigator.clipboard.writeText(remakeText.value); duplicateMessage.value = '逐图重制提示词已复制；请生成新图并人工验收。' }
+  catch { duplicateMessage.value = '请在文本框中手动选择复制。' }
+}
 const groups = ref([])
 const total = ref(0)
 const seriesList = ref([])

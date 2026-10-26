@@ -101,21 +101,42 @@ async function downloadToFile(url, destPath, onProgress) {
   } finally { await file.close(); reader.releaseLock() }
 }
 
-function reportProgress(mainWindow, stage, percent, received, total) {
+function reportProgress(mainWindow, stage, percent, received, total, version) {
   // setProgressBar 是任务栏进度条；webContents.send 驱动应用内状态栏文案
   if (mainWindow && typeof percent === 'number' && percent > 0) {
     mainWindow.setProgressBar(Math.min(0.99, Math.max(0.02, percent)))
   }
   mainWindow?.webContents?.send?.('update-progress', {
     stage,
+    version,
     percent: Math.round(percent * 100),
     receivedMB: (received / 1048576).toFixed(1),
     totalMB: total ? (total / 1048576).toFixed(1) : '?',
   })
 }
 
-async function downloadAndInstall(mainWindow, data, { onRetry } = {}) {
-  const asset = pickUpdateAsset(data, process.platform)
+let installPromise = null
+function downloadAndInstall(mainWindow, data, options = {}) {
+  if (installPromise) return installPromise
+  installPromise = installFreshTarget(mainWindow).finally(() => { installPromise = null })
+  return installPromise
+}
+
+async function installFreshTarget(mainWindow) {
+  reportProgress(mainWindow, 'checking', 0, 0, 0)
+  const response = await networkFetch(VERSION_CHECK_URL + '?t=' + Date.now(), { cache: 'no-store', signal: AbortSignal.timeout(15000) })
+  if (!response.ok) throw new Error(`查新失败（HTTP ${response.status}），已保留当前软件`)
+  const latest = await response.json()
+  const currentVersion = require('../../package.json').version
+  if (!versionParts(latest.version) || !isNewerVersion(latest.version, currentVersion)) {
+    throw new Error('当前没有可升级的正式新版，已停止安装并保留当前软件')
+  }
+  const selected = pickUpdateAsset(latest, process.platform)
+  const suffix = process.platform === 'win32' ? `sticker-maker-win-v${latest.version}-setup.exe` : `sticker-maker-mac-v${latest.version}.zip`
+  const expectedUrl = `https://github.com/lyzbcy/sticker-maker/releases/download/v${latest.version}/${suffix}`
+  if (!validateReleaseAsset(selected, process.platform) || selected.url !== expectedUrl) throw new Error('最新版本的安装包或校验值无效，已停止安装')
+  const asset = Object.freeze({ url: selected.url, sha256: selected.sha256 })
+  const data = Object.freeze({ version: latest.version })
   if (!asset) {
     throw new Error('版本信息里没有当前平台的更新包')
   }
@@ -123,13 +144,13 @@ async function downloadAndInstall(mainWindow, data, { onRetry } = {}) {
     throw new Error('更新地址或校验值无效，请从正式发布页下载')
   }
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sticker-maker-update-'))
-  const onProgress = (p, r, t) => reportProgress(mainWindow, 'download', p, r, t)
+  const onProgress = (p, r, t) => reportProgress(mainWindow, 'download', p, r, t, data.version)
 
   if (process.platform === 'win32') {
     // Windows：下载 NSIS 安装器 → sha256 校验 → 静默安装（/S）→ 退出
     const installerPath = path.join(tempDir, 'update-setup.exe')
     await downloadToFile(asset.url, installerPath, onProgress)
-    reportProgress(mainWindow, 'verify', 1, 0, 0)
+    reportProgress(mainWindow, 'verify', 1, 0, 0, data.version)
     if (!(await verifyChecksum(installerPath, asset.sha256))) {
       throw new Error('更新包校验失败，已停止安装')
     }
@@ -145,7 +166,7 @@ async function downloadAndInstall(mainWindow, data, { onRetry } = {}) {
   // macOS：下载 zip → 解包 → install.command --update
   const zipPath = path.join(tempDir, 'update.zip')
   await downloadToFile(asset.url, zipPath, onProgress)
-  reportProgress(mainWindow, 'verify', 1, 0, 0)
+  reportProgress(mainWindow, 'verify', 1, 0, 0, data.version)
   if (!(await verifyChecksum(zipPath, asset.sha256))) {
     throw new Error('更新包校验失败，已停止安装')
   }
@@ -184,7 +205,7 @@ async function downloadAndInstall(mainWindow, data, { onRetry } = {}) {
 
 let checking = false
 async function checkForUpdates(mainWindow, options = {}) {
-  if (checking) return { busy: true }
+  if (checking || installPromise) return { busy: true }
   checking = true
   try { return await performUpdateCheck(mainWindow, options) } finally { checking = false }
 }

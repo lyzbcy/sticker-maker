@@ -314,11 +314,11 @@ def sync_rows(page, root, rows, say, fetch_reasons=True, force_reasons=False,
         # 近期值（实测 No.6：DownloadNum=2/SendNum=95），累计真值在
         # TotalDownloadNum/TotalSendNum（同单 168/4882）。用户口径是累计
         # 总量；无 Total 字段时回落旧字段（旧数据兼容）。
-        meta.platform_downloads = str(row.get('TotalDownloadNum')
-                                      or row.get('DownloadNum') or '-')
-        meta.platform_sends = str(row.get('TotalSendNum')
-                                  or row.get('SendNum') or '-')
-        meta.platform_tips = str(row.get('Rewards') or '-')
+        meta.platform_downloads = str(row['TotalDownloadNum'] if row.get('TotalDownloadNum') is not None
+                                      else row.get('DownloadNum', '-'))
+        meta.platform_sends = str(row['TotalSendNum'] if row.get('TotalSendNum') is not None
+                                  else row.get('SendNum', '-'))
+        meta.platform_tips = str(row['Rewards'] if row.get('Rewards') is not None else '-')
         meta.platform_updated_at = time.strftime('%Y-%m-%d %H:%M:%S')
         if state != '未通过审核':
             meta.platform_reject_reason = ''

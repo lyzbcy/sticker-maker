@@ -1,7 +1,7 @@
 <template>
   <div class="app">
     <div class="window-drag" aria-hidden="true"></div>
-    <WorkspaceTabs v-if="['main','episodes','allStickers','health'].includes(store.phase)" />
+    <WorkspaceTabs v-if="['main','episodes','allStickers','health','analytics'].includes(store.phase)" />
     <div v-if="store.phase === 'launch'" class="center">
       <div class="launch-pill">启动中…</div>
     </div>
@@ -12,6 +12,7 @@
     <EpisodeDetailPanel v-else-if="store.phase === 'episodeDetail'" class="page-fade" />
     <SettingsPanel v-else-if="store.phase === 'settings'" class="page-fade" />
     <ToolsPanel v-else-if="store.phase === 'tools'" class="page-fade" />
+    <AnalyticsPanel v-else-if="store.phase === 'analytics'" class="page-fade" />
     <HealthPanel v-else-if="store.phase === 'health'" class="page-fade" />
     <AboutPanel v-else-if="store.phase === 'about'" class="page-fade" @back="store.phase = 'main'" />
     <FeedbackPanel v-else-if="store.phase === 'feedback'" @back="store.phase = 'main'" />
@@ -38,6 +39,7 @@ import FeedbackPanel from './components/FeedbackPanel.vue'
 import ReviewAskModal from './components/ReviewAskModal.vue'
 import WorkspaceTabs from './components/WorkspaceTabs.vue'
 import HealthPanel from './components/HealthPanel.vue'
+import AnalyticsPanel from './components/AnalyticsPanel.vue'
 
 const store = useEngineStore()
 onMounted(() => store.init())

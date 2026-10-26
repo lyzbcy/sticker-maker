@@ -9,7 +9,7 @@ from .settings import settings_dir
 
 MUTATIONS = {
     'run', 'run_batch', 'publish_episode', 'fix_and_republish', 'shelf_passed',
-    'sync_platform_status', 'repolish_finals', 'update_episode_meta',
+    'sync_platform_status', 'sync_sticker_metrics', 'repolish_finals', 'update_episode_meta',
     'regen_intro', 'regen_assets', 'delete_episode', 'save_series',
     'save_prefs', 'generate_base', 'add_base', 'remove_base', 'replenish_refs',
     'save_prompt_set', 'delete_prompt_set', 'save_publish_credentials',
@@ -27,13 +27,13 @@ MUTATIONS = {
 #   （作品状态只在 sync/publish 后才变，那些是写命令，写前会刷新）。
 FAST_LOCAL = {'load_prefs', 'list_series', 'list_prompt_sets',
               'list_episodes', 'get_episode', 'list_all_stickers',
-              'list_characters', 'get_income'}
+              'list_characters', 'get_income', 'get_sticker_metrics', 'check_sticker_duplicate'}
 RESOURCE_EDITS = {'publish_episode', 'fix_and_republish', 'repolish_finals',
                   'update_episode_meta', 'regen_intro', 'regen_assets', 'save_rating'}
-PLATFORM = {'publish_episode', 'fix_and_republish', 'shelf_passed', 'sync_platform_status'}
+PLATFORM = {'publish_episode', 'fix_and_republish', 'shelf_passed', 'sync_platform_status', 'sync_sticker_metrics'}
 # 长任务：执行分钟级且操作平台/数据，互相排斥（快速失败防并发平台操作）
 LONG_TASKS = {'run', 'run_batch', 'publish_episode', 'fix_and_republish',
-              'shelf_passed', 'sync_platform_status'}
+              'shelf_passed', 'sync_platform_status', 'sync_sticker_metrics'}
 
 
 def runtime_for(engine):
@@ -151,7 +151,7 @@ def invoke(cli, req_id, cmd, args, handler):
             # 在首次/有变更时要全量扫描+哈希几分钟，之前全程静默。先说一句
             # 在干嘛（快时一闪而过，慢时用户知道没死）。
             preparation = ('正在校验账号与资源库连接（仅同步平台状态，不扫描素材）…'
-                           if cmd == 'sync_platform_status' else
+                           if cmd in ('sync_platform_status','sync_sticker_metrics') else
                            '正在校验当前工程…' if getattr(rt,'state',{}).get('storage_mode')=='projects' else
                            '正在同步本地资源库快照（有变更时要一会儿，日志会持续播报）…')
             cli._emit({"id": req_id, "type": "progress", "stage": "prepare",
@@ -163,7 +163,7 @@ def invoke(cli, req_id, cmd, args, handler):
             # 1000+ 目录 stat ~106s）是"一键更新卡几分钟"的主因（09-12）。
             capture = cmd not in ('sync_platform_status', 'shelf_passed',
                                   'get_income', 'sync_platform_status_page')
-            if cmd == 'sync_platform_status':
+            if cmd in ('sync_platform_status','sync_sticker_metrics'):
                 # This command observes platform metadata, not artwork. Validate
                 # the binding/mount now; commit_platform_metadata checks each
                 # exact parent. Asset-edit/publish commands retain full refresh.
@@ -187,7 +187,7 @@ def invoke(cli, req_id, cmd, args, handler):
                     raise ValueError('作品原文件未齐、账号不一致或存在版本冲突，当前不能修改/提交')
                 if cmd == 'publish_episode' and not m['can_publish']:
                     raise ValueError('发布素材不完整，请补齐表情、横幅、封面、图标、含义词和介绍')
-        if cmd == 'sync_platform_status':
+        if cmd in ('sync_platform_status','sync_sticker_metrics'):
             stop = cli._stop_events.get(req_id)
             if stop is not None and stop.is_set():
                 cli._result(req_id, 'ok', data={'cancelled': True, 'complete': False,
@@ -198,7 +198,7 @@ def invoke(cli, req_id, cmd, args, handler):
         if edited_work_id and rt and getattr(rt, 'state', {}).get('storage_mode') == 'projects':
             # A rename may have moved the folder; resolve by stable identity.
             rt.capture(rt.path_for(edited_work_id))
-        metadata_only = (cmd in {'sync_platform_status', 'shelf_passed'} and isinstance(result, dict)
+        metadata_only = (cmd in {'sync_platform_status', 'sync_sticker_metrics', 'shelf_passed'} and isinstance(result, dict)
                          and result.get('metadata_committed') is True)
         if rt and cmd in MUTATIONS and not metadata_only:
             # Reload config: an explicit account switch may have changed it.

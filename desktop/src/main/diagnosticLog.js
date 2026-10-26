@@ -1,3 +1,4 @@
+/* 现状：现有实现复核，行为不变。负责人：捞鱼工作室 / Codex。最后核对：2026-10-24。 */
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const crypto = require('node:crypto')

@@ -15,7 +15,7 @@ from .config.schema import Paths, Prefs, ModeProbsConfig
 from .config.paths import resolve_paths, current_platform
 from .config.loader import load_prefs_from_file, save_prefs, _clean_price_probs
 
-VERSION = "0.6.2"
+VERSION = "0.6.6"
 
 _engine = None
 _stop_events = {}
@@ -937,6 +937,7 @@ def cmd_list_episodes(req_id, args):
                     "platform_status": meta.platform_status,
                     "platform_downloads": meta.platform_downloads,
                     "platform_sends": meta.platform_sends,
+                    "platform_item_id": meta.platform_item_id,
                     "platform_tips": meta.platform_tips,
                     "platform_updated_at": meta.platform_updated_at,
                     "platform_reject_reason": meta.platform_reject_reason,
@@ -1626,6 +1627,32 @@ def cmd_get_income(req_id, args):
         _result(req_id, "fail", errors=[{"message": f"收益数据读取失败: {e}"}])
 
 
+def cmd_get_sticker_metrics(req_id, args):
+    from .publish.sticker_metrics import get_metrics, get_metrics_page
+    engine = _ensure_engine()
+    _result(req_id, 'ok', data=get_metrics_page(engine, args) if args.get('paginated') else get_metrics(engine))
+
+
+def cmd_sync_sticker_metrics(req_id, args):
+    from .publish.sticker_metrics import sync_metrics
+    def say(message):
+        _emit({'id':req_id,'type':'progress','stage':'single_metrics','phase':'single_metrics','message':message,'percent':None})
+    try:
+        with _platform_exclusive('读取单图发送报告',req_id):
+            stop=_stop_events.get(req_id) or threading.Event()
+            owns_stop=req_id not in _stop_events
+            _stop_events[req_id]=stop
+            try:
+                result=sync_metrics(_ensure_engine(),paginated=bool(args.get('paginated')),item_ids=args.get('item_ids'),on_status=say,should_stop=stop.is_set)
+            finally:
+                if owns_stop:_stop_events.pop(req_id,None)
+    except (ValueError,RuntimeError,OSError) as exc:
+        _result(req_id,'fail',errors=[{'message':str(exc)}])
+        return {'metadata_committed':True}
+    _result(req_id,'ok',data=result)
+    return result
+
+
 def cmd_sync_platform_status(req_id, args):
     """一键更新：打开平台管理页抓取全部作品状态，回写本地 meta.json。"""
     from .publish.status import sync_status
@@ -2223,6 +2250,21 @@ def _album_series_number(meta, ep_dir):
     elif m:
         number = int(m.group(2))
     return series, number
+
+
+def cmd_check_sticker_duplicate(req_id, args):
+    from .featured_remake import duplicate_sources
+    engine = _ensure_engine()
+    root = Path(engine.config.paths.output_root)
+    source = Path(args.get('path', '')).resolve()
+    # Only enumerate the same final-sticker paths exposed by the local library.
+    candidates = (item['path'] for episode in root.iterdir() if episode.is_dir()
+                  and (episode.name.startswith('episode') or (episode / 'project.json').exists())
+                  for item in _episode_stickers(episode))
+    try:
+        _result(req_id, 'ok', data=duplicate_sources(source, candidates, root))
+    except (ValueError, OSError) as exc:
+        _result(req_id, 'fail', errors=[{'message': str(exc)}])
 
 
 def cmd_list_all_stickers(req_id, args):
@@ -2960,7 +3002,8 @@ HANDLERS = {
     "run_batch": cmd_run_batch,
     "list_all_stickers": cmd_list_all_stickers,
     "build_all_ratings_prompt": cmd_build_all_ratings_prompt, "stop": cmd_stop,
-    "list_episodes": cmd_list_episodes, "open_in_finder": cmd_open_in_finder,
+    "list_episodes": cmd_list_episodes,
+    "get_sticker_metrics": cmd_get_sticker_metrics, "sync_sticker_metrics": cmd_sync_sticker_metrics, "open_in_finder": cmd_open_in_finder,
     "list_series": cmd_list_series, "save_series": cmd_save_series,
     "sync_platform_status": cmd_sync_platform_status, "get_income": cmd_get_income,
     "repolish_finals": cmd_repolish_finals,
@@ -2978,7 +3021,7 @@ HANDLERS = {
     "delete_episode": cmd_delete_episode,
     "get_episode": cmd_get_episode, "update_episode_meta": cmd_update_episode_meta,
     "regen_intro": cmd_regen_intro, "regen_assets": cmd_regen_assets,
-    "featured": cmd_featured,
+    "featured": cmd_featured, "check_sticker_duplicate": cmd_check_sticker_duplicate,
     "load_promotion": cmd_load_promotion, "save_promotion": cmd_save_promotion,
     "get_logs": cmd_get_logs, "clear_logs": cmd_clear_logs,
     "browser_runtime_status": cmd_browser_runtime_status,
@@ -3006,7 +3049,7 @@ def _handle_in_thread(req_id, cmd, args):
         return
     _log("info", f"开始命令：{cmd}", command=cmd, command_id=req_id)
     # Register before library preparation so the cancel button is not a no-op.
-    if cmd == 'sync_platform_status':
+    if cmd in ('sync_platform_status','sync_sticker_metrics'):
         _stop_events[req_id] = threading.Event()
     try:
         from .library.hooks import invoke
@@ -3019,7 +3062,7 @@ def _handle_in_thread(req_id, cmd, args):
         )
         _emit({"id": req_id, "type": "error", "message": f"{type(e).__name__}: {e}"})
     finally:
-        if cmd == 'sync_platform_status':
+        if cmd in ('sync_platform_status','sync_sticker_metrics'):
             _stop_events.pop(req_id, None)
 
 

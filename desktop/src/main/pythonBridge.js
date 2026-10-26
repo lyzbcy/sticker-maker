@@ -31,7 +31,7 @@ function resolveDevPython(repoRoot, platform = process.platform) {
 
 class PythonBridge extends EventEmitter {
   // 后端注册了 stop_event、可被 stop 命令取消的命令（2026-09-07）
-  static CANCELLABLE = new Set(['run', 'sync_platform_status', 'shelf_passed'])
+  static CANCELLABLE = new Set(['run', 'sync_platform_status', 'sync_sticker_metrics', 'shelf_passed'])
 
   constructor(cliPath) {
     super()

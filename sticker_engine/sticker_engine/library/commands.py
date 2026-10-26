@@ -15,7 +15,7 @@ LOCK = threading.RLock()
 _LOCK_OWNER = {'cmd': '', 'at': 0.0}
 _TASK_LABELS = {
     'run': '生成表情', 'run_batch': '批量生成', 'publish_episode': '提交作品',
-    'fix_and_republish': '整改重发', 'shelf_passed': '上架', 'sync_platform_status': '一键更新',
+    'fix_and_republish': '整改重发', 'shelf_passed': '上架', 'sync_platform_status': '一键更新', 'sync_sticker_metrics':'读取单图报告',
     'library_preview': '生成迁移预览', 'library_execute': '执行迁移/复制',
     'library_refresh': '刷新资源库', 'library_handoff': '准备切换电脑',
     'library_import': '复制导入', 'library_connect': '连接资源库',

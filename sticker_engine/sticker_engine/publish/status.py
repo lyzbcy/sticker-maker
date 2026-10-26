@@ -551,6 +551,10 @@ def _sync_status_legacy(engine, on_status: Optional[Callable[[str], None]] = Non
                         pass
                 if not clicked:
                     break   # 真到最后一页（无下一页）或彻底翻不动
+            income_result = ({'error': '同步已取消，保留上次收益'} if cancelled else
+                             fetch_income(page, say, output_root=engine.config.paths.output_root,
+                                          navigation_timeout_ms=8000,
+                                          user_data=getattr(engine.config.paths, 'user_data', None)))
         finally:
             b.close()
 
@@ -596,7 +600,7 @@ def _sync_status_legacy(engine, on_status: Optional[Callable[[str], None]] = Non
     if library_runtime:
         library_runtime.refresh(capture=False)   # 2026-09-12: 入库由后置 hooks 兜底
     return {"matched": matched, "unmatched_platform": unmatched,
-            "updated": matched, "pages": pages, "source": "page",
+            "updated": matched, "pages": pages, "source": "page", "income": income_result,
             "complete": False, "list_complete": False, "cancelled": cancelled,
             "warning": "已使用页面降级读取，无法确认全量完整性；请稍后重试快速同步。"}
 
@@ -605,7 +609,7 @@ INCOME_URL = ("https://sticker.weixin.qq.com/cgi-bin/mmemoticon-bin/"
               "realnamepage?t=income/index")
 
 
-def fetch_income(page, say=None, output_root=None, max_pages=20, navigation_timeout_ms=45000):
+def fetch_income(page, say=None, output_root=None, max_pages=20, navigation_timeout_ms=45000, user_data=None):
     """抓取「账号收入」页顶部汇总三数（累计赞赏/累计热度/可提现）。
 
     2026-09-06 用户口径：明细全量翻页没必要（一键更新本就抓每单下载/
@@ -615,7 +619,10 @@ def fetch_income(page, say=None, output_root=None, max_pages=20, navigation_time
     say = say or (lambda m: None)
     try:
         page.goto(INCOME_URL, wait_until="domcontentloaded", timeout=navigation_timeout_ms)
-        page.wait_for_timeout(4500)
+        page.wait_for_function("""() => [...document.querySelectorAll(
+            '.data__group__item, [class*=group__item]')].some(el =>
+            (el.innerText || '').includes('累计热度') && /[0-9]/.test(el.innerText))""",
+            timeout=navigation_timeout_ms)
 
         def _num_after(label):
             # 汇总卡结构：<div class="data__group__item"><p class="..title">标签
@@ -643,6 +650,9 @@ def fetch_income(page, say=None, output_root=None, max_pages=20, navigation_time
             "total_heat": _num_after("累计热度"),
             "withdrawable": _num_after("当前可提现(元)"),
         }
+        import re
+        if any(not re.fullmatch(r"\d+(?:\.\d+)?", str(v)) for v in summary.values()):
+            raise ValueError('收益汇总未完整加载，保留上次成功数据')
         say(f"收益已更新：累计赞赏 ¥{summary['total_tips']}｜累计热度 {summary['total_heat']}"
             f"｜可提现 ¥{summary['withdrawable']}")
         # 用户口径（2026-09-06）：累计热度=付费微信豆数；÷10=付费总额(元)；
@@ -656,13 +666,21 @@ def fetch_income(page, say=None, output_root=None, max_pages=20, navigation_time
                   "est_paid_yuan": round(heat / 10.0, 2),
                   "est_income_yuan": round(heat / 10.0 * 0.9, 2),
                   "fetched_at": __import__("time").strftime("%Y-%m-%d %H:%M:%S")}
-        if output_root is not None:
+        if user_data is not None or output_root is not None:
             try:
                 import json as _json
-                ud = Path(output_root).parent
-                (ud / "income.json").write_text(
-                    _json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+                import os, tempfile
+                ud = Path(user_data) if user_data is not None else Path(output_root).parent
+                ud.mkdir(parents=True, exist_ok=True)
+                fd, temporary = tempfile.mkstemp(prefix='income-', suffix='.tmp', dir=ud)
+                try:
+                    with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+                        stream.write(_json.dumps(result, ensure_ascii=False, indent=1))
+                    os.replace(temporary, ud / 'income.json')
+                finally:
+                    if os.path.exists(temporary): os.unlink(temporary)
             except Exception as _e:   # noqa: BLE001
+                result["persistence_error"] = str(_e)[:120]
                 say(f"收益落盘失败：{type(_e).__name__}: {_e}"[:100])
         return result
     except Exception as e:   # noqa: BLE001
@@ -750,7 +768,7 @@ def sync_status(engine, on_status=None, fetch_reasons=True, force_reasons=False,
                     say('正在读取账号收益…')
                     result['income'] = fetch_income(
                         page, say, output_root=engine.config.paths.output_root,
-                        navigation_timeout_ms=8000)
+                        navigation_timeout_ms=8000, user_data=getattr(engine.config.paths, 'user_data', None))
                 # The metadata-only writer already updated the visible row cache.
                 # A full artwork scan here defeats fast status-only sync.
                 result['elapsed_seconds'] = round(__import__('time').monotonic() - started, 3)

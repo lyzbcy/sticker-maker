@@ -87,7 +87,7 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle('python-command', async (event, { cmd, args }) => {
-    const labels = { run:'制作表情', run_batch:'批量制作', publish_episode:'投稿', sync_platform_status:'同步状态', shelf_passed:'一键上架', install_codex:'安装生图组件', install_chromium:'安装浏览器', list_episodes:'读取作品', project_location_inspect:'识别资源位置', project_location_connect:'连接资源' }
+    const labels = { run:'制作表情', run_batch:'批量制作', publish_episode:'投稿', sync_platform_status:'同步状态', sync_sticker_metrics:'读取单图发送报告', shelf_passed:'一键上架', install_codex:'安装生图组件', install_chromium:'安装浏览器', list_episodes:'读取作品', project_location_inspect:'识别资源位置', project_location_connect:'连接资源' }
     const tracked = !!labels[cmd] || /^(project_|library_)(?!status)/.test(cmd)
     const task = { id:String(++operationSequence), command:cmd, startedAt:Date.now(), message:labels[cmd] || '处理资源任务' }
     const notify = data => { if(tracked && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('task-status', { ...task, ...data }) }

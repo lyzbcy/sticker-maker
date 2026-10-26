@@ -6,7 +6,7 @@
 <script setup>
 import { useEngineStore } from '../store/engine'
 const store = useEngineStore()
-const tabs = [{ phase:'main', label:'制作表情' }, { phase:'episodes', label:'作品库' }, { phase:'allStickers', label:'全部表情' }, { phase:'health', label:'问题与警告' }]
+const tabs = [{ phase:'main', label:'制作表情' }, { phase:'episodes', label:'作品库' }, { phase:'allStickers', label:'全部表情' }, { phase:'analytics', label:'数据看板' }, { phase:'health', label:'问题与警告' }]
 </script>
 <style scoped>
 .workspace-tabs { position:sticky; top:32px; z-index:40; display:flex; gap:8px; flex-wrap:wrap; margin:32px auto 0; padding:12px 24px; max-width:1200px; background:var(--bg-cream); }

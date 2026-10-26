@@ -100,6 +100,7 @@
             <p class="income-note">热度÷10=付费总额，平台抽10%后×0.9=预计到手 · 每月15日结算 · 「一键更新」刷新</p>
           </div>
 
+          <p v-if="store.incomeError" role="status">{{ store.incomeError }}</p>
           <p class="first-use-tip">第一次建议只做 1 组。生成后可保存图片；提交微信是独立操作，不会自动发布。</p>
           <div class="cta-row">
             <button class="start-btn" @click="store.runGenerate">
