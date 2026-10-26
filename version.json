@@ -1,17 +1,17 @@
 {
-  "version": "0.6.2",
-  "downloadUrl": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.6.2/sticker-maker-mac-v0.6.2.zip",
-  "sha256": "4a1bd5f0ebab4c44f92432d1fd4eacb86257b4d6bf761932ac19817c17b011f2",
+  "version": "0.6.6",
+  "downloadUrl": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.6.6/sticker-maker-mac-v0.6.6.zip",
+  "sha256": "69b18b3e31afbeef7de0d927349185b96b18139e3dc21ca10b3a89810ef488d5",
   "platforms": {
     "mac": {
-      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.6.2/sticker-maker-mac-v0.6.2.zip",
-      "sha256": "4a1bd5f0ebab4c44f92432d1fd4eacb86257b4d6bf761932ac19817c17b011f2"
+      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.6.6/sticker-maker-mac-v0.6.6.zip",
+      "sha256": "69b18b3e31afbeef7de0d927349185b96b18139e3dc21ca10b3a89810ef488d5"
     },
     "win": {
-      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.6.2/sticker-maker-win-v0.6.2-setup.exe",
-      "sha256": "57cd5226993ee8a1b13072be2c98b07ccdb7d939a13cdbe423594b8c145cac01"
+      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.6.6/sticker-maker-win-v0.6.6-setup.exe",
+      "sha256": "0b8a028e3d936b3edb3f698007855b581f666761a33859aadb3f3c644767e1ed"
     }
   },
-  "releaseNotes": "工程按专辑名直接保存，可预览转换旧库并自选删除原图瘦身；新增资源位置选择；教程随时退出、全部表情常驻；本地缓冲日志、脱敏导出和更完整的反馈；安装包瘦身，优先使用系统Edge/Chrome，支持可选浏览器组件；修复预约失败作品的状态显示与重新上架名单。",
-  "lastUpdated": "2026-10-21"
+  "releaseNotes": "新增收益、单图发送报告与整套排名看板，支持分页、搜索、排序、原图放大与零发送分析；原图按需加载；点击更新及重试时重新查询最新正式版本，校验平台和安装包 SHA-256，避免安装过期缓存。",
+  "lastUpdated": "2026-10-26"
 }
