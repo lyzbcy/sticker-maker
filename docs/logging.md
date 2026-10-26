@@ -1,3 +1,5 @@
+现状：现有实现复核，行为不变。负责人：捞鱼工作室 / Codex。最后核对：2026-10-24。
+
 # 本地诊断日志
 
 按 `E:/共享/tools/软件开发/软件组件/日志系统.md` 接入。Node 日志模块是 `desktop/src/main/diagnosticLog.js`，仅依赖 Node 内置模块与旁边的 `diagnostics.js` 脱敏函数；可独立用于 Windows 和 Mac。Electron 主进程负责接收引擎进度、命令结果、Agent日志和界面活动，渲染进程通过受控 IPC 查询与导出。

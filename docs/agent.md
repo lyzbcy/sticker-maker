@@ -1,6 +1,7 @@
+- [收益与数据看板、精品重制](analytics-income.md)：0.6.4单图报告与排名；[本轮](single-metrics-20261026.md)。
 > 现状：当前开发导航；版本与运行状态只在current-state.md维护
 > 负责人：捞鱼工作室 / Codex
-> 最后更新：2026-10-14；文档checkpoint 2026-10-14/context-v2
+> 最后更新：2026-10-23；文档checkpoint 2026-10-23/standards-v1
 
 # 开发导航
 先读[current-state.md](current-state.md)，只加载与当前请求相关的下列模块。
@@ -27,3 +28,11 @@
 |完整验收标准|[audit.md](audit.md)|
 
 旧专题目录见[doc/README.md](../doc/README.md)。整理前导航长日志保留于[历史归档](../doc/history/context-checkpoint-20261014/agent.md)。
+
+<!-- standards-todo-20261023:start -->
+- [软件规范待办（2026-10-23）](standards-todo-20261023.md)：后续整改/验收前必读；本轮仅登记。
+<!-- standards-todo-20261023:end -->
+
+- [2026-10-24维护计划与执行记录](maintenance-20261024.md)：当前候选、实际覆盖、未完成验收与回退。
+
+- [0.6.5数据看板20条懒加载与原图分析](analytics-lazy-20261026.md)。
