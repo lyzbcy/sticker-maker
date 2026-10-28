@@ -55,8 +55,16 @@ async function send() {
   finally { busy.value = false }
 }
 async function copy() {
-  const res = await window.api?.copyText(scrubText(`${category.value}\n${message.value}\n${preview.value}`))
-  result.value = res?.ok ? '已复制，可粘贴给作者。' : '复制未完成，请从桌面软件打开。'
+  if (busy.value) return
+  busy.value = true; result.value = ''
+  try {
+    const text = [category.value, message.value]
+    if (includeLogs.value) text.push(preview.value)
+    const res = await window.api?.copyText(scrubText(text.join('\n')))
+    result.value = res?.ok ? '已复制，可粘贴给作者。' : '复制未完成，请从桌面软件打开。'
+  } catch {
+    result.value = '复制未完成，请稍后重试；留言已保留。'
+  } finally { busy.value = false }
 }
 </script>
 <style scoped>

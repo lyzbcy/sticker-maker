@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, onScopeDispose } from 'vue'
+import { bindEngineEvents } from './runtimeEvents'
 
 const nearOne = (value) => Math.abs(value - 1) <= 0.001
 const sumValues = (object) => Object.values(object || {}).reduce(
@@ -62,6 +63,7 @@ export const useEngineStore = defineStore('engine', () => {
   const runStartedAt = ref(null)     // 本次 run 开始时间戳（ms），底边栏显示已用时
   // 活动日志：所有 progress 事件的滚动记录（底边栏展示"在做什么/在等什么"）
   const activity = ref([])
+  const activityIsHistorical = ref(false)
   const ACTIVITY_CAP = 60
   // codex 安装状态
   const installing = ref(false)
@@ -309,6 +311,7 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
 
   // 底边栏活动日志：滚动保留最近 ACTIVITY_CAP 条
   function pushActivity(entry, persist = true) {
+    activityIsHistorical.value = false
     if (persist) api?.recordActivity?.({ stage:entry.stage, message:entry.message })?.catch?.(() => {})
     activity.value.push({ t: Date.now(), stage: '', message: '', ...entry })
     if (activity.value.length > ACTIVITY_CAP) {
@@ -580,58 +583,15 @@ const agentStatus = ref({ running: false, host: '127.0.0.1', port: null, token: 
     await loadLogs()
   }
 
-  // 监听 progress（run 期间更新）+ 底边栏活动日志（任何时候都记录）
-  if (api) {
-    api.onTask?.(task => {
-      if(task.state === 'end') delete activeTasks.value[task.id]
-      else activeTasks.value[task.id] = { ...activeTasks.value[task.id], ...task }
-    })
-    api.onProgress((ev) => {
-      pushActivity({ stage: ev.stage, message: ev.message }, false)
-      if (ev.stage === 'install' && installing.value) {
-        installLog.value.push(ev.message)
-      } else if (publishing.value) {
-        publishProgress.value = ev
-      } else if (running.value) {
-        progress.value = ev
-      }
-    })
-    api.onRestarting(() => {
-      running.value = false
-      progress.value = null
-      pushActivity({ stage: 'SYS', message: '引擎意外退出，正在自动重启…请稍后重试' })
-      lastError.value = [{ message: '引擎意外退出，正在自动重启…请稍后重试' }]
-    })
-    // 引擎单实例锁被占（另一个应用实例在跑）：并发写库会导致版本冲突，
-    // 引擎已拒绝启动且不会自动重启——提示用户关掉其他窗口
-    if (api.onExit) {
-      api.onExit((data) => {
-        if (data && data.code === 3) {
-          lastError.value = [{ message: '检测到另一个「表情包一键制作」正在运行。为避免多实例并发造成版本冲突，本窗口的引擎已停止——请关闭其他窗口后重启本应用。' }]
-          pushActivity({ stage: 'SYS', message: '引擎被其他实例占用（单实例锁），已停止' })
-        }
-      })
-    }
-    // 更新下载进度 → 底边栏活动流（下载中实时百分比/兆数）
-    if (api.onUpdateProgress) {
-      api.onUpdateProgress((ev) => {
-        if (ev.stage === 'checking') {
-          pushActivity({ stage: '更新', message: '正在重新检查最新版本…' })
-        } else if (ev.stage === 'download') {
-          pushActivity({
-            stage: '更新',
-            message: `正在下载${ev.version ? ' ' + ev.version : '新版本'}… ${ev.percent}%（${ev.receivedMB}/${ev.totalMB} MB）`,
-          })
-        } else if (ev.stage === 'verify') {
-          pushActivity({ stage: '更新', message: `下载完成，正在校验${ev.version ? ' ' + ev.version : ''}安装包…` })
-        }
-      })
-    }
-  }
+  const disposeEvents = bindEngineEvents(api, {
+    running, progress, publishing, publishProgress, installing, installLog,
+    runStartedAt, activeTasks, activityIsHistorical, lastError, pushActivity,
+  })
+  onScopeDispose(disposeEvents)
 
   return {
     phase, firstRun, prefs, codexStatus, characters, episodes, episodesLoading,
-    running, progress, lastEpisode, lastError, runStartedAt, activity,
+    running, progress, lastEpisode, lastError, runStartedAt, activity, activityIsHistorical,
     installing, installLog,
     publishing, publishProgress, publishResult, logs, activeTasks, agentStatus, agentPrompt,
     seriesList, selectedEpisode, settingsTab, codexUsage, loadCodexUsage,

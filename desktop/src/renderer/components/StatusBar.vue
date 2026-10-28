@@ -65,7 +65,7 @@ const statusText = computed(() => {
   if (store.running) return lastMessage.value || '运行中…'
   if (hasError.value) return store.lastError?.[0]?.message || '出错了'
   if (store.lastEpisode) return `上次任务完成 · ${store.lastEpisode.stickers ?? 0} 张`
-  return lastMessage.value || '就绪 · 引擎待命'
+  return (!store.activityIsHistorical && lastMessage.value) || '就绪 · 引擎待命'
 })
 
 const elapsed = computed(() => {

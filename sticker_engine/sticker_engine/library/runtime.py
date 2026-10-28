@@ -13,6 +13,7 @@ import uuid
 import copy
 import threading
 from pathlib import Path
+from ..media import final_stickers, sticker_type
 
 from ..config.series import EpisodeMeta, load_meta, save_meta
 from ..publish.platform_data import SHELFABLE_STATUSES
@@ -942,7 +943,7 @@ class LibraryRuntime:
             ready = (work['state'] == 'available' and not has_sync_conflicts
                      and not has_identity_conflict
                      and not metadata.get('missing_resources'))
-            finals = list((path / '最终版').glob('*.png')) if ready else []
+            finals = final_stickers(path / '最终版') if ready else []
             cover = path / '封面/封面.png'
             if not cover.exists():
                 cover = finals[0] if finals else None
@@ -956,7 +957,7 @@ class LibraryRuntime:
                 can_shelf=(not has_sync_conflicts and not has_identity_conflict
                            and work['state'] not in ('pending', 'conflict') and
                            metadata.get('platform_status') in SHELFABLE_STATUSES),
-                sticker_count=len(finals), cover=str(cover) if cover else '',
+                sticker_type=sticker_type(finals), sticker_count=len(finals), cover=str(cover) if cover else '',
                 complete=bool(finals), missing=work.get('missing', []) or metadata.get('missing_resources', []),
                 sync_conflicts=work.get('sync_conflicts', []),
                 identity_conflict=has_identity_conflict))

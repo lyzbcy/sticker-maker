@@ -8,6 +8,18 @@ function toFileUrl(filePath) {
   return `file://${absolutePath.split('/').map(segment => encodeURIComponent(segment)).join('/')}`
 }
 
+// Return a per-listener, idempotent cleanup, including callbacks already queued.
+function subscribe(channel, cb) {
+  let active = true
+  const listener = (_, value) => { if (active) cb(value) }
+  ipcRenderer.on(channel, listener)
+  return () => {
+    if (!active) return
+    active = false
+    ipcRenderer.removeListener(channel, listener)
+  }
+}
+
 // 暴露给渲染进程的安全 API（contextIsolation）
 const api = {
   // 统一深拷贝：渲染进程传入的 args 常含 Vue 响应式 Proxy，
@@ -16,18 +28,10 @@ const api = {
   send: async (cmd, args) => ipcRenderer.invoke(
     'python-command', { cmd, args: JSON.parse(JSON.stringify(args ?? {})) }),
   stop: (targetId) => ipcRenderer.invoke('python-stop', targetId),
-  onProgress: (cb) => {
-    const listener=(_,ev)=>cb(ev)
-    ipcRenderer.on('python-progress', listener)
-    return ()=>ipcRenderer.removeListener('python-progress',listener)
-  },
-  onExit: (cb) => {
-    ipcRenderer.on('python-exit', (_, data) => cb(data))
-  },
-  onRestarting: (cb) => {
-    ipcRenderer.on('python-restarting', (_, data) => cb(data))
-  },
-  onTask: cb => ipcRenderer.on('task-status', (_, task) => cb(task)),
+  onProgress: cb => subscribe('python-progress', cb),
+  onExit: cb => subscribe('python-exit', cb),
+  onRestarting: cb => subscribe('python-restarting', cb),
+  onTask: cb => subscribe('task-status', cb),
   selectFile: async () => ipcRenderer.invoke('select-file'),
   selectFiles: async () => ipcRenderer.invoke('select-files'),
   selectDirectory: async () => ipcRenderer.invoke('select-directory'),
@@ -42,9 +46,7 @@ const api = {
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   // 更新下载进度（main 的 updater 流式回报：stage=download/verify, percent, MB）
-  onUpdateProgress: (cb) => {
-    ipcRenderer.on('update-progress', (_, ev) => cb(ev))
-  },
+  onUpdateProgress: cb => subscribe('update-progress', cb),
 }
 
 if (contextBridge && contextBridge.exposeInMainWorld) {

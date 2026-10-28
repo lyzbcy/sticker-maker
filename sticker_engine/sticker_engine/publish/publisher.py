@@ -19,6 +19,7 @@ from typing import List, Optional
 from .config import PublishConfig
 from .browser import BrowserSession
 from . import selectors as S
+from ..media import final_stickers, sticker_type, validate_dynamic
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +81,7 @@ class EpisodeAssets:
                     mm = read_meanings(episode_dir)
                     # key 可能是 "1".."16" 或 int，按数字升序
                     sorted_keys = sorted(mm.keys(), key=lambda k: int(k))
-                    final_pngs = {p.stem: p for p in final.glob("*.png")}
+                    final_pngs = {p.stem: p for p in final_stickers(final)}
                     for k in sorted_keys:
                         meaning = mm[k]
                         # 文件名 == 含义词（A 产出约定）
@@ -98,7 +99,7 @@ class EpisodeAssets:
 
             if not stickers:
                 # 回退：按中文文件名排序
-                for p in sorted(final.glob("*.png"), key=lambda x: x.stem):
+                for p in sorted(final_stickers(final), key=lambda x: x.stem):
                     stickers.append(p)
                     meanings.append(p.stem)
 
@@ -158,6 +159,10 @@ class EpisodeAssets:
             tip_thanks=_find(episode_dir / "赞赏图" / "赞赏致谢图.png"),
         )
 
+    @property
+    def sticker_type(self):
+        return sticker_type(final_stickers(self.episode_dir / "最终版"))
+
     def validate(self) -> List[str]:
         """返回阻断性问题列表（空列表 = 可发布）。"""
         problems: List[str] = []
@@ -165,6 +170,21 @@ class EpisodeAssets:
             problems.append("无表情图（最终版/ 为空）")
         if len(self.stickers) != len(self.meanings):
             problems.append("表情图与含义词数量不一致")
+        if self.sticker_type == 'mixed':
+            problems.append('同一专辑不能混用PNG与GIF，请拆分静态和动态专辑')
+        elif self.sticker_type == 'dynamic':
+            all_files = final_stickers(self.episode_dir / '最终版')
+            if len(set(self.stickers)) != len(all_files) or set(self.stickers) != set(all_files):
+                problems.append('动态表情含义映射缺失或重复，必须逐张完整对应')
+            from ..project import read_meanings
+            try:
+                mapping = read_meanings(self.episode_dir)
+                words = [str(mapping[k]) for k in sorted(mapping, key=lambda x: int(x))]
+                if words != self.meanings or len(words) != len(all_files):
+                    problems.append('动态含义映射必须完整且与上传顺序一致')
+            except (ValueError, OSError, TypeError):
+                problems.append('动态含义映射读取失败')
+            problems.extend(validate_dynamic(all_files))
         return problems
 
 
@@ -329,6 +349,7 @@ class Publisher:
         返回 ``{success, step, error?, album_name?}``。"""
         fields = set(fix_fields) if fix_fields else None
         assets = EpisodeAssets.from_dir(Path(episode_dir))
+        self._sticker_type = assets.sticker_type
 
         # ---- 步骤前：本地校验，早退 ----
         problems = assets.validate()
@@ -576,7 +597,7 @@ class Publisher:
         page.click(f'a:has-text("{S.ALBUM_TYPE_TEXT}")')
         page.wait_for_load_state("networkidle")
         # 步骤5：选静态（平台隐藏了 radio input，点可见 label；已选则跳过）
-        self._click_label(page, "静态表情", check=True)
+        self._click_label(page, "动态表情" if getattr(self, "_sticker_type", "static") == "dynamic" else "静态表情", check=True)
 
     def _step_open_editor(self, page, assets: "EpisodeAssets"):
         """编辑模式入口（2026-08-29 勘察）：管理页 → 目标行「详情」→
@@ -954,12 +975,17 @@ class Publisher:
         for fi in file_inputs:
             accept = fi.get_attribute("accept") or ""
             # 表情图 input 通常 accept 含 .png 且允许多选，排除图标专用
-            if ".png" in accept or accept == "":
+            if ((assets.sticker_type == 'dynamic' and
+                 ('.gif' in accept.lower() or 'image/gif' in accept.lower() or
+                  ('image/*' in accept.lower() and fi.get_attribute('multiple') is not None)))
+                    or (assets.sticker_type == 'static' and (".png" in accept or accept == ""))):
                 target = fi
                 break
         if target is not None:
             target.set_input_files(paths)
         else:
+            if assets.sticker_type == 'dynamic':
+                raise RuntimeError('未找到动态GIF上传槽位，已停止上传')
             # 回退：直接 set_input_files 第一个
             page.set_input_files('input[type="file"]', paths)
         # HTTP 上传成功不等于被平台接收：精选重组时平台会拒收已上架的
@@ -1288,7 +1314,7 @@ class Publisher:
     def _verify_form(self, page) -> list:
         """提交前自检必填项（实时监测：哪些还没填上）。返回缺失列表。"""
         try:
-            missing = page.evaluate("""() => {
+            missing = page.evaluate("""(expectedType) => {
               const vis = el => !!(el.offsetParent || el.getClientRects().length);
               const missing = [];
               const labelChecked = (text) => {
@@ -1300,7 +1326,7 @@ class Publisher:
                 }
                 return false;
               };
-              if (!labelChecked('静态表情')) missing.push('类型·静态表情');
+              if (!labelChecked(expectedType)) missing.push('类型·' + expectedType);
               if (!labelChecked('卡通表情/其他')) missing.push('类型·卡通表情/其他');
               if (!labelChecked('软萌可爱') && !labelChecked('日常')) missing.push('表情风格');
               if (!labelChecked('万能通用')) missing.push('表情主题');
@@ -1331,10 +1357,10 @@ class Publisher:
                   missing.push('角色/内容(级联未到二级)');
               }
               return missing;
-            }""")
-            return list(missing) if isinstance(missing, list) else []
+            }""", "动态表情" if getattr(self, "_sticker_type", "static") == "dynamic" else "静态表情")
+            return list(missing) if isinstance(missing, list) else ['表单校验结果无效']
         except Exception:
-            return []
+            return ['表单校验读取失败']
 
     def _confirm_crop(self, page, wait_seconds: float = 8.0) -> None:
         """上传素材后可能弹出「裁剪横幅/封面/图标」dialog（图片需手动

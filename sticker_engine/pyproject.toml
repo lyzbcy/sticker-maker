@@ -1,6 +1,6 @@
 [project]
 name = "sticker-engine"
-version = "0.6.6"
+version = "0.6.11"
 description = "表情包一键制作 - 核心生图引擎"
 requires-python = ">=3.9"
 dependencies = [

@@ -9,13 +9,14 @@ import threading
 from collections import deque
 from datetime import datetime
 from pathlib import Path
+from .media import final_stickers, sticker_type
 
 from . import StickerEngine, Config
 from .config.schema import Paths, Prefs, ModeProbsConfig
 from .config.paths import resolve_paths, current_platform
 from .config.loader import load_prefs_from_file, save_prefs, _clean_price_probs
 
-VERSION = "0.6.6"
+VERSION = "0.6.10"
 
 _engine = None
 _stop_events = {}
@@ -916,7 +917,7 @@ def cmd_list_episodes(req_id, args):
     if root.exists():
         for ep_dir in sorted(root.iterdir(), reverse=True):
             if ep_dir.is_dir() and (ep_dir.name.startswith("episode") or (ep_dir / "project.json").exists()):
-                stickers = list((ep_dir / "最终版").glob("*.png")) if (ep_dir / "最终版").exists() else []
+                stickers = final_stickers(ep_dir / "最终版") if (ep_dir / "最终版").exists() else []
                 cover = ep_dir / "封面" / "封面.png"
                 if not cover.exists():
                     cover = stickers[0] if stickers else None
@@ -999,7 +1000,7 @@ def _episode_stickers(episode_dir: Path) -> list:
     final = Path(episode_dir) / "最终版"
     if not final.exists():
         return []
-    final_pngs = {p.stem: p for p in final.glob("*.png")}
+    final_pngs = {p.stem: p for p in final_stickers(final)}
     stickers = []
     for meaning in _episode_meanings(episode_dir):
         hit = final_pngs.get(meaning)
@@ -1030,7 +1031,7 @@ def _episode_meanings(episode_dir: Path) -> list:
     except (json.JSONDecodeError, ValueError, OSError):
         pass
     if final.exists():
-        return [p.stem for p in sorted(final.glob("*.png"), key=lambda x: x.stem)]
+        return [p.stem for p in sorted(final_stickers(final), key=lambda x: x.stem)]
     return []
 
 
@@ -1043,7 +1044,7 @@ def _regen_episode_assets(episode_dir: Path, meta, series=None) -> list:
     import shutil as _shutil
     episode_dir = Path(episode_dir)
     final = episode_dir / "最终版"
-    paths = sorted(final.glob("*.png"), key=lambda x: x.stem) if final.exists() else []
+    paths = sorted(final_stickers(final), key=lambda x: x.stem) if final.exists() else []
     warnings = []
     chars = _episode_characters(episode_dir)
     role_map = (series.role_asset_map if series else None) or {}
@@ -1148,6 +1149,9 @@ def cmd_repolish_finals(req_id, args):
     final = ep_dir / "最终版"
     if not final.is_dir():
         _result(req_id, "fail", errors=[{"message": f"无成品目录：{final}"}])
+        return
+    if sticker_type(final_stickers(final)) != 'static':
+        _result(req_id, "fail", errors=[{"message": "动态表情不使用静态修图；请保留GIF并逐帧修改副本"}])
         return
     backup = ep_dir / "原图" / "_finals_backup"
     backup.mkdir(parents=True, exist_ok=True)
@@ -1470,7 +1474,7 @@ def cmd_fix_and_republish(req_id, args):
     result = {"actions": actions, "fields": sorted(fields), "published": False}
 
     # 1) 成品 repolish（边框线，62/68 驳回）——仅当选了 stickers/cover
-    if final.is_dir() and ({"stickers", "cover"} & fields):
+    if final.is_dir() and ({"stickers", "cover"} & fields) and sticker_type(final_stickers(final)) == 'static':
         backup = ep_dir / "原图" / "_finals_backup"
         backup.mkdir(parents=True, exist_ok=True)
         n = 0
@@ -1775,6 +1779,7 @@ def cmd_get_episode(req_id, args):
         "project_mode": project_data.get("mode"),
         "cleanup_pending": bool(project_data.get("cleanup_pending")),
         "stickers": stickers,
+        "sticker_type": sticker_type(final_stickers(final)),
         "characters": _episode_characters(episode_dir),
         "banner": _exists("横幅/横幅.png"),
         "cover": _exists("封面/封面.png"),
