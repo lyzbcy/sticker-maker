@@ -78,7 +78,7 @@ async function main(){
   let m,config,manifestFile=opts.manifest;
   if(command==='begin'){config=await load(opts.config);config.startedAt=Date.now();manifestFile=path.join(config.logDir,'manifest.json');await fs.mkdir(config.logDir,{recursive:true});try{await fs.access(manifestFile);throw Error('Manifest exists; resume instead of generating again');}catch(e){if(e.code!=='ENOENT')throw e;}}
   else m=await load(manifestFile);
-  const logDir=config?.logDir||m.logDir;const log=async(event,data={})=>{await fs.appendFile(path.join(logDir,'events.jsonl'),JSON.stringify({at:new Date().toISOString(),event,...data})+'\n');if(event!=='bridge')console.log(JSON.stringify({ok:true,data:{event,...data}}));};
+  const logDir=config?.logDir||m.logDir;const log=async(event,data={})=>{await fs.appendFile(path.join(logDir,'events.jsonl'),JSON.stringify({at:new Date().toISOString(),event,...data})+'\n');if(event!=='bridge'){const {payload,response,...short}=data;console.log(JSON.stringify({ok:true,data:{event,...short,...(response?{businessRet:response.data?.baseResp?.ret}:{})}}));}};
   const bridge=new Bridge({url:opts['daemon-url'],log});let result;
   if(command==='begin'){await log('batch_started',{startedAt:config.startedAt});result=await begin(config,manifestFile,log,bridge);}
   else if(command==='assets'){
@@ -90,7 +90,7 @@ async function main(){
   }else if(command==='publish'){
     const approval=await load(opts.approval);
     for(const a of m.albums){const r=await load(path.join(a.dir,'发布素材清单.json'));const hashes=Object.fromEntries(r.files.map(x=>[x.path,x.sha256]));const app=approval.albums.find(x=>x.episode===a.episode);
-      if(!app?.approved||!app.head_only||JSON.stringify(app.asset_hashes)!==JSON.stringify(hashes))throw Error('Visual approval must match CURRENT five asset hashes');
+      if(!app?.approved||!(app.portrait_reviewed||app.head_only)||JSON.stringify(app.asset_hashes)!==JSON.stringify(hashes))throw Error('Visual approval must match CURRENT five asset hashes');
       await json(path.join(a.dir,'发布素材复核.json'),{...app,role:a.role,human_score:null});
       const pf=await new Promise((res,rej)=>execFile('python',['-X','utf8',path.join(HERE,'../../lyzbcy-sticker-publisher/scripts/web_preflight.py'),'--episode-dir',a.dir,'--role',a.role],{encoding:'utf8',windowsHide:true},(e,o,err)=>e?rej(Error(err+' '+o)):res(o)));await log('preflight_passed',{name:a.name,result:JSON.parse(pf)});
     }

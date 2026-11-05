@@ -8,13 +8,13 @@
 
 使用 ../lyzbcy-sticker-creator/scripts/web_publish_assets.py，复用现有一键制作表情包的成熟横幅布局、正面大头封面及本弹赞赏图算法；脚本直接导入同仓库当前引擎；不调用生图模型。
 
-命令：python ../lyzbcy-sticker-creator/scripts/web_publish_assets.py --episode-dir <本弹目录> --head-source <本弹纯头部正面素材> --banner-sources <本弹无字图1> <本弹无字图2> <本弹无字图3> --tip-source <本弹成品>。
+命令：python ../lyzbcy-sticker-creator/scripts/web_publish_assets.py --episode-dir <本弹目录> --head-source <本弹当弹成品自然头肩近景> --banner-sources <本弹无字图1> <本弹无字图2> <本弹无字图3> --tip-source <本弹成品>。
 
 - 每弹都重新渲染横幅750×400、封面240×240、图标50×50、赞赏引导939×701、赞赏致谢939×939；后两张在本弹「赞赏图」目录。不能用共享固定赞赏页作为静默回退，也不允许赞赏图生成失败后仍进入提交。
 - 横幅只选本套当前角色、同服装/风格的现有无字素材，无变形。优先读取 header_sources.json、原图/_noword 或本弹已保存的参考图；不能通过排序文件名猜槽位。含短字的成品不直接作横幅源。缺素材先检查本地来源和裁切，不自动追加生图。
-- 头像只能从当弹生成的16张表情中选取，再截完整头部；记录panel_index、源图与裁切SHA及审阅polygon。不得复用base或其他弹头像作为回退。未知或不合格裁切停下修正，不追加头像生图。封面调用当前make_big_head_cover；图标由同封面缩50。
+- 头像只能从当弹生成的16张表情中选取，做自然方形大头近景，保留肩臂及上半身；记录panel_index、源图与裁切SHA及取景head_rect。不得复用base或其他弹头像作为回退。未知或不合格裁切停下修正，不追加头像生图。封面调用当前make_big_head_cover；图标由同封面缩50。
 
-- 角色贴纸可以有白边；商店图标/封面另用无白边、透明底纯头部源。用成熟make_big_head_cover构图，图标与封面同图缩50像素；在真实50像素尺寸和放大图中都查看，不能只看存在或尺寸。
+- 角色贴纸可以有白边；商店图标/封面另用来自当弹成品的透明底自然头肩近景。用成熟make_big_head_cover构图，图标与封面同图缩50像素；在真实50像素尺寸和放大图中都查看，不能只看存在或尺寸。
 - 直接使用当前引擎的赞赏图渲染器，不复制字体/渲染实现。现行实现支持Windows微软雅黑/黑体；无字体时脚本阻断，不能提交无字卡片。跨平台字体支持应修主引擎后统一获得，不另养分支。
 - 旧素材先备份；明确要替换时加 --replace。脚本在修复记录中保留旧图并写发布素材清单.json，记录真实来源和SHA256。生成完必须视觉核对每张图实际是本套人物。
 
@@ -26,7 +26,7 @@
 
 ## 提交前检查
 
-运行 python scripts/web_preflight.py --episode-dir <本弹目录> --role 女人（按实际角色换参数）。先实际看图，再写发布素材复核.json：approved=true、role、head_only=true、asset_hashes（对应当前发布素材清单files），以及审阅证据和来源；这是AI视觉复核，不得冒充用户评分或平台审核。任何素材重做后旧SHA审阅失效。
+运行 python scripts/web_preflight.py --episode-dir <本弹目录> --role 女人（按实际角色换参数）。先实际看图，再写发布素材复核.json：approved=true、role、portrait_reviewed=true、asset_hashes（对应当前发布素材清单files），以及审阅证据和来源；这是AI视觉复核，不得冒充用户评分或平台审核。任何素材重做后旧SHA审阅失效。
 
 脚本检查数量、格式、尺寸、真实透明、重复哈希、介绍、本弹五项配套图、素材SHA与当前视觉复核的一致性；它不能自动证明头部/人物身份和图中文字正确，仍须Agent视觉检查。
 
@@ -62,3 +62,5 @@
 2026-11-05，613/614真实提审验证了当前页面SDK的L(uploadmedia)、bc(createSticker)、bb(updateStickerDraft)、b9(submitStickerDraft)、$(getStickerDraft)，缩图使用albumDetail-CmQ0RX5A.js的d。完整协议固化于scripts/web_sdk_publish.cjs，传输和异步轮询为web_bridge.cjs，由原creator/scripts/web_batch.cjs调用，不再逐轮重新下载分析bundle。动态加载当前页面主SDK并校验函数；版本不兼容则在写入前停止，回退页面观察，不猜接口。
 
 包含原图上传、原生120/240缩图、完整原图MD5映射、角色标签、五项配套ID；问号等标点在上传前移除，归一化后同名冲突或非1—4汉字阻断。每个创建/保存/提审意向经宿主原子写日志并ACK后才进行下一步；断连、超时或未知结果不盲重试。上传成功与业务ret0都须再精确ID回读Status2/3及全量同名唯一性，才能写待审核。
+
+2026-11-05 用户最新纠正：不要沿发丝、下巴精细抠头，不要把肩臂和上半身全部剪掉。选当弹表情做正常方形近景；仅清理独立文案/装饰，不追求孤立头部轮廓。原head_only字段兼容旧记录，当前审阅用portrait_reviewed=true，不能把含上半身的图虚写为纯头。

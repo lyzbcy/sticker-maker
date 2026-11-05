@@ -15,10 +15,10 @@ async function inputs(album) {
   if(proof.origin!=='current_album_sticker')throw Error('Head must come from this album sticker');
   const names=manifest.files.map(x=>meaning(x.meaning));
   if(manifest.files.length!==16 || new Set(names).size!==16)throw Error('16 distinct reviewed meanings required');
-  const make=async f=>{const b=await fs.readFile(path.join(root,f));return {name:path.basename(f),data:b.toString('base64'),md5:crypto.createHash('md5').update(b).digest('hex')};};
+  const make=async f=>{const b=await fs.readFile(path.join(root,f));return {name:path.basename(f),data:b.toString('base64'),md5:crypto.createHash('md5').update(b).digest('hex'),sha256:crypto.createHash('sha256').update(b).digest('hex')};};
   return {...album,description:(await fs.readFile(path.join(root,'介绍.txt'),'utf8')).trim(),
     assets:await Promise.all(['横幅/横幅.png','封面/封面.png','图标/图标.png','赞赏图/赞赏引导图.png','赞赏图/赞赏致谢图.png'].map(make)),
-    emojis:await Promise.all(manifest.files.map(async(x,i)=>({...await make(x.file),index:i+1,meaning:names[i]})))};
+    emojis:await Promise.all(manifest.files.map(async(x,i)=>{const image=await make(x.file);if(image.sha256!==x.sha256)throw Error('Sticker changed after visual review: '+x.file);return {...image,index:i+1,meaning:names[i]};}))};
 }
 function browserPublish(albums, jobKey) {
   return `const data=${JSON.stringify(albums)};const state=window[${JSON.stringify(jobKey)}];state.events=[];state.ack=0;

@@ -28,7 +28,7 @@ def main():
  inside=source.resolve().is_relative_to((r/'最终版').resolve())
  head=r/recipe['head_source']
  check(proof.get('origin')=='current_album_sticker' and inside and source.is_file() and sha(source)==proof.get('source_sha256') and sha(head)==proof.get('head_sha256'),'头像来自当弹成品并绑定当前源图哈希，非复用base头像')
- review=json.loads((r/'发布素材复核.json').read_text(encoding='utf-8'));check(review.get('approved') is True and review.get('role')==a.role and review.get('head_only') is True,'AI视觉复核与角色分类')
+ review=json.loads((r/'发布素材复核.json').read_text(encoding='utf-8'));check(review.get('approved') is True and review.get('role')==a.role and (review.get('portrait_reviewed') is True or review.get('head_only') is True),'AI大头构图视觉复核与角色分类')
  check(review.get('asset_hashes')=={x['path']:x['sha256'] for x in recipe['files']},'视觉复核对应当前素材而非旧图')
  result={'ok':not errors,'album':r.name,'role':a.role,'sticker_count':len(files),'checks':checks,'errors':errors,'submitted':False}
  (r/'投稿前校验.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8');print(json.dumps({'ok':not errors,'checks':len(checks),'errors':errors,'count':len(files),'role':a.role},ensure_ascii=False))

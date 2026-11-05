@@ -41,7 +41,7 @@ def assets(manifest,review):
             if dest.exists():raise FileExistsError(dest)
             (stage/f"{item['index']:02d}.png").rename(dest);item['meaning']=label;item['file']=str(dest.relative_to(root))
         write(root/'成品清单.json',m);write(root/'meanings.json',{str(i+1):s for i,s in enumerate(r['meanings'])})
-        head=crop_head(root,r['head_index'],r['head_polygon'])
+        head=crop_head(root,r['head_index'],r.get('head_polygon'),r.get('head_rect'),r.get('caption_regions'))
         (root/'介绍.txt').write_text(r['description'],encoding='utf-8')
         run('web_publish_assets.py','--episode-dir',root,'--head-source',head,'--banner-sources',head,'--tip-source',root/m['files'][r.get('tip_index',r['head_index'])-1]['file'])
     return board(manifest,True)
