@@ -75,11 +75,11 @@ async function generate(m,manifestFile,log,bridge){
   while(pending.size&&Date.now()<deadline){
     for(const a of wave.filter(x=>pending.has(x.episode))){
       await bridge.attach(a.tabId);
-      const info=await bridge.read(`({url:location.href,image:[...document.images].filter(x=>x.alt==='已生成图像 1'&&x.naturalWidth>=800).map(x=>({w:x.naturalWidth,h:x.naturalHeight}))[0]})`);
+      const info=await bridge.read(`({url:location.href,image:[...document.images].filter(x=>x.alt==='已生成图像 1'&&Math.min(x.naturalWidth,x.naturalHeight)>=256&&Math.max(x.naturalWidth,x.naturalHeight)>=800).map(x=>({w:x.naturalWidth,h:x.naturalHeight}))[0]})`);
       a.conversationUrl=info.url;
       if(!info.image)continue;
       a.imageReadyAt=Date.now();await log('image_ready',{episode:a.episode,generation_observed_ms:a.imageReadyAt-a.sentAt,...info.image});
-      const key='__stickerDownload';await bridge.job(key,`const im=[...document.images].find(x=>x.alt==='已生成图像 1'&&x.naturalWidth>=800);const blob=await(await fetch(im.src)).blob();return await new Promise(resolve=>{const reader=new FileReader;reader.onload=()=>resolve({data:reader.result,type:blob.type,size:blob.size});reader.readAsDataURL(blob)});`);
+      const key='__stickerDownload';await bridge.job(key,`const im=[...document.images].find(x=>x.alt==='已生成图像 1'&&Math.min(x.naturalWidth,x.naturalHeight)>=256&&Math.max(x.naturalWidth,x.naturalHeight)>=800);const blob=await(await fetch(im.src)).blob();return await new Promise(resolve=>{const reader=new FileReader;reader.onload=()=>resolve({data:reader.result,type:blob.type,size:blob.size});reader.readAsDataURL(blob)});`);
       const downloaded=(await bridge.wait(key,{timeout:20000,interval:150})).result;
       const raw=Buffer.from(downloaded.data.split(',')[1],'base64');await fs.writeFile(path.join(a.dir,'原图/grid_4x4.png'),raw);
       const responseText=await bridge.eval(`document.body.innerText.slice(-24000)`);

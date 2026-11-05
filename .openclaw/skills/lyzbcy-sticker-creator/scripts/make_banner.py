@@ -141,6 +141,11 @@ def maybe_remove_flat_opaque_background(image):
         image = image.convert('RGBA')
 
     alpha = image.getchannel('A')
+    # Existing transparency is authoritative. A tight portrait can fill its
+    # bounding box while still having a transparent background; recoloring it
+    # would erase pale skin and clothing sampled from the corners.
+    if alpha.getextrema()[0] < 255:
+        return image
     soft_bbox = alpha.point(lambda a: 255 if a > 16 else 0).getbbox()
     solid_bbox = alpha.point(lambda a: 255 if a > 180 else 0).getbbox()
     if not soft_bbox or not solid_bbox:

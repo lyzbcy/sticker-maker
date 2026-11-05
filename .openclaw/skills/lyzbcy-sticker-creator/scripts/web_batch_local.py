@@ -56,8 +56,8 @@ def preliminary(manifest):
         run('web_publish_assets.py','--episode-dir',root,'--head-source',head,'--banner-sources',head,'--tip-source',root/read(root/'成品清单.json')['files'][0]['file'])
     panels=Image.open(board(manifest)).convert('RGB')
     assets_image=Image.open(board(manifest,True)).convert('RGB')
-    combined=Image.new('RGB',(2080,2160),'#d5d5d5')
-    combined.paste(panels,(0,0));combined.paste(assets_image,(0,1080))
+    combined=Image.new('RGB',(max(panels.width,assets_image.width),panels.height+assets_image.height),'#d5d5d5')
+    combined.paste(panels,(0,0));combined.paste(assets_image,(0,panels.height))
     target=Path(manifest['logDir'])/'review-all.jpg';combined.save(target,quality=93);return str(target)
 def archive(manifest):
     from production_log import init_record,log_step_rich

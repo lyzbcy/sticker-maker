@@ -2,7 +2,8 @@ from pathlib import Path
 from PIL import Image,ImageDraw,ImageFont
 import json,html,sys
 r=Path(sys.argv[1])
-d=r/'成品'
+variant=sys.argv[2] if len(sys.argv)>2 else '成品'
+d=r/variant
 report=json.loads((d/'核验与防抖.json').read_text(encoding='utf-8'))
 items=[]
 for a in report['animations']:
@@ -12,8 +13,8 @@ for a in report['animations']:
   durations=[]
   with Image.open(gif) as im:
    for j in range(im.n_frames): im.seek(j);durations.append(im.info['duration'])
-  tracks[k]={'folder':'成品/'+folder+a['meaning'],'durations':durations}
- items.append({'name':a['meaning'],'file':'成品/'+a['file'],'frames':a['actual_source_frames'],'tracks':tracks})
+  tracks[k]={'folder':variant+'/'+folder+a['meaning'],'durations':durations}
+ items.append({'name':a['meaning'],'file':variant+'/'+a['file'],'frames':a['actual_source_frames'],'tracks':tracks})
 font=ImageFont.truetype('C:/Windows/Fonts/msyh.ttc',20)
 board=Image.new('RGB',(1000,1120),'#f2eee5');draw=ImageDraw.Draw(board)
 for i,a in enumerate(report['animations']):
