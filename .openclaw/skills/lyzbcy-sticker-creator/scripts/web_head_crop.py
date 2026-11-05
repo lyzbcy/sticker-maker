@@ -1,4 +1,4 @@
-"""First panel, fixed central 80% square. No text erasing or contour masks."""
+"""First panel, fixed top-center 80% square. No erasing or contour masks."""
 import argparse,hashlib,json
 from pathlib import Path
 from PIL import Image
@@ -6,7 +6,7 @@ from web_edge_finish import clean_key_edges
 
 def center_square(image,fraction=.8):
     if not .5<=fraction<=1:raise ValueError('Invalid square fraction')
-    side=round(min(image.size)*fraction);x=(image.width-side)//2;y=(image.height-side)//2
+    side=round(min(image.size)*fraction);x=(image.width-side)//2;y=0
     box=(x,y,x+side,y+side);return image.crop(box),box
 
 def crop_head(root,index=1):
@@ -28,8 +28,8 @@ def crop_head(root,index=1):
     crop.resize((240,240),Image.Resampling.LANCZOS).save(target)
     proof={'source':item['file'],'panel_index':1,'source_sha256':digest(sticker),
            'pixel_source':str(raw.relative_to(root)),'pixel_source_sha256':digest(raw),
-           'grid_source_sha256':digest(grid),'method':'first_panel_center_80',
-           'crop_fraction':.8,'crop_box':list(box),'tile_size':list(tile.size),
+           'grid_source_sha256':digest(grid),'method':'first_panel_fixed_square_80',
+           'crop_fraction':.8,'crop_anchor':'top_center','crop_box':list(box),'tile_size':list(tile.size),
            'head_sha256':digest(target),'origin':'current_album_sticker',
            'caption_erasing':False,'head_contour_mask':False,'adaptive_recrop':False,
            'normal_chroma_key_only':True,'generation_calls':0}

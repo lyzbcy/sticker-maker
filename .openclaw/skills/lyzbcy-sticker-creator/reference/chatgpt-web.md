@@ -1,67 +1,33 @@
-## 第一格固定80%头像（2026-11-05最新规则）
+# ChatGPT网页制作：原Sticker Maker分支
 
-首次生图即约定第1格为正面大头胸像：完整头发、脸、自然肩臂放入中央80%方框，文案只放在最底部92%—99%的字幕带，中央头像区无字无装饰。其余15格继续主题/场景/人群自由创作。双人时第一格两人并肩近景。
+只更新本仓库的现有creator/publisher skill和引擎，不安装独立网页包，不复制第二套素材/算法。概率与服装只读本skill config.yaml；单人85%、双人15%，单人条件星星布丁75%、捞鱼25%，双人为二者。
 
-生成后从原始4×4整图等分取第一格，保留原始格子坐标，不使用按主体收紧/重新居中的切图结果；普通去洋红后，固定裁中央80%正方形并缩为240封面，同图缩50图标。禁止文字擦除、轮廓mask、连通域去碎片、发丝修补、选另一格或二次启发式裁头。保留取景内全部原像素，caption_erasing/head_contour_mask/adaptive_recrop均false。
+## 第一格固定方框头像
 
-web_head_crop.py已移除旧抠字/抠轮廓实现，只支持第1格。若实际生成未遵守预留区，在已有整图复核中记录不合格；不可暗中改坐标、换图或抠字冒充固定裁剪成功。没有额外的头像选图识图环节，但原有32格身份、含义、排版及发布素材复核仍合并进行。
+首次生图即约定第1格为正面头肩胸像，可独立发送；完整头发、脸与自然肩臂放在顶部居中80%方框内，文案只在底部92%—99%字幕带。双人时第一格两人并肩近景。其余15格只限定主题、场景、人群，让模型发挥，不强制故事。普通贴纸保留白描边。
 
-批处理begin自动生成首格头像与五项配套图，输出review-all.jpg（32张表情＋两套配套图）。Agent只需一份review.json：albums包含episode、16项meanings、description，不再填head_index/head_rect/polygon/caption_regions。assets仅更名并更新来源路径，所有已审素材字节保持不变。随后以当前SHA写portrait_reviewed批准，执行原SDK publish；无需第二次为选头像看图。
+头像始终取原始整图的第一格，坐标不按人物收紧、不重新居中：side=round(min(w,h)*0.8)，x=(w-side)//2，y=0。仅沿既有流程去洋红，再按方框裁剪和等比缩放；不抠字、不删白边、不做轮廓mask/连通域清理、不选其他格、不二次启发式裁头。240封面同图缩50图标。当前裁剪函数和像素保持测试在scripts/web_head_crop.py与test_web_head_crop.py。
 
-# ChatGPT网页制作：Sticker Maker现有创作分支
+如果生成未遵守预留区，记录失败，不暗改坐标、换格或擦字冒充成功。617/618首次中心80%仍带字幕，两弹已统一改为顶部居中80%；这是固定规则的全局修订，详见 [实测](../../../../docs/first-panel-avatar-20261105.md)。
 
-唯一维护源为 sticker-maker 仓库的现有 creator/publisher skill 与引擎。先更新整个仓库，再读取对应skill；不单独安装旧 wechat-sticker-web ZIP。素材目录中的入口仅指回本仓库，不维护第二套算法/概率/角色图片。
+## 执行三个阶段
 
-## 准备与生成
+1. node scripts/web_batch.cjs begin --config <config.json>
 
-1. 微信本人后台读取完整本系列名单，含草稿与待审，核对账号、最大编号和同名，记录 source_url、checked_at（带时区）、max_episode、verification_note。未知结果先查回执，已有同名目录续接不覆盖。
-2. 当前 creator/config.yaml 是本分支唯一概率与服装配置：单人85%、双人15%，单人条件星星布丁75%、捞鱼25%，双人二者。角色图片直接取现有素材，不在skill再打包一份。
-3. 在本skill目录执行：
+config含outputRoot、assetsRoot、logDir、accountAnchor和两项themes（theme/scenario/audience）。从查号前开始计时。脚本读取本人后台完整List（含草稿待审）及已知账号作品ID，确定最大编号后用web_prepare.py抽样、复制实际base并记SHA。已有同名目录或未知结果先续接核验，不能覆盖/重生。微信标签关闭时自动打开官方入口，登录失效则停在登录状态，不导出Cookie。
 
-```text
-python scripts/web_prepare.py --output-root <素材根> --assets-root <现有base图片目录> --evidence <平台查号.json>
-```
+通过ChatGPT真实附件输入上传base，确认加载后发送；两弹分别新对话并行等待图像。首次响应同时要求16项index/text/meaning JSON，只作为候选，不能当图片真值。下载本次生成原图，保存聊天URL与SHA；脚本调用当前引擎切图/去底，自动生成首格头像和五项本弹配套图，输出review-all.jpg。网页操作和生成细节见 [质量规范](chatgpt-web-quality.md)。
 
-证据须1小时内，保存真实随机值、实际base与SHA。平台编号与本地实验冲突时先核实，不把本地最高号当平台结果。
+2. Agent在同一张review-all.jpg核对32格身份、文字、切图边缘及两套五项配套图，写review.json：albums内每项只有episode、16个meanings、description，不再填head_index/head_rect/polygon/caption_regions。然后执行 node scripts/web_batch.cjs assets --manifest <manifest.json> --review <review.json>。
 
-4. 在ChatGPT网页上传所选base，确认附件加载。只框定主题、使用场景、使用人群，其余动作/道具/短字交给模型发挥。默认4×4、16张可独立发的表情、连续白描边、纯洋红背景（角色含洋红则绿色）。仅用户明确要求时走故事分支。
-5. 首次生成提示词同时要求生成后在同一响应输出16项JSON：index（左到右、上到下）、text（实际短字，无字为空）、meaning（建议含义）。JSON只作候选，不作为图片真值；未给JSON时在已有审图中记录，不为表格单独重生。
-6. 下载本次生成原图至 原图/grid_4x4.png，记录聊天URL和SHA；不取附件/截图代替。更详细网页约束见 [质量细节](chatgpt-web-quality.md)。
+此阶段规整词义标点（啊？→啊）、检测重复并更名，更新头像与素材来源路径；已审素材字节保持不变，无额外头像选图识图。发现实际质量问题仍需处理并计时，不能拿脚本尺寸检查冒充视觉合格。
 
-## 后处理与审图
+3. 将当前发布素材清单SHA写入approval.json：逐弹episode、approved、portrait_reviewed、asset_hashes，human_score=null。node scripts/web_batch.cjs publish --manifest <manifest.json> --approval <approval.json>。
 
-在原本就需要的整图审阅中，同时核对角色、16格完整性、文字、候选JSON顺序；写 meanings.json（1—16）。不要固定再做一次识图调用；异常小字才局部放大/按需识读。
+发布使用原 [publisher SDK分支](../../lyzbcy-sticker-publisher/reference/wechat-web.md)：4并发上传、创建/保存/提审前宿主原子日志ACK、32张原始MD5/词义/顺序及五项配套ID校验、每弹仅提交一次，最后按精确ID及全量同名唯一性回读。sdk-journal.json存在时拒绝重放，超时/未知先核销。不可把上传、保存、待审核当审核通过或上架。
 
-```text
-python scripts/web_process_grid.py --episode-dir <本弹> --meanings <meanings.json> --outline-px 2
-```
+## 来源与计时
 
-直接导入当前引擎grid_cutter与ChromaKeyProvider，不留复制快照。新增白边/边缘去色辅助只维护在 scripts/web_edge_finish.py。观察白/浅灰/深色底效果；alpha合格不等于边缘合格。避免叠加过厚白边，16图词义与顺序复核合并进行。旧最终版非空时拒绝覆盖，先备份并明确修复目标。
+后处理、赞赏图和横幅继续调用同仓库当前引擎及现有脚本，禁止携带复制快照；本弹配套图每弹本地重渲染，不复用共享赞赏页。头像必须来自当弹第一格，不能复用base或其他弹。
 
-## 配套图与真实投稿
-
-从当弹16张成品中选一张正面、完整、无挡脸动作的表情，再用 scripts/web_head_crop.py 按已审方形取景截头。头像只能从当弹生成的16张表情中选取，做自然方形大头近景，保留肩臂及上半身；记录panel_index、源图与裁切SHA及取景head_rect。不得复用base或其他弹头像作为回退。未知或不合格裁切停下修正，不追加头像生图。使用当前引擎make_big_head_cover，240封面直接缩50图标；横幅调用现有make_banner，赞赏图调用当前AssetsStage。不得复制函数或退回旧版make_cover全身缩放。
-
-```text
-python scripts/web_publish_assets.py --episode-dir <本弹> --head-source <现有纯头源> --banner-sources <本弹无字源> --tip-source <本弹成品>
-```
-
-脚本源路径须在本弹内。替换先备份并加--replace；五项配套图每弹本地重新渲染，禁止固定共享赞赏页。现行引擎赞赏文字字体支持Windows微软雅黑/黑体；其他系统无可用字体时明确阻断，不复制渲染器或静默去字。
-
-完成当前素材SHA视觉复核后，交给原 [publisher微信网页分支](../../lyzbcy-sticker-publisher/reference/wechat-web.md)，按授权实际提审并精确ID回读。36项预检、上传成功或页面保存都不能冒充已上线。
-
-## 实测边界
-
-609/610原ID修复、611/612新投稿已真实回读待审核。611追加生图0次，未代表0 token或量化提速，审核通过与Grok环境仍需单独验证。历史实测见 [回归记录](../../../../docs/wechat-web-skill-pilot-20261105.md)。
-
-## 两弹计时批处理（613/614复盘后）
-
-优先用 scripts/web_batch.cjs，三个阶段为 begin → assets → publish；均在此原skill内，复用当前引擎。begin自动查号、抽样、并行等待两弹网页生成、下载原图、编号切图、输出一次合并审图板。Agent审阅32格后一次写review.json：albums内每项episode、16个meanings、head_index、归一化head_rect（保留完整头肩及自然上半身）、tip_index、description。assets归一化含义词（啊？→啊）、更名、当弹截头、生成五项配套图和合并素材总览。Agent看完后写approval.json，逐弹approved/portrait_reviewed/asset_hashes绑定当前发布素材清单，再执行publish。
-
-命令：node scripts/web_batch.cjs begin --config <config.json>；node scripts/web_batch.cjs assets --manifest <manifest.json> --review <review.json>；node scripts/web_batch.cjs publish --manifest <manifest.json> --approval <approval.json>。config为outputRoot、assetsRoot、logDir、accountAnchor及两项themes（theme/scenario/audience）。全过程从begin查号前计时，包含审图和编排等待；开发优化时间另报，不从运行计时中扣去异常。begin未知时读manifest续接，不重新生成。publish的sdk-journal.json存在时拒绝新写入，先按日志ID回读。
-
-禁止在每个SDK步骤间回到Agent手写下一条请求。SDK流水线自动上传、落盘意向、创建、保存、校验32张原始MD5/词义/顺序与五项配套图、每弹仅提交一次，再按ID和同名唯一性回读。浏览器异步任务用启动+轮询，不经桥接直接await长Promise；上传4并发，记录实际完成时间。目标约5分钟是实测目标，不是对外部生图耗时的保证。
-
-2026-11-05 用户最新纠正：不要沿发丝、下巴精细抠头，不要把肩臂和上半身全部剪掉。选当弹表情做正常方形近景；仅清理独立文案/装饰，不追求孤立头部轮廓。原head_only字段兼容旧记录，当前审阅用portrait_reviewed=true，不能把含上半身的图虚写为纯头。
-
-本轮优化与真实计时见 [两弹批处理回归](../../../../docs/web-batch-optimization-20261105.md)。SDK阶段已降至29秒，全程14分1秒，约5分钟目标尚未达成。
+全程从首次启动到最终回读，保留登录恢复、失败、补救、审阅和Agent编排等待。另报连续生产用时可以，但不得替代总时长。617/618完整6分31秒；含首次入口失败与补救93秒，恢复后生产4分58秒，SDK29秒。首次头像参数全局修订及一次额外方框验证也在日志内；不保证外部生图耗时。

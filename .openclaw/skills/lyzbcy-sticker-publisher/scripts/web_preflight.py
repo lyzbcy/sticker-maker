@@ -28,7 +28,7 @@ def main():
  inside=source.resolve().is_relative_to((r/'最终版').resolve())
  head=r/recipe['head_source']
  check(proof.get('origin')=='current_album_sticker' and inside and source.is_file() and sha(source)==proof.get('source_sha256') and sha(head)==proof.get('head_sha256'),'头像来自当弹成品并绑定当前源图哈希，非复用base头像')
- if proof.get('method')=='first_panel_center_80':
+ if proof.get('method') in ('first_panel_center_80','first_panel_fixed_square_80'):
   raw=r/proof['pixel_source'];grid=r/'原图/grid_4x4.png'
   check(proof.get('panel_index')==1 and proof.get('crop_fraction')==.8 and proof.get('caption_erasing') is False and proof.get('head_contour_mask') is False and proof.get('adaptive_recrop') is False and sha(raw)==proof.get('pixel_source_sha256') and sha(grid)==proof.get('grid_source_sha256'),'第一格原始坐标固定80%裁剪，无抠字无轮廓修剪')
  review=json.loads((r/'发布素材复核.json').read_text(encoding='utf-8'));check(review.get('approved') is True and review.get('role')==a.role and (review.get('portrait_reviewed') is True or review.get('head_only') is True),'AI大头构图视觉复核与角色分类')
