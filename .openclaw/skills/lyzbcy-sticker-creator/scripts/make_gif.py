@@ -31,6 +31,48 @@ except ImportError:
     exit(1)
 
 
+def encode_rgba_frames(frames, output_path, durations):
+    """Encode the supplied timeline with one palette; never invent extra frames."""
+    if len(frames) < 2 or len(frames) != len(durations):
+        raise ValueError('At least two frames and matching durations required')
+    if any(d <= 0 or d % 10 for d in durations):
+        raise ValueError('GIF durations must be positive multiples of 10 ms')
+    frames = [f.convert('RGBA') for f in frames]
+    w, h = frames[0].size
+    if any(f.size != (w, h) for f in frames):
+        raise ValueError('Use one common canvas before encoding')
+    atlas = Image.new('RGB', (w * len(frames), h), 'white')
+    for i, f in enumerate(frames):
+        atlas.paste(f, (i * w, 0), f)
+    palette = atlas.quantize(colors=255, method=Image.Quantize.MEDIANCUT)
+    encoded = []
+    for f in frames:
+        rgb = Image.new('RGB', f.size, 'white')
+        rgb.paste(f, mask=f.getchannel('A'))
+        q = rgb.quantize(palette=palette, dither=Image.Dither.NONE)
+        q.paste(255, mask=f.getchannel('A').point(lambda a: 255 if a < 128 else 0))
+        q.info['transparency'] = 255
+        encoded.append(q)
+    dest = Path(output_path)
+    if dest.exists():
+        raise FileExistsError(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    encoded[0].save(dest, save_all=True, append_images=encoded[1:],
+                    duration=durations, loop=0, disposal=2, transparency=255,
+                    optimize=False)
+    actual = []
+    with Image.open(dest) as gif:
+        for i in range(gif.n_frames):
+            gif.seek(i)
+            actual.append(gif.info['duration'])
+            if gif.convert('RGBA').getpixel((0, 0))[3] != 0:
+                raise ValueError('Transparent corner lost after encoding')
+        if sum(actual) != sum(durations) or gif.info.get('loop') != 0:
+            raise ValueError('Encoded timeline mismatch')
+    return {'frames': len(actual), 'durations_ms': actual, 'total_ms': sum(actual),
+            'size': [w, h], 'bytes': dest.stat().st_size, 'loop': 0}
+
+
 def create_loop_gif(frame_dir: str, output_path: str, duration: int = 100):
     """
     将帧图拼接成循环GIF

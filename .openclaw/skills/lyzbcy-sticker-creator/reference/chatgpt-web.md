@@ -1,5 +1,7 @@
 # ChatGPT网页制作：原Sticker Maker分支
 
+手绘动态GIF的一图多组实验，另读 [批量连续帧与防抖试制](gif-multisheet-trial.md)。本页后续固定16格静态制作/PNG投稿流程不直接套用于GIF。
+
 只更新本仓库的现有creator/publisher skill和引擎，不安装独立网页包，不复制第二套素材/算法。概率与服装只读本skill config.yaml；单人85%、双人15%，单人条件星星布丁75%、捞鱼25%，双人为二者。
 
 ## 第一格固定方框头像
