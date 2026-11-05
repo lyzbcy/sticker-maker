@@ -60,12 +60,13 @@ async function publish(bridge, manifest, {log=async()=>{}}={}) {
   const key='__stickerPublish'+crypto.randomBytes(5).toString('hex');let seen=0;
   await json(journal,{state:'intent',at:new Date().toISOString(),albums:albums.map(a=>a.name),key});
   await bridge.attach(manifest.platformTabId);
+  await bridge.call('cdp',{method:'Emulation.setFocusEmulationEnabled',params:{enabled:true}});
   await bridge.job(key,browserPublish(albums,key));
   try {
     const state=await bridge.wait(key,{timeout:180000,interval:200,onTick:async s=>{
       if((s?.events?.length||0)>seen){await json(journal,s);for(const e of s.events.slice(seen))await log(e.event,e);seen=s.events.length;await bridge.eval(`window[${JSON.stringify(key)}].ack=${seen}`);}
     }});
-    await json(journal,state);return state;
+    await json(journal,state);await bridge.call('cdp',{method:'Emulation.setFocusEmulationEnabled',params:{enabled:false}});return state;
   } catch(e){await log('publish_unknown_or_failed',{message:String(e),journal});throw e;}
 }
 module.exports={meaning,inputs,browserPublish,publish};

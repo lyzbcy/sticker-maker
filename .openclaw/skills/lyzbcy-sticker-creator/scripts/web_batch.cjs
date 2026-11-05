@@ -11,7 +11,7 @@ async function begin(config,manifestFile,log,bridge){
   const tabs=(await bridge.call('list_browser_tabs')).tabs;
   let platform=tabs.find(t=>t.url.includes('/mmemoticonwebnode-bin/pages/stickerPage/detail'))||tabs.find(t=>t.url.startsWith('https://sticker.weixin.qq.com/'));
   if(!platform)throw Error('Open the logged-in WeChat platform before starting');
-  await bridge.attach(platform.tabId);await bridge.job('__stickerList',`return await(await fetch('/cgi-bin/mmemoticon-bin/home?lang=zh_CN&f=json')).json();`);
+  await bridge.attach(platform.tabId);await bridge.call('cdp',{method:'Emulation.setFocusEmulationEnabled',params:{enabled:true}});await bridge.job('__stickerList',`return await(await fetch('/cgi-bin/mmemoticon-bin/home?lang=zh_CN&f=json')).json();`);
   const list=(await bridge.wait('__stickerList',{timeout:20000,interval:200})).result;
   if(list.base_resp?.ret!==0||!Array.isArray(list.List))throw Error('WeChat login required');
   if(config.accountAnchor&&!list.List.some(x=>x.StikerID===config.accountAnchor))throw Error('Wrong WeChat account');
