@@ -12,6 +12,7 @@ def main():
     p.add_argument('--episode-dir',required=True,type=Path)
     p.add_argument('--meanings',required=True,type=Path)
     p.add_argument('--outline-px',type=float,default=2)
+    p.add_argument('--fixed-grid',action='store_true',help='Use nominal cell ownership with current engine component crops after a confirmed gutter failure')
     p.add_argument('--key',choices=['#ff00ff','#00ff00'],default='#ff00ff')
     args=p.parse_args(); root=args.episode_dir
     meanings=json.loads(args.meanings.read_text(encoding='utf-8'))
@@ -22,7 +23,7 @@ def main():
     if not grid.is_file(): raise FileNotFoundError(grid)
     final=root/'最终版'; final.mkdir(exist_ok=True)
     if any(final.iterdir()): raise FileExistsError('Final directory must be empty; preserve earlier results')
-    paths,notes=cut_grid(grid,4,root/'.cache/panels')
+    paths,notes=cut_grid(grid,4,root/'.cache/panels',fixed_grid=args.fixed_grid)
     keyed=root/'原图_透明ChromaKey';keyed.mkdir(exist_ok=True)
     records=[]
     sheet=Image.new('RGB',(1040,1040),'#dedede')

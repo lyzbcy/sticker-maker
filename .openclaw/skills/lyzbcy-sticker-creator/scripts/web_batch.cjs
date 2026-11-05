@@ -43,29 +43,35 @@ async function begin(config,manifestFile,log,bridge){
     m.albums.push({episode:n,name:s.episode_name,dir:o.output_dir,characters:s.characters,role:s.characters.length===2?'人物合辑':s.characters[0]==='捞鱼'?'男人':'女人',bases:s.bases,...config.themes[i]});
   }
   await json(manifestFile,m);await log('prepared',{max,albums:m.albums.map(a=>({name:a.name,characters:a.characters}))});
+  return generate(m,manifestFile,log,bridge);
+}
+async function generate(m,manifestFile,log,bridge){
   // Two image generations at a time: preserve the proven concurrency while
   // allowing completed groups to be visually reviewed during the next wave.
   for(let offset=0;offset<m.albums.length;offset+=2){
+  if(m.reviewGroups.some(g=>g.group===String(offset/2+1).padStart(2,'0')))continue;
   const wave=m.albums.slice(offset,offset+2);
   for(const a of wave){
+    if(a.sentAt)continue; // Resume the original conversation; never implicitly resend.
     a.sendStarted=Date.now();const t=await bridge.call('navigate',{url:'https://chatgpt.com/',newTab:true,group_title:'两弹表情包提效复测'});a.tabId=t.tabId;
     await bridge.call('cdp',{method:'Emulation.setFocusEmulationEnabled',params:{enabled:true}});
     let ready=false;
     for(let i=0;i<50;i++){if(await bridge.eval(`!!document.querySelector('input[type=file][accept="image/*"][multiple]')&&!!document.querySelector('[contenteditable="true"]')`)){ready=true;break;}await sleep(200);}
     if(!ready)throw Error('ChatGPT login/composer not ready');
     a.prompt=prompt(a);await fs.writeFile(path.join(a.dir,'生图提示词.txt'),a.prompt);
-    await bridge.call('upload',{selector:'input[type=file][accept="image/*"][multiple]',files:a.bases.map(b=>path.join(a.dir,b.path))});
-    await bridge.call('fill',{selector:'[contenteditable="true"]',value:a.prompt});
+    const composer=await bridge.eval(`document.querySelector('form[data-composer-placement="thread"]')?'form[data-composer-placement="thread"]':'form[data-composer-placement="home"]'`);
+    await bridge.call('upload',{selector:composer+' input[type=file][accept="image/*"][multiple]',files:a.bases.map(b=>path.join(a.dir,b.path))});
+    await bridge.call('fill',{selector:composer+' [contenteditable="true"]',value:a.prompt});
     let sent=false;
     for(let i=0;i<80;i++){
-      const usable=await bridge.eval(`(()=>{const b=document.querySelector('button[aria-label="发送"],button[data-testid="send-button"]');return !!b&&!b.disabled&&!document.querySelector('[role="progressbar"]')})()`);
-      if(usable){await bridge.call('click',{selector:'button[aria-label="发送"],button[data-testid="send-button"]'});a.sentAt=Date.now();sent=true;break;}
+      const usable=await bridge.eval(`(()=>{const f=document.querySelector(${JSON.stringify(composer)});const b=f?.querySelector('button[aria-label="发送"],button[data-testid="send-button"]');return !!b&&!b.disabled&&!f.querySelector('[role="progressbar"]')&&f.querySelectorAll('[data-composer-attachments] img').length===${a.bases.length}})()`);
+      if(usable){await bridge.call('click',{selector:composer+' button[aria-label="发送"],'+composer+' button[data-testid="send-button"]'});a.sentAt=Date.now();sent=true;break;}
       await sleep(250);
     }
     if(!sent)throw Error('Attachment/send not ready; prompt not resent');
     await log('prompt_sent',{episode:a.episode,send_ms:a.sentAt-a.sendStarted});await json(manifestFile,m);
   }
-  const pending=new Set(wave.map(a=>a.episode));const deadline=Date.now()+360000;
+  const pending=new Set(wave.filter(a=>!a.processMs).map(a=>a.episode));const deadline=Date.now()+360000;
   while(pending.size&&Date.now()<deadline){
     for(const a of wave.filter(x=>pending.has(x.episode))){
       await bridge.attach(a.tabId);
@@ -100,7 +106,7 @@ async function begin(config,manifestFile,log,bridge){
 }
 async function main(){
   const [command,...argv]=process.argv.slice(2);
-  if(!command||argv.includes('--help')||command==='--help'){console.log(JSON.stringify({ok:true,data:{usage:'node web_batch.cjs begin --config config.json | assets --manifest manifest.json --review review.json | publish --manifest manifest.json --approval approval.json',options:['--daemon-url URL'],note:'All paths use the existing skills/repo. No generation or submission retry on unknown outcomes.'}}));return;}
+  if(!command||argv.includes('--help')||command==='--help'){console.log(JSON.stringify({ok:true,data:{usage:'node web_batch.cjs begin --config config.json | resume --manifest manifest.json | assets --manifest manifest.json --review review.json | publish --manifest manifest.json --approval approval.json',options:['--daemon-url URL'],note:'All paths use the existing skills/repo. No generation or submission retry on unknown outcomes.'}}));return;}
   const opts={};for(let i=0;i<argv.length;i+=2)opts[argv[i].replace(/^--/,'')]=argv[i+1];
   let m,config,manifestFile=opts.manifest;
   if(command==='begin'){config=await load(opts.config);config.startedAt=config.startedAt||Date.now();manifestFile=path.join(config.logDir,'manifest.json');await fs.mkdir(config.logDir,{recursive:true});try{await fs.access(manifestFile);throw Error('Manifest exists; resume instead of generating again');}catch(e){if(e.code!=='ENOENT')throw e;}}
@@ -108,6 +114,7 @@ async function main(){
   const logDir=config?.logDir||m.logDir;const log=async(event,data={})=>{await fs.appendFile(path.join(logDir,'events.jsonl'),JSON.stringify({at:new Date().toISOString(),event,...data})+'\n');if(event!=='bridge'){const {payload,response,...short}=data;console.log(JSON.stringify({ok:true,data:{event,...short,...(response?{businessRet:response.data?.baseResp?.ret}:{})}}));}};
   const bridge=new Bridge({url:opts['daemon-url'],log});let result;
   if(command==='begin'){await log('batch_started',{startedAt:config.startedAt});result=await begin(config,manifestFile,log,bridge);}
+  else if(command==='resume'){await log('generation_resumed',{original_started_at:m.startedAt});result=await generate(m,manifestFile,log,bridge);}
   else if(command==='assets'){
     const review=await load(opts.review);
     for(const a of review.albums)a.meanings=a.meanings.map(meaning);

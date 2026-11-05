@@ -18,9 +18,13 @@ config含outputRoot、assetsRoot、logDir、accountAnchor和1—10项themes（th
 
 通过ChatGPT真实附件输入上传base，确认加载后发送；按每组最多两弹分别新对话并行等待图像，组间顺序推进。首次响应同时要求16项index/text/meaning JSON，只作为候选，不能当图片真值。下载本次生成原图，保存聊天URL与SHA；脚本调用当前引擎切图/去底，自动生成首格头像和五项本弹配套图，按两弹一组输出review-groups/01..05/review-all.jpg，完成一组即写回manifest.reviewGroups。网页操作和生成细节见 [质量规范](chatgpt-web-quality.md)。
 
+附件、文本与发送按钮必须属于同一个当前composer（会话页thread优先，否则home）；发送前核对该composer内参考缩略图数量等于base数量，且没有上传进度。不能仅凭upload返回success或页面任意发送按钮可用就发送：624实测曾因此只发出文字，ChatGPT明确要求补传附件。若明确未收到附件，保留原响应证据，在原会话补传并按上述条件核验后发送续接文字；结果未知时不重发。生成阶段中断后执行 `node scripts/web_batch.cjs resume --manifest <manifest.json>`，跳过已有reviewGroup、已有切图和已发送请求，继续读取原会话并推进尚未发送的弹；总时钟不重置。
+
 2. Agent逐组在review-all.jpg核对32格身份、文字、切图边缘及两套五项配套图，可在下一组生成时复核已完成组，写review.json：albums内每项只有episode、16个meanings、description，不再填head_index/head_rect/polygon/caption_regions。然后执行 node scripts/web_batch.cjs assets --manifest <manifest.json> --review <review.json>。
 
 此阶段规整词义标点（啊？→啊）、检测重复并更名，更新头像与素材来源路径；已审素材字节保持不变，无额外头像选图识图。发现实际质量问题仍需处理并计时，不能拿脚本尺寸检查冒充视觉合格。
+
+切图恢复案例626：错误空带把中线识别到793（1254宽原图正常中线约627），造成混格。先把原成品、透明版、panels缓存和清单移入本弹.cache带时间戳备份，保留原图；再用同一web_process_grid.py加 `--fixed-grid` 调用现有引擎的等分归属＋完整连通域裁图。不能直接整格截取，跨格的手势/字幕会留下邻格碎片。恢复后重建该弹头像来源证明和配套（web_publish_assets.py --replace会备份旧配套），重新生成分组复核板、审查32格和10配套，再绑定新SHA。已有approved记录不得沿用。只在实际审图确认错误空带后启用，不全局替换默认内容感知切图。
 
 3. 将当前发布素材清单SHA写入approval.json：逐弹episode、approved、portrait_reviewed、asset_hashes，human_score=null。node scripts/web_batch.cjs publish --manifest <manifest.json> --approval <approval.json>。
 
@@ -37,3 +41,5 @@ config含outputRoot、assetsRoot、logDir、accountAnchor和1—10项themes（th
 617/618证明第一格预留＋顶部80%取景可省去头像选图与抠字。扩量保持该规则，只扩count，禁止写死做两弹后冒充完成。默认每组2弹生成，完成即输出审图板供Agent复核；候选含义来自同次响应且索引须完整1—16，仍由实际图复核，不能直接信任。生成结束后一次应用全部审核过的含义，SDK按2弹一组顺序提交并持久化回执。
 
 10弹目标按已确认的2弹约5分钟线性设为25分钟；计时从首次查号到最后10套唯一名称回读，包括所有失败与等待，不把准备补救从总时间中扣掉。发布成功、待审核、审核通过、上架分别记录。所有脚本与资料仍只维护在原仓库，不复制独立包。
+
+619—628首次十弹实测：查号前启动至最后提审核验22分31.422秒（含624漏附件及626错误空带补救），SDK十弹共144.246秒，10弹均真实提审待审核、每弹仅提交一次；随后全量List复核十名称唯一且ID一致。正常生图56.688—120.350秒，未稳定达到1分钟；分组复核延迟也非全部小于1分钟，不能用总目标达成冒充全部子目标达成。开发与事后沉淀另计，完整口径、故障与验证见 [十弹实测](../../../../docs/ten-album-web-trial-20261105.md)。

@@ -270,12 +270,15 @@ def solid_cell_boxes(arr, grid):
     return [(x0, y0, x1, y1) for y0, y1 in ys for x0, x1 in xs]
 
 
-def cut_grid(grid_image: Path, grid: int, out_dir: Path, *, preserve_cell: bool = False
+def cut_grid(grid_image: Path, grid: int, out_dir: Path, *, preserve_cell: bool = False,
+             fixed_grid: bool = False
              ) -> Tuple[List[Path], List[str]]:
     """把宫格图切成 grid×grid 张 panel（行优先编号），返回 (paths, notes)。
 
     notes 是给人看的切图诊断（gutter 是否命中、是否兜底、越界归属等），
     调用方写进日志方便排查。
+    fixed_grid 只供已确认错误空带的显式恢复：使用等分格归属，仍完整裁取
+    连通域。默认内容感知行为不变；它与直接按格裁剪的 preserve_cell 不同。
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     img = Image.open(grid_image).convert("RGB")
@@ -303,8 +306,10 @@ def cut_grid(grid_image: Path, grid: int, out_dir: Path, *, preserve_cell: bool 
 
     col_profile = mask.mean(axis=0)   # 每列前景占比 0~1
     row_profile = mask.mean(axis=1)   # 每行前景占比 0~1
-    xs = _find_gutters(col_profile, grid)
-    ys = _find_gutters(row_profile, grid)
+    xs = None if fixed_grid else _find_gutters(col_profile, grid)
+    ys = None if fixed_grid else _find_gutters(row_profile, grid)
+    if fixed_grid:
+        notes.append('显式等分归属修复：跳过错误空带，继续按连通域完整归属，保留跨格内容')
     notes.append(f"切线检测：X={'沟中下刀 ' + str(xs) if xs else '未检出，等分兜底'}；"
                  f"Y={'沟中下刀 ' + str(ys) if ys else '未检出，等分兜底'}")
 
