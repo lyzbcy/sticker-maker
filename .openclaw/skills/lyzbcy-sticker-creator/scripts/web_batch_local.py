@@ -47,7 +47,7 @@ def assets(manifest,review):
         for source in recipe['sources']:
             if source['path'].replace('\\','/')=='最终版/01.png':source['path']=m['files'][0]['file']
         write(root/'发布素材清单.json',recipe)
-    return str(Path(manifest['logDir'])/'review-all.jpg')
+    return manifest.get('reviewBoards') or str(Path(manifest['logDir'])/'review-all.jpg')
 
 def preliminary(manifest):
     for a in manifest['albums']:
@@ -65,7 +65,7 @@ def archive(manifest):
     for a in manifest['albums']:
         root=Path(a['dir']);prep=read(root/'prep_state.json');receipt=next(x for x in receipts if x['name']==a['name'])
         init_record(str(root),a['episode'],{'mode':prep['mode'],'characters':prep['characters'],'reference_mode':'ChatGPT Web free theme','audit_note':'归档时间为摘要写入时间，实际执行时间见events.jsonl','source_commit':manifest['sourceCommit']})
-        for step,detail in [('生图','ChatGPT网页原创base生成'),('含义预检','两弹32格合并审图，平台含义去标点'),('透明化','当前引擎去洋红，白描边'),('最终版','16张透明240PNG'),('发布素材','当弹成品截头，封面同图缩图标；本弹横幅赞赏图'),('校验','当前素材SHA复核和投稿前校验通过'),('发布','SDK真实提审并按ID回读待审核')]:
+        for step,detail in [('生图','ChatGPT网页原创base生成'),('含义预检',f'{len(manifest["albums"])}弹分组复核，平台含义去标点'),('透明化','当前引擎去洋红，白描边'),('最终版','16张透明240PNG'),('发布素材','第一格固定80%裁剪，封面同图缩图标；本弹横幅赞赏图'),('校验','当前素材SHA复核和投稿前校验通过'),('发布','SDK真实提审并按ID回读待审核')]:
             log_step_rich(str(root),step,'OK',{'events':str(Path(manifest['logDir'])/'events.jsonl'),'receipt':receipt if step=='发布' else None},detail)
         write(root/'微信投递回执.json',receipt);write(root/'当前状态.json',{'status':'verified_pending_review','sticker_id':receipt['id'],'platform_status':receipt['status'],'submitted':True})
         for f in ['events.jsonl','timings.json','report.md']:
@@ -76,5 +76,6 @@ if __name__=='__main__':
     a=p.parse_args();m=read(a.manifest)
     if a.command=='board':print(board(m))
     elif a.command=='preliminary':print(preliminary(m))
-    elif a.command=='assets':print(assets(m,read(a.review)))
+    elif a.command=='assets':
+        value=assets(m,read(a.review));print(json.dumps(value,ensure_ascii=False) if isinstance(value,list) else value)
     else:archive(m)

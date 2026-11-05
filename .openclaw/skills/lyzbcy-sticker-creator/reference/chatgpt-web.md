@@ -14,20 +14,26 @@
 
 1. node scripts/web_batch.cjs begin --config <config.json>
 
-config含outputRoot、assetsRoot、logDir、accountAnchor和两项themes（theme/scenario/audience）。从查号前开始计时。脚本读取本人后台完整List（含草稿待审）及已知账号作品ID，确定最大编号后用web_prepare.py抽样、复制实际base并记SHA。已有同名目录或未知结果先续接核验，不能覆盖/重生。微信标签关闭时自动打开官方入口，登录失效则停在登录状态，不导出Cookie。
+config含outputRoot、assetsRoot、logDir、accountAnchor和1—10项themes（theme/scenario/audience），count须与themes数量一致，默认目标每弹150秒，可显式goalMs。从查号前开始计时。脚本读取本人后台完整List（含草稿待审）及已知账号作品ID，确定最大编号后用web_prepare.py抽样、复制实际base并记SHA。已有同名目录或未知结果先续接核验，不能覆盖/重生。微信标签关闭时自动打开官方入口，登录失效则停在登录状态，不导出Cookie。
 
-通过ChatGPT真实附件输入上传base，确认加载后发送；两弹分别新对话并行等待图像。首次响应同时要求16项index/text/meaning JSON，只作为候选，不能当图片真值。下载本次生成原图，保存聊天URL与SHA；脚本调用当前引擎切图/去底，自动生成首格头像和五项本弹配套图，输出review-all.jpg。网页操作和生成细节见 [质量规范](chatgpt-web-quality.md)。
+通过ChatGPT真实附件输入上传base，确认加载后发送；按每组最多两弹分别新对话并行等待图像，组间顺序推进。首次响应同时要求16项index/text/meaning JSON，只作为候选，不能当图片真值。下载本次生成原图，保存聊天URL与SHA；脚本调用当前引擎切图/去底，自动生成首格头像和五项本弹配套图，按两弹一组输出review-groups/01..05/review-all.jpg，完成一组即写回manifest.reviewGroups。网页操作和生成细节见 [质量规范](chatgpt-web-quality.md)。
 
-2. Agent在同一张review-all.jpg核对32格身份、文字、切图边缘及两套五项配套图，写review.json：albums内每项只有episode、16个meanings、description，不再填head_index/head_rect/polygon/caption_regions。然后执行 node scripts/web_batch.cjs assets --manifest <manifest.json> --review <review.json>。
+2. Agent逐组在review-all.jpg核对32格身份、文字、切图边缘及两套五项配套图，可在下一组生成时复核已完成组，写review.json：albums内每项只有episode、16个meanings、description，不再填head_index/head_rect/polygon/caption_regions。然后执行 node scripts/web_batch.cjs assets --manifest <manifest.json> --review <review.json>。
 
 此阶段规整词义标点（啊？→啊）、检测重复并更名，更新头像与素材来源路径；已审素材字节保持不变，无额外头像选图识图。发现实际质量问题仍需处理并计时，不能拿脚本尺寸检查冒充视觉合格。
 
 3. 将当前发布素材清单SHA写入approval.json：逐弹episode、approved、portrait_reviewed、asset_hashes，human_score=null。node scripts/web_batch.cjs publish --manifest <manifest.json> --approval <approval.json>。
 
-发布使用原 [publisher SDK分支](../../lyzbcy-sticker-publisher/reference/wechat-web.md)：4并发上传、创建/保存/提审前宿主原子日志ACK、32张原始MD5/词义/顺序及五项配套ID校验、每弹仅提交一次，最后按精确ID及全量同名唯一性回读。sdk-journal.json存在时拒绝重放，超时/未知先核销。不可把上传、保存、待审核当审核通过或上架。
+发布使用原 [publisher SDK分支](../../lyzbcy-sticker-publisher/reference/wechat-web.md)：4并发上传、创建/保存/提审前宿主原子日志ACK、32张原始MD5/词义/顺序及五项配套ID校验、每弹仅提交一次，最后按精确ID及全量同名唯一性回读。每两弹在publish-groups下独立保存sdk-journal.json和回执，主目录partial-receipts.json逐组落盘；已有日志拒绝重放，超时/未知先核销。不可把上传、保存、待审核当审核通过或上架。
 
 ## 来源与计时
 
 后处理、赞赏图和横幅继续调用同仓库当前引擎及现有脚本，禁止携带复制快照；本弹配套图每弹本地重渲染，不复用共享赞赏页。头像必须来自当弹第一格，不能复用base或其他弹。
 
 全程从首次启动到最终回读，保留登录恢复、失败、补救、审阅和Agent编排等待。另报连续生产用时可以，但不得替代总时长。617/618完整6分31秒；含首次入口失败与补救93秒，恢复后生产4分58秒，SDK29秒。首次头像参数全局修订及一次额外方框验证也在日志内；不保证外部生图耗时。
+
+## 10弹扩量与计时
+
+617/618证明第一格预留＋顶部80%取景可省去头像选图与抠字。扩量保持该规则，只扩count，禁止写死做两弹后冒充完成。默认每组2弹生成，完成即输出审图板供Agent复核；候选含义来自同次响应且索引须完整1—16，仍由实际图复核，不能直接信任。生成结束后一次应用全部审核过的含义，SDK按2弹一组顺序提交并持久化回执。
+
+10弹目标按已确认的2弹约5分钟线性设为25分钟；计时从首次查号到最后10套唯一名称回读，包括所有失败与等待，不把准备补救从总时间中扣掉。发布成功、待审核、审核通过、上架分别记录。所有脚本与资料仍只维护在原仓库，不复制独立包。
