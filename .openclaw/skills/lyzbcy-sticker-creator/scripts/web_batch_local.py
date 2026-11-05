@@ -41,10 +41,24 @@ def assets(manifest,review):
             if dest.exists():raise FileExistsError(dest)
             (stage/f"{item['index']:02d}.png").rename(dest);item['meaning']=label;item['file']=str(dest.relative_to(root))
         write(root/'成品清单.json',m);write(root/'meanings.json',{str(i+1):s for i,s in enumerate(r['meanings'])})
-        head=crop_head(root,r['head_index'],r.get('head_polygon'),r.get('head_rect'),r.get('caption_regions'))
         (root/'介绍.txt').write_text(r['description'],encoding='utf-8')
-        run('web_publish_assets.py','--episode-dir',root,'--head-source',head,'--banner-sources',head,'--tip-source',root/m['files'][r.get('tip_index',r['head_index'])-1]['file'])
-    return board(manifest,True)
+        proof=read(root/'头像裁切.json');proof['source']=m['files'][0]['file'];write(root/'头像裁切.json',proof)
+        recipe=read(root/'发布素材清单.json')
+        for source in recipe['sources']:
+            if source['path'].replace('\\','/')=='最终版/01.png':source['path']=m['files'][0]['file']
+        write(root/'发布素材清单.json',recipe)
+    return str(Path(manifest['logDir'])/'review-all.jpg')
+
+def preliminary(manifest):
+    for a in manifest['albums']:
+        root=Path(a['dir']);head=crop_head(root)
+        (root/'介绍.txt').write_text(a['theme'][:80],encoding='utf-8')
+        run('web_publish_assets.py','--episode-dir',root,'--head-source',head,'--banner-sources',head,'--tip-source',root/read(root/'成品清单.json')['files'][0]['file'])
+    panels=Image.open(board(manifest)).convert('RGB')
+    assets_image=Image.open(board(manifest,True)).convert('RGB')
+    combined=Image.new('RGB',(2080,2160),'#d5d5d5')
+    combined.paste(panels,(0,0));combined.paste(assets_image,(0,1080))
+    target=Path(manifest['logDir'])/'review-all.jpg';combined.save(target,quality=93);return str(target)
 def archive(manifest):
     from production_log import init_record,log_step_rich
     receipts=read(Path(manifest['logDir'])/'receipts.json')
@@ -58,8 +72,9 @@ def archive(manifest):
             src=Path(manifest['logDir'])/f
             if src.exists(): (root/f).write_bytes(src.read_bytes())
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('command',choices=['board','assets','archive']);p.add_argument('--manifest',required=True);p.add_argument('--review')
+    p=argparse.ArgumentParser();p.add_argument('command',choices=['board','preliminary','assets','archive']);p.add_argument('--manifest',required=True);p.add_argument('--review')
     a=p.parse_args();m=read(a.manifest)
     if a.command=='board':print(board(m))
+    elif a.command=='preliminary':print(preliminary(m))
     elif a.command=='assets':print(assets(m,read(a.review)))
     else:archive(m)

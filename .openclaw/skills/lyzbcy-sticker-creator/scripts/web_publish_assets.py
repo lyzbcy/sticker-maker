@@ -20,7 +20,10 @@ def main():
  if any((root/t).exists() for t in targets) and not a.replace:raise FileExistsError('Assets already exist; review and back up before --replace')
  stage=root/'.cache/publish-assets-stage';stage.mkdir(parents=True,exist_ok=True)
  for sub in ['横幅','封面','图标','赞赏图']:(stage/sub).mkdir(exist_ok=True)
- if not make_big_head_cover(a.head_source,stage/'封面/封面.png'):raise RuntimeError('Head-cover generation failed; no full-body fallback')
+ if proof.get('method')=='first_panel_center_80':
+  if Image.open(a.head_source).size!=(240,240):raise ValueError('Fixed crop must be 240 square')
+  shutil.copyfile(a.head_source,stage/'封面/封面.png')
+ elif not make_big_head_cover(a.head_source,stage/'封面/封面.png'):raise RuntimeError('Head-cover generation failed; no full-body fallback')
  cover=Image.open(stage/'封面/封面.png').convert('RGBA');cover.resize((50,50),Image.Resampling.LANCZOS).save(stage/'图标/图标.png')
  make_banner([str(p) for p in a.banner_sources],str(stage/'横幅/横幅.png'))
  # Current engine owns tip rendering. Require its supported CJK font rather than silently dropping text.

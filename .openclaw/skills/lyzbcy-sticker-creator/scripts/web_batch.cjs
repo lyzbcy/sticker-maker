@@ -6,7 +6,7 @@ const {meaning,publish}=require('../../lyzbcy-sticker-publisher/scripts/web_sdk_
 const HERE=__dirname,ROOT=path.resolve(HERE,'../../../..');
 async function py(script,...args){return new Promise((res,rej)=>execFile('python',['-X','utf8',path.join(HERE,script),...args.map(String)],{encoding:'utf8',maxBuffer:5e6,windowsHide:true},(e,o,err)=>e?rej(Error(err+' '+o)):res(o)));}
 async function load(p){return JSON.parse(await fs.readFile(p,'utf8'));}
-function prompt(a){return `请直接生成一张微信表情包原图。附件为唯一原创角色${a.characters.join('+')}，严格保持各自脸、发型、服装、配饰、材质。主题：${a.theme}。使用场景：${a.scenario}。人群：${a.audience}。自由设计16张不同、可独立发送的实用聊天表情，动作与1—4字中文文案由你发挥，不编连续故事。正方形4×4均匀十六宫格，正好16格，完整留空不跨格；人物和文字外围有干净连续白描边。背景全图纯洋红#ff00ff，无渐变纹理、地面投影、网格线框、编号、水印；角色正常颜色无洋红反光。文案与人物保持间隔。生成后在同一回复附JSON数组index、text、meaning，含义仅1—4个汉字，不含标点。直接开始生图，不为JSON另生成图。`;}
+function prompt(a){return `请直接生成一张微信表情包原图。附件为唯一原创角色${a.characters.join('+')}，严格保持各自脸、发型、服装、配饰、材质。主题：${a.theme}。使用场景：${a.scenario}。人群：${a.audience}。自由设计16张不同、可独立发送的实用聊天表情，动作与1—4字中文文案由你发挥，不编连续故事。正方形4×4均匀十六宫格，正好16格，完整留空不跨格；人物和文字外围有干净连续白描边。背景全图纯洋红#ff00ff，无渐变纹理、地面投影、网格线框、编号、水印；角色正常颜色无洋红反光。文案与人物保持间隔。特别约束第1格（仍是正常可独立发送的表情，不额外画头像）：固定正面大头胸像，完整发型、脸、自然肩臂全部位于格子中央80%的正方形区域内（四边各留10%）；头肩主体占该取景区约80%，脸部占取景高度约55%—65%，不得侧脸、挡脸、切发顶。头顶至少距格顶15%，自然肩臂保留到85%高度。第1格中央80%区域绝对无文字、无装饰、无道具；它自己的1—4字含义文案只写在最底部92%—99%的字幕带。若双人，两人并肩正面胸像完整放在该中央80%内。其余15格自由设计，不强制胸像。生成后在同一回复附JSON数组index、text、meaning，含义仅1—4个汉字，不含标点。直接开始生图，不为JSON另生成图。`;}
 async function begin(config,manifestFile,log,bridge){
   const tabs=(await bridge.call('list_browser_tabs')).tabs;
   let platform=tabs.find(t=>t.url.includes('/mmemoticonwebnode-bin/pages/stickerPage/detail'))||tabs.find(t=>t.url.startsWith('https://sticker.weixin.qq.com/'));
@@ -68,7 +68,7 @@ async function begin(config,manifestFile,log,bridge){
     if(pending.size)await sleep(1800);
   }
   if(pending.size)throw Error('Generation not complete; original request retained, do not resend');
-  const board=(await py('web_batch_local.py','board','--manifest',manifestFile)).trim();
+  const board=(await py('web_batch_local.py','preliminary','--manifest',manifestFile)).trim();
   m.reviewStartedAt=Date.now();await json(manifestFile,m);await log('combined_review_ready',{board});return {manifest:manifestFile,board};
 }
 async function main(){
