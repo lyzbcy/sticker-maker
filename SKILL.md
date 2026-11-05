@@ -14,6 +14,8 @@ Electron30 / Vue3 / Pinia / Python / PyInstaller，Windows x64、macOS ARM64。�
 
 ## 按需入口
 
+ChatGPT网页制作经验维护在原 [creator网页分支](.openclaw/skills/lyzbcy-sticker-creator/reference/chatgpt-web.md) 和 [publisher微信分支](.openclaw/skills/lyzbcy-sticker-publisher/reference/wechat-web.md)。更新本仓库这一份，辅助脚本调用当前引擎；独立网页技能包已退役。客户端0.6.13安装包不因skill更新重打。
+
 QQ投稿、精选JSONL分发、抖音使用量与收益核查：读[QQ流程](.openclaw/skills/lyzbcy-sticker-publisher/reference/qq-publish.md)与[分发数据规则](.openclaw/skills/lyzbcy-sticker-publisher/reference/distribution-analytics.md)。使用已验证的发布skill分支；不因此启动客户端改版或为独家平台默认重做精选。
 
 

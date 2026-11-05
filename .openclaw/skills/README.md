@@ -1,3 +1,7 @@
+## 当前制作规则
+
+唯一维护源为本仓库现有 [creator](lyzbcy-sticker-creator/SKILL.md) 和 [publisher](lyzbcy-sticker-publisher/SKILL.md)。ChatGPT网页分支复用当前引擎，单人/双人和服装概率只读creator/config.yaml。默认主题/场景/人群自由创作、白描边，词义候选与生图同次输出并合并审图；头像不追加生图。下文为历史结构/模式示例，旧概率和多宫格实底建议不能覆盖当前配置与用户要求。
+
 # 微信表情包文件夹结构规范
 
 ## 🔴 创作核心铁律 (Must Read)

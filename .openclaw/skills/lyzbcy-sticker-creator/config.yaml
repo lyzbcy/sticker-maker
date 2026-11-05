@@ -106,13 +106,13 @@ quad_bases:
   - 周五涵
 
 mode_probabilities:
-  single: 0.5
-  duo: 0.3
-  quad: 0.2
+  single: 0.85
+  duo: 0.15
+  quad: 0.0
 
 single_character_probabilities:
-  星星布丁: 0.7
-  捞鱼: 0.3
+  星星布丁: 0.75
+  捞鱼: 0.25
   周三涵: 0
   周五涵: 0
 

@@ -10,6 +10,14 @@ description: "微信表情包创作系统。以分阶段工作流驱动生图、
 
 # 微信表情包自动化创作系统 - Sticker Creator
 
+## ChatGPT网页制作与微信投递
+
+本skill是唯一创作入口，ChatGPT网页操作读 [网页制作分支](reference/chatgpt-web.md)，投稿继续使用原publisher skill；不再维护或分发独立wechat-sticker-web包。辅助脚本直接调用本仓库当前引擎，更新整个仓库即可同步，不复制抠图/裁图/配套图算法。
+
+默认只框定主题、使用场景、使用人群，由模型发挥16张独立表情；故事模式仅用户明确要求时启用。角色/服装概率以 config.yaml 为准。白描边、透明边缘和人物身份须审阅。首次生图同一响应附16格文字候选JSON，合并已有审图核对，不固定追加识图。头像从已有素材裁切，封面同图缩图标，横幅/赞赏图本地重渲染，不默认追加头像生图。
+
+
+
 ## AI 统一执行协议
 
 <system-goal>
@@ -19,7 +27,7 @@ description: "微信表情包创作系统。以分阶段工作流驱动生图、
 </system-goal>
 
 <creator-hard-rules>
-1. 先读 `E:\星星布丁\微信表情包\.openclaw\skills\README.md` 的总规范，再执行本 skill。
+1. 先读 `<仓库>/.openclaw/skills/README.md` 的总规范，再执行本 skill。
 2. 优先使用 `prep_episode.py` 和 `validate.py`，不要一开始就把 `main.py` 当成唯一入口。
 3. 不要把"参考图文件名"直接当成最终含义词，发布前必须做视觉复核。
 4. **生图背景策略**：默认使用纯洋红 #ff00ff Chroma-key 背景，随后用本地脚本抠图。仅当角色本身偏洋红/偏粉时才改用绿色 #00ff00（需提前确认角色肤色）。
@@ -29,11 +37,11 @@ description: "微信表情包创作系统。以分阶段工作流驱动生图、
 7. **🔴 默认 4×4 生图**：生成表情包统一使用 4×4 十六宫格（配置项 `generation.default_grid: 4`）。16 张数量刚好满足微信 12-24 要求，且 3D clay 风格下 4×4 效果优于 3×3。仅在用户明确指定其他宫格时才调整。
 8. **🔴 角色防侵权（最高优先级）**：`codex exec` 的 `-i` 参数第一个必须是 base 角色图（主角），后续才是参考图（仅借 pose）。生图后必须对每组四宫格做角色身份核对（见 `reference/prompt-templates.md`）。如果任一格用了参考图角色而非 base 角色，该组必须废弃重做。**严禁在未传 base 图的情况下用参考图生成表情包**——这可能导致发布他人原创角色造成侵权。
 9. **AI 文案与可爱度参与**：AI 不只执行脚本，还要参与表情介绍和提示词审美。每弹发布前写 `介绍.txt`（1-80 字，描述特点和故事）；使用 AI 模板提示词生图前，先审一遍提示词是否软萌、清楚、有聊天场景，偏冷/暴力/生硬的词必须改成可爱表达。
-10. **🔴 联动剧本优先 + 多故事串联（最高创作优先级）**：表情包不是16个独立情绪，而是16个能"对话"的角色。生图前**必须先设计联动剧本**，从 `linkage_scripts.json` 抽取 **4 组剧本**（每组4 panel，共16 panel），**4×4十六宫格的每一行是一个独立小故事**（4格讲一个起承转合），4行=4个不同故事串联。这样每格都有独立笑点，题材多元。**严禁退回随机情绪组合模式**，除非 `linkage_scripts.json` 不可用。**严禁把单个故事硬撑成16格**（详见设计系统说明）。
+10. **创作模式按最新用户规则**：默认主题、场景、人群框定后自由创作16张独立表情；四组联动剧本只用于用户明确要求的故事模式。
 </creator-hard-rules>
 
 <linkage-design-system>
-### 联动剧本设计系统（核心创作方法论）
+### 联动剧本设计系统（仅显式故事模式使用，非默认）
 
 **核心理念**：好的表情包不是16张独立情绪图，而是16个能"对话"的角色。用户在聊天中前后发送两张表情，会在上下窗口产生意想不到的互动效果——这是表情包的"灵魂"。
 
@@ -179,7 +187,7 @@ description: "微信表情包创作系统。以分阶段工作流驱动生图、
 首选命令:
 
 ```bash
-cd "E:\星星布丁\微信表情包\.openclaw\skills\lyzbcy-sticker-creator\scripts"
+cd "<仓库>/.openclaw/skills/lyzbcy-sticker-creator\scripts"
 python prep_episode.py --mode auto --type static
 ```
 
@@ -346,7 +354,7 @@ python validate.py --dir "E:\星星布丁\微信表情包\周三涵做表情N" -
 首选命令:
 
 ```bash
-python make_assets.py --dir "E:\星星布丁\微信表情包\周三涵做表情N"
+python scripts/web_publish_assets.py --episode-dir "<本弹>" --head-source "<本弹已有纯头部源>" --banner-sources "<本弹已有无字源>" --tip-source "<本弹成品>"
 ```
 
 要求:
@@ -386,12 +394,12 @@ python validate.py --dir "E:\星星布丁\微信表情包\周三涵做表情N" -
 ### 模块4:发布
 
 ```bash
-cd "E:\星星布丁\微信表情包\.openclaw\skills\lyzbcy-sticker-publisher\scripts"
+cd "<仓库>/.openclaw/skills/lyzbcy-sticker-publisher\scripts"
 node publish.js --name "周三涵做表情N" --dir "E:\星星布丁\微信表情包\周三涵做表情N" --type static
 ```
 
 发布细节见:
-- `E:\星星布丁\微信表情包\.openclaw\skills\lyzbcy-sticker-publisher\SKILL.md`
+- `<仓库>/.openclaw/skills/lyzbcy-sticker-publisher\SKILL.md`
 
 </creator-flow-8-publish>
 

@@ -9,6 +9,14 @@ description: "微信表情包发布工具。按固定流程登录微信表情开
 
 # 微信表情包发布工具 - Sticker Publisher
 
+## 微信网页投递（现有skill内维护）
+
+读 [微信网页与原ID修复流程](reference/wechat-web.md)。创作由原creator skill的网页分支完成，辅助脚本直接用同仓库当前引擎，不再依赖独立包。封面复用本弹已有头像源本地裁切，图标缩同封面；横幅和赞赏图每弹本地渲染，禁止串角色/固定赞赏图回退。
+
+角色按实际身份：单人捞鱼→男人；单人星星布丁/周三涵/周五涵→女人；星星布丁＋捞鱼→人物合辑。含义候选随首次生成输出，在已有审图中核对，不另设固定识图轮。五项配套图、16张原文件与词义/顺序、当前SHA审阅通过后才提交；点击一次并按原ID回读，未知结果先核销。609/610已原ID修复，611/612已新投稿；实测状态待审核，非审核通过。
+
+
+
 ## AI 统一执行协议
 
 <system-goal>
@@ -33,14 +41,14 @@ description: "微信表情包发布工具。按固定流程登录微信表情开
 - 图标/图标.png
 - 介绍.txt（推荐；1-80 字，描述表情特点和故事）
 
-外部固定资源：
-- 赞赏引导图.png
-- 赞赏致谢图.png
+本弹专属资源（现有脚本渲染）：
+- 赞赏图/赞赏引导图.png
+- 赞赏图/赞赏致谢图.png
 </publisher-input-contract>
 
 <publish-flow-1-validate>
 先运行：
-python "E:\星星布丁\微信表情包\.openclaw\skills\lyzbcy-sticker-creator\scripts\validate.py" --dir "<表情包目录>" --stage pre_publish
+python "<仓库>/.openclaw/skills/lyzbcy-sticker-creator\scripts\validate.py" --dir "<表情包目录>" --stage pre_publish
 原则：FAIL 不发布；WARN 也要人工确认，不要默认忽略。
 </publish-flow-1-validate>
 
@@ -60,7 +68,7 @@ python "E:\星星布丁\微信表情包\.openclaw\skills\lyzbcy-sticker-creator\
 关键数据来源：
 - 表情图：最终版/ 优先
 - 含义词：文件名
-- 角色/内容：本次制作角色.md 的“含捞鱼”
+- 角色/内容：本次制作角色.md 的实际角色定义，按上方男人/女人/人物合辑规则
 - 横幅/封面/图标：各自专用目录优先
 </publish-flow-3-form>
 
@@ -85,7 +93,7 @@ python "E:\星星布丁\微信表情包\.openclaw\skills\lyzbcy-sticker-creator\
 **发布前必须先跑校验，PASS 才允许发布：**
 
 ```bash
-python "E:\星星布丁\微信表情包\.openclaw\skills\lyzbcy-sticker-creator\scripts\validate.py" \
+python "<仓库>/.openclaw/skills/lyzbcy-sticker-creator\scripts\validate.py" \
   --dir "<表情包目录>" \
   --stage pre_publish
 ```
@@ -173,7 +181,7 @@ python "E:\星星布丁\微信表情包\.openclaw\skills\lyzbcy-sticker-creator\
 ### 调用方式
 
 ```bash
-cd "E:\星星布丁\微信表情包\.openclaw\skills\lyzbcy-sticker-publisher\scripts"
+cd "<仓库>/.openclaw/skills/lyzbcy-sticker-publisher\scripts"
 node publish.js --name "周三涵做表情1" --dir "E:\星星布丁\微信表情包\周三涵做表情1" --type static
 ```
 
@@ -186,7 +194,7 @@ node publish.js --name "周三涵做表情1" --dir "E:\星星布丁\微信表情
 
 ## 📁 统一文件夹结构规范
 
-**详见：** `E:\星星布丁\微信表情包\.openclaw\skills\README.md`
+**详见：** `<仓库>/.openclaw/skills/README.md`
 
 ```
 周三涵做表情N/
@@ -390,7 +398,7 @@ node publish.js --name "周三涵做表情1" --dir "E:\星星布丁\微信表情
 ### 运行
 
 ```bash
-cd "E:\星星布丁\微信表情包\.openclaw\skills\lyzbcy-sticker-publisher\scripts"
+cd "<仓库>/.openclaw/skills/lyzbcy-sticker-publisher\scripts"
 npm install   # 首次运行安装依赖
 node publish.js --name "周三涵做表情1" --dir "E:\星星布丁\微信表情包\周三涵做表情1" --type static
 ```
@@ -651,7 +659,7 @@ for (const radio of priceRadios) {
 ### 快速开始
 
 ```bash
-cd "E:\星星布丁\微信表情包\.openclaw\skills\lyzbcy-sticker-publisher\scripts"
+cd "<仓库>/.openclaw/skills/lyzbcy-sticker-publisher\scripts"
 
 # ① 发布一整段（默认弹19-54，自动每5弹分批、跑完自动重试失败的）
 python batch_all.py --start 19 --end 54

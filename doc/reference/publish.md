@@ -1,3 +1,7 @@
+## 当前网页制作与微信投递
+
+使用原 [creator网页分支](../../.openclaw/skills/lyzbcy-sticker-creator/reference/chatgpt-web.md) 与 [publisher微信分支](../../.openclaw/skills/lyzbcy-sticker-publisher/reference/wechat-web.md)，唯一算法源为当前引擎和现有脚本。头像本地裁切，同封面缩图标；五项配套图每弹重渲染，首次输出含义候选并合并审图核对。真实回归见 [记录](../../docs/wechat-web-skill-pilot-20261105.md)。
+
 # 微信发布参考
 
 ## 0.6.12 无关作品本地回写失败不误拦上架（2026-10-29）

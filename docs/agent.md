@@ -1,3 +1,4 @@
+- [ChatGPT网页制作与真实微信投递（原skill分支）](wechat-web-skill-pilot-20261105.md)：自由主题、白描边、本弹五项配套图、原ID修复与提审核验。
 - [GIF动态投稿0.6.10](dynamic-publish.md)：类型识别、无损上传与校验。
 - [0.6.8引擎事件与反馈交互](engine-event-lifecycle.md)：订阅归属、退出清理、任务结束状态、反馈复制与验收。
 - [0.6.7资源库结构重构与交互修正](resource-library-refactor-067.md)：模块边界、单飞、取消目录与卸载清理。
