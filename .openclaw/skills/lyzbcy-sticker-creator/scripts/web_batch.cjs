@@ -3,6 +3,7 @@ const fs=require('node:fs/promises'),path=require('node:path'),crypto=require('n
 const {execFile}=require('node:child_process');
 const {Bridge,json,sleep}=require('../../lyzbcy-sticker-publisher/scripts/web_bridge.cjs');
 const {meaning,publish}=require('../../lyzbcy-sticker-publisher/scripts/web_sdk_publish.cjs');
+const {cleanupCompletedTabs}=require('./web_tab_lifecycle.cjs');
 const HERE=__dirname,ROOT=path.resolve(HERE,'../../../..');
 async function py(script,...args){return new Promise((res,rej)=>execFile('python',['-X','utf8',path.join(HERE,script),...args.map(String)],{encoding:'utf8',maxBuffer:5e6,windowsHide:true},(e,o,err)=>e?rej(Error(err+' '+o)):res(o)));}
 async function load(p){return JSON.parse(await fs.readFile(p,'utf8'));}
@@ -34,7 +35,7 @@ async function begin(config,manifestFile,log,bridge){
   await json(evidence,{max_episode:max,source_url:platform.url,checked_at:new Date().toISOString(),verification_note:'完整List含草稿待审，核对已知账号作品ID'});
   const sourceCommit=(await new Promise((res,rej)=>execFile('git',['rev-parse','HEAD'],{cwd:ROOT,encoding:'utf8'},(e,o)=>e?rej(e):res(o)))).trim();
   const count=batchCount(config);
-  const m={sourceCommit,logDir:config.logDir,startedAt:Date.now(),platformTabId:platform.tabId,albums:[],reviewBoards:[],reviewGroups:[],goalMs:config.goalMs||count*150000};
+  const m={sourceCommit,session:bridge.session,logDir:config.logDir,startedAt:Date.now(),platformTabId:platform.tabId,albums:[],reviewBoards:[],reviewGroups:[],goalMs:config.goalMs||count*150000};
   // Caller start is before login/list, so preparation cannot disappear from the benchmark.
   m.startedAt=config.startedAt;
   for(let i=0;i<count;i++){
@@ -46,6 +47,7 @@ async function begin(config,manifestFile,log,bridge){
   return generate(m,manifestFile,log,bridge);
 }
 async function generate(m,manifestFile,log,bridge){
+  await cleanupCompletedTabs(bridge,m,{save:()=>json(manifestFile,m),log});
   // Two image generations at a time: preserve the proven concurrency while
   // allowing completed groups to be visually reviewed during the next wave.
   for(let offset=0;offset<m.albums.length;offset+=2){
@@ -53,7 +55,9 @@ async function generate(m,manifestFile,log,bridge){
   const wave=m.albums.slice(offset,offset+2);
   for(const a of wave){
     if(a.sentAt)continue; // Resume the original conversation; never implicitly resend.
+    if(a.tabId)throw Error('Unsent or unknown existing tab; reconcile before resuming generation');
     a.sendStarted=Date.now();const t=await bridge.call('navigate',{url:'https://chatgpt.com/',newTab:true,group_title:'两弹表情包提效复测'});a.tabId=t.tabId;
+    a.createdByWorkflow=true;await json(manifestFile,m);
     await bridge.call('cdp',{method:'Emulation.setFocusEmulationEnabled',params:{enabled:true}});
     let ready=false;
     for(let i=0;i<50;i++){if(await bridge.eval(`!!document.querySelector('input[type=file][accept="image/*"][multiple]')&&!!document.querySelector('[contenteditable="true"]')`)){ready=true;break;}await sleep(200);}
@@ -65,7 +69,7 @@ async function generate(m,manifestFile,log,bridge){
     let sent=false;
     for(let i=0;i<80;i++){
       const usable=await bridge.eval(`(()=>{const f=document.querySelector(${JSON.stringify(composer)});const b=f?.querySelector('button[aria-label="发送"],button[data-testid="send-button"]');return !!b&&!b.disabled&&!f.querySelector('[role="progressbar"]')&&f.querySelectorAll('[data-composer-attachments] img').length===${a.bases.length}})()`);
-      if(usable){await bridge.call('click',{selector:composer+' button[aria-label="发送"],'+composer+' button[data-testid="send-button"]'});a.sentAt=Date.now();sent=true;break;}
+      if(usable){a.sendIntentAt=Date.now();await json(manifestFile,m);await bridge.call('click',{selector:composer+' button[aria-label="发送"],'+composer+' button[data-testid="send-button"]'});a.sentAt=Date.now();sent=true;break;}
       await sleep(250);
     }
     if(!sent)throw Error('Attachment/send not ready; prompt not resent');
@@ -101,6 +105,7 @@ async function generate(m,manifestFile,log,bridge){
   const readyAt=Date.now();m.reviewStartedAt=m.reviewStartedAt||readyAt;
   m.reviewBoards.push(board);m.reviewGroups.push({group,episodes:wave.map(a=>a.episode),board,readyAt,manifest:groupManifest});
   await json(manifestFile,m);await log('combined_review_ready',{group,episodes:wave.map(a=>a.episode),board});
+  await cleanupCompletedTabs(bridge,m,{save:()=>json(manifestFile,m),log});
   }
   return {manifest:manifestFile,boards:m.reviewBoards};
 }
@@ -112,7 +117,8 @@ async function main(){
   if(command==='begin'){config=await load(opts.config);config.startedAt=config.startedAt||Date.now();manifestFile=path.join(config.logDir,'manifest.json');await fs.mkdir(config.logDir,{recursive:true});try{await fs.access(manifestFile);throw Error('Manifest exists; resume instead of generating again');}catch(e){if(e.code!=='ENOENT')throw e;}}
   else m=await load(manifestFile);
   const logDir=config?.logDir||m.logDir;const log=async(event,data={})=>{await fs.appendFile(path.join(logDir,'events.jsonl'),JSON.stringify({at:new Date().toISOString(),event,...data})+'\n');if(event!=='bridge'){const {payload,response,...short}=data;console.log(JSON.stringify({ok:true,data:{event,...short,...(response?{businessRet:response.data?.baseResp?.ret}:{})}}));}};
-  const bridge=new Bridge({url:opts['daemon-url'],log});let result;
+  const session=config?(config.session||'sticker-web-'+config.startedAt):(m.session||'sticker-web-trial-20261105');
+  const bridge=new Bridge({url:opts['daemon-url'],session,log});let result;
   if(command==='begin'){await log('batch_started',{startedAt:config.startedAt});result=await begin(config,manifestFile,log,bridge);}
   else if(command==='resume'){await log('generation_resumed',{original_started_at:m.startedAt});result=await generate(m,manifestFile,log,bridge);}
   else if(command==='assets'){
@@ -121,8 +127,15 @@ async function main(){
     const clean=path.join(logDir,'review.json');await json(clean,review);
     await log('combined_review_completed',{review_ms:Date.now()-m.reviewStartedAt});
     const rawBoard=(await py('web_batch_local.py','assets','--manifest',manifestFile,'--review',clean)).trim();result={board:rawBoard.startsWith('[')?JSON.parse(rawBoard):rawBoard};await log('assets_ready',result);
+    // Optional single review artifact: retain legacy callers that supply approval separately.
+    if(review.albums.every(a=>a.approved===true&&a.portrait_reviewed===true&&a.asset_hashes)){
+      for(const a of m.albums){const r=review.albums.find(x=>x.episode===a.episode);const recipe=await load(path.join(a.dir,'发布素材清单.json'));const hashes=Object.fromEntries(recipe.files.map(x=>[x.path,x.sha256]));
+        if(!r||JSON.stringify(r.asset_hashes)!==JSON.stringify(hashes))throw Error('Combined visual review hashes do not match current assets');
+      }
+      await json(path.join(logDir,'approval.json'),{albums:review.albums.map(({episode,approved,portrait_reviewed,asset_hashes})=>({episode,approved,portrait_reviewed,asset_hashes,human_score:null}))});
+    }
   }else if(command==='publish'){
-    const approval=await load(opts.approval);
+    const approval=await load(opts.approval||path.join(logDir,'approval.json'));
     for(const a of m.albums){const r=await load(path.join(a.dir,'发布素材清单.json'));const hashes=Object.fromEntries(r.files.map(x=>[x.path,x.sha256]));const app=approval.albums.find(x=>x.episode===a.episode);
       if(!app?.approved||!(app.portrait_reviewed||app.head_only)||JSON.stringify(app.asset_hashes)!==JSON.stringify(hashes))throw Error('Visual approval must match CURRENT five asset hashes');
       await json(path.join(a.dir,'发布素材复核.json'),{...app,role:a.role,human_score:null});
