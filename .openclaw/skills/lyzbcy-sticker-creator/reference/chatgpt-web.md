@@ -30,7 +30,7 @@ python scripts/web_process_grid.py --episode-dir <本弹> --meanings <meanings.j
 
 ## 配套图与真实投稿
 
-从本弹已有header_slots/header_sources.json、_noword选择无字源；不足时审阅原图或同服装base并本地裁头，不默认追加头像生图。使用当前引擎make_big_head_cover，240封面直接缩50图标；横幅调用现有make_banner，赞赏图调用当前AssetsStage。不得复制函数或退回旧版make_cover全身缩放。
+从当弹16张成品中选一张正面、完整、无挡脸动作的表情，再用 scripts/web_head_crop.py 按已审polygon截头。头像只能从当弹生成的16张表情中选取，再截完整头部；记录panel_index、源图与裁切SHA及审阅polygon。不得复用base或其他弹头像作为回退。未知或不合格裁切停下修正，不追加头像生图。使用当前引擎make_big_head_cover，240封面直接缩50图标；横幅调用现有make_banner，赞赏图调用当前AssetsStage。不得复制函数或退回旧版make_cover全身缩放。
 
 ```text
 python scripts/web_publish_assets.py --episode-dir <本弹> --head-source <现有纯头源> --banner-sources <本弹无字源> --tip-source <本弹成品>
@@ -43,3 +43,11 @@ python scripts/web_publish_assets.py --episode-dir <本弹> --head-source <现�
 ## 实测边界
 
 609/610原ID修复、611/612新投稿已真实回读待审核。611追加生图0次，未代表0 token或量化提速，审核通过与Grok环境仍需单独验证。历史实测见 [回归记录](../../../../docs/wechat-web-skill-pilot-20261105.md)。
+
+## 两弹计时批处理（613/614复盘后）
+
+优先用 scripts/web_batch.cjs，三个阶段为 begin → assets → publish；均在此原skill内，复用当前引擎。begin自动查号、抽样、并行等待两弹网页生成、下载原图、编号切图、输出一次合并审图板。Agent审阅32格后一次写review.json：albums内每项episode、16个meanings、head_index、归一化head_polygon、tip_index、description。assets归一化含义词（啊？→啊）、更名、当弹截头、生成五项配套图和合并素材总览。Agent看完后写approval.json，逐弹approved/head_only/asset_hashes绑定当前发布素材清单，再执行publish。
+
+命令：node scripts/web_batch.cjs begin --config <config.json>；node scripts/web_batch.cjs assets --manifest <manifest.json> --review <review.json>；node scripts/web_batch.cjs publish --manifest <manifest.json> --approval <approval.json>。config为outputRoot、assetsRoot、logDir、accountAnchor及两项themes（theme/scenario/audience）。全过程从begin查号前计时，包含审图和编排等待；开发优化时间另报，不从运行计时中扣去异常。begin未知时读manifest续接，不重新生成。publish的sdk-journal.json存在时拒绝新写入，先按日志ID回读。
+
+禁止在每个SDK步骤间回到Agent手写下一条请求。SDK流水线自动上传、落盘意向、创建、保存、校验32张原始MD5/词义/顺序与五项配套图、每弹仅提交一次，再按ID和同名唯一性回读。浏览器异步任务用启动+轮询，不经桥接直接await长Promise；上传4并发，记录实际完成时间。目标约5分钟是实测目标，不是对外部生图耗时的保证。

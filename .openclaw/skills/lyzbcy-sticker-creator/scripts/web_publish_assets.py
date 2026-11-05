@@ -12,6 +12,10 @@ def main():
  for source in [a.head_source,*a.banner_sources,a.tip_source]:
   if not source.is_file():raise FileNotFoundError(source)
   source.resolve().relative_to(root.resolve())
+ proof=json.loads((root/'头像裁切.json').read_text(encoding='utf-8'))
+ source=root/proof['source'];source.resolve().relative_to((root/'最终版').resolve())
+ if proof.get('origin')!='current_album_sticker' or digest(source)!=proof['source_sha256'] or digest(a.head_source)!=proof['head_sha256']:
+  raise ValueError('Head must be cropped from this album current sticker, with current provenance; no base portrait fallback')
  targets=['横幅/横幅.png','封面/封面.png','图标/图标.png','赞赏图/赞赏引导图.png','赞赏图/赞赏致谢图.png']
  if any((root/t).exists() for t in targets) and not a.replace:raise FileExistsError('Assets already exist; review and back up before --replace')
  stage=root/'.cache/publish-assets-stage';stage.mkdir(parents=True,exist_ok=True)
