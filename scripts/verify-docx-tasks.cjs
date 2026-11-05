@@ -19,7 +19,7 @@ async function send(page,cmd,args={}){const result=await page.evaluate(async v=>
  let session
  try{
   session=await launch();let {app,page}=session
-  report.version=(await send(page,'get_version')).version;assert.equal(report.version,'0.6.2')
+  report.version=(await send(page,'get_version')).version;assert.equal(report.version,require('../desktop/package.json').version)
   report.packaged=await app.evaluate(({app})=>app.isPackaged)
   assert(!fs.existsSync(path.join(path.dirname(executable),'resources/sticker-engine-cli/_internal/browsers')))
   report.browser_runtime=await send(page,'browser_runtime_status');assert(report.browser_runtime.ready)

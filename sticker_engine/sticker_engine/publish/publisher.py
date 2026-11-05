@@ -19,6 +19,7 @@ from typing import List, Optional
 from .config import PublishConfig
 from .browser import BrowserSession
 from . import selectors as S
+from ..media import final_stickers, sticker_type, validate_dynamic
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +81,7 @@ class EpisodeAssets:
                     mm = read_meanings(episode_dir)
                     # key 可能是 "1".."16" 或 int，按数字升序
                     sorted_keys = sorted(mm.keys(), key=lambda k: int(k))
-                    final_pngs = {p.stem: p for p in final.glob("*.png")}
+                    final_pngs = {p.stem: p for p in final_stickers(final)}
                     for k in sorted_keys:
                         meaning = mm[k]
                         # 文件名 == 含义词（A 产出约定）
@@ -98,7 +99,7 @@ class EpisodeAssets:
 
             if not stickers:
                 # 回退：按中文文件名排序
-                for p in sorted(final.glob("*.png"), key=lambda x: x.stem):
+                for p in sorted(final_stickers(final), key=lambda x: x.stem):
                     stickers.append(p)
                     meanings.append(p.stem)
 
@@ -158,6 +159,10 @@ class EpisodeAssets:
             tip_thanks=_find(episode_dir / "赞赏图" / "赞赏致谢图.png"),
         )
 
+    @property
+    def sticker_type(self):
+        return sticker_type(final_stickers(self.episode_dir / "最终版"))
+
     def validate(self) -> List[str]:
         """返回阻断性问题列表（空列表 = 可发布）。"""
         problems: List[str] = []
@@ -165,6 +170,21 @@ class EpisodeAssets:
             problems.append("无表情图（最终版/ 为空）")
         if len(self.stickers) != len(self.meanings):
             problems.append("表情图与含义词数量不一致")
+        if self.sticker_type == 'mixed':
+            problems.append('同一专辑不能混用PNG与GIF，请拆分静态和动态专辑')
+        elif self.sticker_type == 'dynamic':
+            all_files = final_stickers(self.episode_dir / '最终版')
+            if len(set(self.stickers)) != len(all_files) or set(self.stickers) != set(all_files):
+                problems.append('动态表情含义映射缺失或重复，必须逐张完整对应')
+            from ..project import read_meanings
+            try:
+                mapping = read_meanings(self.episode_dir)
+                words = [str(mapping[k]) for k in sorted(mapping, key=lambda x: int(x))]
+                if words != self.meanings or len(words) != len(all_files):
+                    problems.append('动态含义映射必须完整且与上传顺序一致')
+            except (ValueError, OSError, TypeError):
+                problems.append('动态含义映射读取失败')
+            problems.extend(validate_dynamic(all_files))
         return problems
 
 
@@ -328,7 +348,13 @@ class Publisher:
         驳回理由关键词（2026-08-29 用户 SOP：只改有问题的部分）。
         返回 ``{success, step, error?, album_name?}``。"""
         fields = set(fix_fields) if fix_fields else None
+        role_targets = {'role_only_woman': '女人', 'role_only_man': '男人',
+                        'role_only_other': '其他人物'}
+        strict_role = next((role_targets[f] for f in fields or () if f in role_targets), None)
+        if strict_role and (not edit or fields != {next(f for f in fields if f in role_targets)}):
+            return {'success': False, 'step': 'prepare', 'error': '角色分类专项只能编辑一个字段'}
         assets = EpisodeAssets.from_dir(Path(episode_dir))
+        self._sticker_type = assets.sticker_type
 
         # ---- 步骤前：本地校验，早退 ----
         problems = assets.validate()
@@ -370,12 +396,28 @@ class Publisher:
                 from ..library.operations import verify_target
                 edit = verify_target(self._library_runtime, page, Path(episode_dir), edit)
 
+            if strict_role:
+                from ..config.series import load_meta
+                from .platform_data import read_detail, parse_reason
+                meta = load_meta(Path(episode_dir))
+                if not meta.platform_item_id:
+                    raise ValueError('原平台作品 ID 缺失')
+                detail = read_detail(page, meta.platform_item_id)
+                if detail.get('Status') != 4:
+                    raise ValueError('作品已不处于未通过审核状态')
+                import json as _json
+                raw = detail.get('Reason')
+                reasons = _json.loads(raw) if isinstance(raw, str) else raw
+                reason = parse_reason({'category': reasons.get('category', [])})
+                if f'人物角色-{strict_role}' not in reason and f'人物角色/{strict_role}' not in reason:
+                    raise ValueError('平台最新驳回理由与所选角色分类不一致')
+
             # 步骤3-5：提交作品 → 表情专辑 → 选静态（新建）；
             # 编辑模式：管理页 → 详情 → 「编辑」→ 新标签编辑器（重走全部填表，
             # 预填值被修正值覆盖，最后同样点「提交」）
             if edit:
                 self._report("form", "正在打开作品编辑器…", 0.35)
-                page = self._step_open_editor(page, assets)
+                page = self._step_open_editor(page, assets, allow_withdraw=not bool(strict_role)) if strict_role else self._step_open_editor(page, assets)
             else:
                 self._step_open_submit_form(page)
             # 精准修改模式：need(f) 判定该字段是否要改（非编辑模式恒 True）
@@ -402,7 +444,8 @@ class Publisher:
                     self._report("album", "正在填写专辑信息…", 0.65)
                     self._step_fill_album_info(page, assets)
                 # 步骤10：版权（预填，重填无害）
-                self._step_fill_copyright(page)
+                if not strict_role:
+                    self._step_fill_copyright(page)
                 if need("cover") or need("icon") or need("banner"):
                     # 步骤11-13：横幅/封面/图标（按需只传指定项）
                     self._report("assets", "正在上传横幅/封面/图标…", 0.78)
@@ -416,6 +459,8 @@ class Publisher:
                 if need("role"):
                     # 角色分类单独重选（69：合辑→按性别）
                     self._select_role(page, assets)
+                if strict_role:
+                    self._select_role(page, assets, target_override=strict_role, strict=True)
                 if need("price"):
                     # 步骤19：表情价格（免费）
                     self._report("price", "正在选择价格（免费）…", 0.90)
@@ -480,8 +525,10 @@ class Publisher:
                     except Exception as e:  # noqa: BLE001
                         self._warn(e)
             # 步骤24：提交前自检（实时监测：必填项是否全部就位）
-            missing = self._verify_form(page)
+            missing = self._verify_form(page, strict=True) if strict_role else self._verify_form(page)
             if missing:
+                if strict_role:
+                    return {'success': False, 'step': 'verify', 'error': '表单存在其他必填问题，已停止：' + '；'.join(missing)}
                 for m in missing:
                     self._warn(f"必填项未填：{m}")
                 self._report("verify", f"自检发现 {len(missing)} 项未填，正在重试补填…", 0.96)
@@ -511,6 +558,11 @@ class Publisher:
                 meta = load_meta(assets.episode_dir)
                 self._library_operation = begin(self._library_runtime, meta.work_id, assets.album_name)
             ok = self._step_submit(page)
+            if ok and strict_role:
+                from .platform_data import read_detail
+                observed = read_detail(page, meta.platform_item_id)
+                if observed.get('Status') not in (2, 3):
+                    raise RuntimeError('提交结果待核对：原作品尚未显示待审核')
             if ok:
                 # 提交成功即绑定平台身份（2026-09-11 根治半成品壳）：
                 # 刚发布的作品此前要等下次同步才拿到 platform_item_id，
@@ -576,9 +628,9 @@ class Publisher:
         page.click(f'a:has-text("{S.ALBUM_TYPE_TEXT}")')
         page.wait_for_load_state("networkidle")
         # 步骤5：选静态（平台隐藏了 radio input，点可见 label；已选则跳过）
-        self._click_label(page, "静态表情", check=True)
+        self._click_label(page, "动态表情" if getattr(self, "_sticker_type", "static") == "dynamic" else "静态表情", check=True)
 
-    def _step_open_editor(self, page, assets: "EpisodeAssets"):
+    def _step_open_editor(self, page, assets: "EpisodeAssets", allow_withdraw=True):
         """编辑模式入口（2026-08-29 勘察）：管理页 → 目标行「详情」→
         详情页绿色「编辑」→ 新标签打开完整编辑器，返回**新标签 page**
         （调用方用返回值替换工作页；同 context，close 时一并关闭）。
@@ -679,7 +731,7 @@ class Publisher:
         def _strict_edit():
             return page.locator('button:text-is("编辑"), a:text-is("编辑")')
 
-        if not _strict_edit().count():
+        if not _strict_edit().count() and allow_withdraw:
             withdraw = page.locator(
                 "button:has-text('撤回编辑'), a:has-text('撤回编辑')")
             if withdraw.count():
@@ -954,12 +1006,17 @@ class Publisher:
         for fi in file_inputs:
             accept = fi.get_attribute("accept") or ""
             # 表情图 input 通常 accept 含 .png 且允许多选，排除图标专用
-            if ".png" in accept or accept == "":
+            if ((assets.sticker_type == 'dynamic' and
+                 ('.gif' in accept.lower() or 'image/gif' in accept.lower() or
+                  ('image/*' in accept.lower() and fi.get_attribute('multiple') is not None)))
+                    or (assets.sticker_type == 'static' and (".png" in accept or accept == ""))):
                 target = fi
                 break
         if target is not None:
             target.set_input_files(paths)
         else:
+            if assets.sticker_type == 'dynamic':
+                raise RuntimeError('未找到动态GIF上传槽位，已停止上传')
             # 回退：直接 set_input_files 第一个
             page.set_input_files('input[type="file"]', paths)
         # HTTP 上传成功不等于被平台接收：精选重组时平台会拒收已上架的
@@ -1285,10 +1342,10 @@ class Publisher:
         except Exception as e:  # noqa: BLE001
             self._warn(e)
 
-    def _verify_form(self, page) -> list:
+    def _verify_form(self, page, strict=False) -> list:
         """提交前自检必填项（实时监测：哪些还没填上）。返回缺失列表。"""
         try:
-            missing = page.evaluate("""() => {
+            missing = page.evaluate("""(expectedType) => {
               const vis = el => !!(el.offsetParent || el.getClientRects().length);
               const missing = [];
               const labelChecked = (text) => {
@@ -1300,7 +1357,7 @@ class Publisher:
                 }
                 return false;
               };
-              if (!labelChecked('静态表情')) missing.push('类型·静态表情');
+              if (!labelChecked(expectedType)) missing.push('类型·' + expectedType);
               if (!labelChecked('卡通表情/其他')) missing.push('类型·卡通表情/其他');
               if (!labelChecked('软萌可爱') && !labelChecked('日常')) missing.push('表情风格');
               if (!labelChecked('万能通用')) missing.push('表情主题');
@@ -1325,16 +1382,18 @@ class Publisher:
               if (dt) {
                 const t = (dt.innerText || '').trim();
                 // dt 选完形如"人物角色女人"（逗号是 CSS 分隔样式不进文本）
-                const lv2 = t.includes('女人') || t.includes('男人')
+                const lv2 = t.includes('女人') || t.includes('男人') || t.includes('其他人物')
                   || t.includes('人物合辑') || t.includes('人物角色-');
                 if (t.includes('未选择') || !lv2)
                   missing.push('角色/内容(级联未到二级)');
               }
               return missing;
-            }""")
-            return list(missing) if isinstance(missing, list) else []
+            }""", "动态表情" if getattr(self, "_sticker_type", "static") == "dynamic" else "静态表情")
+            return list(missing) if isinstance(missing, list) else ['表单校验结果无效']
         except Exception:
-            return []
+            if strict:
+                raise RuntimeError('无法核对编辑器表单，已停止提交')
+            return ['表单校验读取失败']
 
     def _confirm_crop(self, page, wait_seconds: float = 8.0) -> None:
         """上传素材后可能弹出「裁剪横幅/封面/图标」dialog（图片需手动
@@ -1391,7 +1450,7 @@ class Publisher:
         # 注意：「涉及肖像权/版权授权」不能勾——那是声明使用了他人肖像/版权，
         # 勾上会要求上传「证明文件」（自创角色无需授权，保持未勾选状态）
 
-    def _select_role(self, page, assets: EpisodeAssets) -> None:
+    def _select_role(self, page, assets: EpisodeAssets, target_override=None, strict=False) -> None:
         """步骤15：角色/内容级联下拉（点开→一级→二级，选后验证+重试）。
 
         2026-09-02 修复（59/60 事故）：①点击必须落在**文本叶子**上（事件绑
@@ -1400,7 +1459,9 @@ class Publisher:
         "未选择"能过、平台却报"角色/内容不能为空"。
         """
         chars = getattr(assets, "characters", []) or []
-        if len(chars) >= 2:
+        if target_override:
+            target = target_override
+        elif len(chars) >= 2:
             target = S.ROLE_WITH_LAOYU_TITLE.split("(")[0]
         elif chars and chars[0] in S.ROLE_MALE_NAMES:
             target = S.ROLE_MALE_TITLE
@@ -1430,6 +1491,8 @@ class Publisher:
                            f"{dt_text.strip()[:20]}，重试")
             except Exception as e:   # noqa: BLE001
                 self._warn(f"角色/内容选择异常（第 {attempt + 1} 次）：{e}")
+        if strict:
+            raise RuntimeError(f'角色/内容未确认选中【{target}】，已停止提交')
         self._warn(f"角色/内容最终未确认选中【{target}】，提交可能被平台拒绝")
 
     # ---- 步骤19：表情价格（免费） ----

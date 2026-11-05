@@ -192,13 +192,14 @@
           <p class="pp-hint">两档概率合计恒为 100%；发布日志会记录每一弹抽到的价格。</p>
         </div>
         <p v-if="bmSaved" class="cred-saved">✓ 已保存</p>
+        <p v-if="bmSaveError" class="cred-error">{{ bmSaveError }}</p>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, nextTick, ref, watch } from 'vue'
 import { useEngineStore } from '../store/engine'
 import WizardStepBase from './WizardStepBase.vue'
 import WizardStepMode from './WizardStepMode.vue'
@@ -236,7 +237,12 @@ const priceMode = ref('free')          // free / paid10 / prob
 const priceProbFree = ref(70)          // 免费档百分比（10 豆档 = 100 - 它）
 const priceProbPaid = ref(30)
 const bmSaved = ref(false)
-onMounted(() => {
+const bmSaveError = ref('')
+let hydratingPublishPrefs = true
+let publishPrefsDisposed = false
+let savedTimer
+onUnmounted(() => { publishPrefsDisposed = true; clearTimeout(savedTimer) })
+onMounted(async () => {
   // 2026-09-11：设置页也加载角色——savePrefs 的校验依赖角色数据，
   // 不加载则一切开关保存都误报"至少需要一个带角色图的角色"
   store.loadCharacters()
@@ -254,21 +260,31 @@ onMounted(() => {
       priceMode.value = stickerPrice.value >= 10 ? 'paid10' : 'free'
     }
   }
+  // Vue watchers flush after assignments. Keep hydration read-only through that flush.
+  await nextTick()
+  if (!publishPrefsDisposed) hydratingPublishPrefs = false
 })
 async function savePrefsNow() {
+  bmSaved.value = false
+  bmSaveError.value = ''
+  clearTimeout(savedTimer)
   try {
-    await store.savePrefs(store.prefs)
+    const ok = await store.savePrefs(store.prefs)
+    if (publishPrefsDisposed) return
+    if (ok === false) { bmSaveError.value = '设置未保存，请检查生图设置后重试'; return }
     bmSaved.value = true
-    setTimeout(() => (bmSaved.value = false), 2000)
-  } catch { /* 保存失败不打断界面 */ }
+    savedTimer = setTimeout(() => { bmSaved.value = false }, 2000)
+  } catch {
+    if (!publishPrefsDisposed) bmSaveError.value = '设置保存失败，请重试'
+  }
 }
 watch(browserHeadless, async (v) => {
-  if (!store.prefs || store.prefs.browser_headless === v) return
+  if (hydratingPublishPrefs || !store.prefs || store.prefs.browser_headless === v) return
   store.prefs.browser_headless = v
   savePrefsNow()
 })
 watch(priceMode, async (mode) => {
-  if (!store.prefs) return
+  if (hydratingPublishPrefs || !store.prefs) return
   if (mode === 'prob') {
     store.prefs.price_probs = { '0': priceProbFree.value / 100, '10': priceProbPaid.value / 100 }
   } else {
@@ -280,6 +296,7 @@ watch(priceMode, async (mode) => {
 })
 // 两个滑杆联动（合计恒为 100），改动即保存概率
 watch(priceProbFree, (v) => {
+  if (hydratingPublishPrefs) return
   priceProbPaid.value = 100 - v
   if (priceMode.value === 'prob' && store.prefs) {
     store.prefs.price_probs = { '0': v / 100, '10': priceProbPaid.value / 100 }
@@ -287,6 +304,7 @@ watch(priceProbFree, (v) => {
   }
 })
 watch(priceProbPaid, (v) => {
+  if (hydratingPublishPrefs) return
   // 只联动数值：拖 10 豆档会改免费档的值，由 free 的 watch 统一保存，
   // 避免一次拖动触发两次 save_prefs
   priceProbFree.value = 100 - v

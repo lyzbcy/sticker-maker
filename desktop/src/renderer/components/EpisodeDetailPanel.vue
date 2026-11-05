@@ -3,6 +3,7 @@
     <header>
       <button class="back" @click="store.phase = 'episodes'">← 作品库</button>
       <h2 class="title">{{ meta.album_name || ep.album_name || ep.name }}</h2>
+      <span class="ep-badge" data-test="sticker-type">{{ ep.sticker_type === 'dynamic' ? '动态表情 · GIF原帧上传' : ep.sticker_type === 'mixed' ? '静态/动态混合 · 请拆分' : '静态表情' }}</span>
       <span class="ep-badge platform" :class="{ 'platform-failed': platformStatus === '预约上架失败' }" v-if="platformStatus">平台：{{ platformStatus }}</span>
       <span class="ep-badge published" v-else-if="isPublished">✓ 已发布</span>
       <span v-if="ep.resource_state" class="ep-badge resource" :class="`resource-${ep.resource_state}`">

@@ -1,75 +1,55 @@
-## 2026-10-26 · 0.6.6 正式发行
-源码/公开版0.6.6，当前开发设备Windows已静默升级并保留设置；按用户要求保持关闭，不再弹出Windows或Mac窗口。Windows/Mac ARM64跨版安装、重启、保留与回退通过，详见docs/current-state.md及docs/release-0.6.6.md（本文件在子目录时从项目根解析）。以下为历史记录。
-
 ---
 name: sticker-maker-dev
 description: 表情包一键制作的软件开发、排障、测试与分发入口。
 ---
 
-## 2026-10-26 · 0.6.5 数据看板按需加载与原图分析
-- 源码/Windows本机0.6.5，公开正式版仍0.6.2；本轮未公开发版。
-- 单图IPC每次20条，整套排名每页20套；原图懒加载与点击放大、搜索、正反排序、发送占比与零发送分析。避免切入看板再次读取已有作品/收益。
-- 真实7753条返回20条、20张原图；平台字节不同时只展示当前作品完全同含义的本地原图并标注，不伪称MD5匹配。缺图/破图明确显示。
-- 后端770通过/6跳过，前端146通过；冻结4模块语义与源码一致，真实冻结CLI返回20条。原42831份保护素材/评分/元数据SHA保持。
-- 本机NSIS升级exit0，实际安装载荷与候选一致、开始菜单入口原路径；可见UI确认20行、原图放大、下一页、搜索、零发送排序及冷重启；详见[本轮](docs/analytics-lazy-20261026.md)及归档VERIFICATION。
-- 源码/安装回滚分别在另一副本验证；实际源码和安装保留0.6.5。未自动抓取平台、投稿、改作品或评分。
+# 表情包一键制作 · 开发入口
+现状：源码/本设备0.6.13，公开正式0.6.6；11-05 正式发行准备、双端验证及本机升级见 docs/current-state.md。
+负责人：捞鱼工作室 / Codex
+最后更新时间：2026-11-05
 
-## 当前开发（2026-10-26）
-源码0.6.4：已接单图报告与按日期排名；486套/7753张真实读取通过。Windows本机已升级0.6.4，真实单套刷新1/1成功、分页/冷重启通过，版本以本轮 [记录](docs/single-metrics-20261026.md) 为准。未公开本版。
-
-## 上次交付（2026-10-26）
-源码与Windows本机 **0.6.3**；收益实际刷新20→270且冷重启保持，看板/精品重制方案入口已接入。未公开发布；详情以[当前状态](docs/current-state.md)和[本轮](docs/task-20261026.md)为准。下方0.6.2维护描述为历史。
-
-
-<!-- release-cadence-local-upgrade-20261024 -->
-## 后续发版与本机交付（2026-10-24）
-
-遵循[共享目录最新约定](../../AGENTS.md#软件发版频率与本机升级用户约定2026-10-24)：普通更新累计约 2～3 个开发版本再公开发版；大更新或用户明确要求时提前发行。每次功能更新后，本机必须升级到最新开发版，并核对实际运行路径、版本及日常启动入口，保留用户数据和回退；优先本机构建/缓存，源码或隔离测试通过不能算本机升级完成。源码、本机、公开版本分别记录；文档/网站/统计工程按实际类型交付。此约定替代历史逐次发版或不替换本机安装的默认限制，私有工具仍不公开。
-
-## 2026-10-24 本轮维护
-
-当前源码/维护：**0.6.2（仅文档checkpoint）**。四处版本与实际字段复核；补日志模块文档元信息、历史导航；现有批写、排障及每日更新链路保持。
-
-本轮未改应用行为；后续功能开发仍需引擎/桌面/安装升级回归，不把文档核对算业务测试。
-
-计划、验证与回退：[维护记录](docs/maintenance-20261024.md)。下方2026-10-23暂停记录及旧候选描述为历史；本次不把源码修改称为正式发行。
-
-# 表情包一键制作
 ## 项目与技术栈
-给粉丝制作自己的表情包；生成、视觉质检、微信投稿、平台身份核验是不同完成状态。
-Electron 30 / Vue 3 / Pinia / Python 3.12 / PyInstaller；Windows x64、macOS ARM64。
-## 读取入口
-- [开发导航](docs/agent.md)：先选本次任务相关文档。
-- [当前状态](docs/current-state.md)：唯一当前进度快照，包含证据入口与未完成项。
-- [长任务续接](docs/long-task-handoff.md)：上下文切换或继续历史任务时按需读取。
-- [开发 skill](.agents/skills/sticker-maker-dev/SKILL.md)：开发纪律及模块路由。
+为用户制作、整理、导出表情包；生成、视觉质检、微信投稿、平台身份核验分别验收。
+Electron30 / Vue3 / Pinia / Python / PyInstaller，Windows x64、macOS ARM64。开发Python按本机已有环境，不能假称项目不存在的.venv已安装。
+
+## 按需入口
+
+QQ投稿、精选JSONL分发、抖音使用量与收益核查：读[QQ流程](.openclaw/skills/lyzbcy-sticker-publisher/reference/qq-publish.md)与[分发数据规则](.openclaw/skills/lyzbcy-sticker-publisher/reference/distribution-analytics.md)。使用已验证的发布skill分支；不因此启动客户端改版或为独家平台默认重做精选。
+
+
+抖音静态表情投稿与接口自动化：读[投稿流程](.openclaw/skills/lyzbcy-sticker-publisher/reference/douyin-publish.md)，脚本在 `.openclaw/skills/lyzbcy-sticker-publisher/scripts/douyin_publish.py`。这是创作skill的发布分支；不更改桌面客户端或版本。
+
+1. 开发任何功能前先查[开发导航](docs/agent.md)与对应模块；没有模块文档先建。
+2. 版本、设备状态与证据只认[当前状态](docs/current-state.md)，计划见[roadmap](docs/roadmap.md)。
+3. [架构](docs/tech.md)、[开发不变量](doc/reference/development-invariants.md)、[长任务续接](docs/long-task-handoff.md)。
+
 ## 目录地图
-- desktop/src：主进程、预加载、Vue界面；desktop/site：网站与公网更新清单。
-- sticker_engine：JSON-lines引擎、后端测试；scripts：已存在的安装版操作驱动。
-- docs：当前状态和维护文档；doc/reference：模块细节；doc/history：只读历史。
-- reference/standards：项目自包含规范；verification：原始哈希、回执、回归及回滚证据。
+- desktop/src：主进程、preload、Vue界面和store；desktop/site：网站/正式更新清单。
+- sticker_engine：JSON-lines引擎与后端测试；scripts：已有安装操作驱动。
+- docs：模块知识库；doc/reference：深度细节；doc/history：历史，不作为当前设备事实。
+- reference/standards：自包含规范；verification：历史回执；launcher-adapter.json：启动器产品描述。
+
 ## 开发约定
-- 保留已有未提交修改和真实作品数据；按模块读文档，不全量加载历史记录。
-- 程序改动同步代码、相关文档和应用/Python版本；正式产物验证后才更新公网清单。
-- 仅文档整理记录文档checkpoint版本，不制造新应用版本或安装包。
-- 新包先校验再安装；结果按真实版本、SHA及回执判定，不以源码版本冒充实装。
-## 关键不变量
-- 角色身份门禁、账号检查、资源库锁、投稿完整性和结果未知核销机制保持有效。
-- “提交成功”与新鲜平台身份核验分别记录；已成功或结果未知的投稿不盲目重试。
-- 评分保持真实来源；缺失人工/AI评分为null，不用视觉质检分替代。
-## 测试与版本
-- 后端：sticker_engine/.venv/Scripts/python.exe -m pytest tests -q --ignore=tests/agent（在sticker_engine目录）。
-- 桌面：npm.cmd test（在desktop目录）。完整测试说明见[开发不变量](doc/reference/development-invariants.md)。
-- 版本位置：desktop/package.json::version、desktop/package-lock.json::version/packages[""].version、sticker_engine/pyproject.toml::project.version、sticker_engine/sticker_engine/cli.py 的版本返回值。
-- 文档checkpoint：2026-10-23/standards-v1。源码、安装记录与实时运行状态分别以[当前状态](docs/current-state.md)为准；不在入口重复维护版本快照。
-## 历史与维护
-每轮完成后更新当前状态及任务清单，详细输出留在verification；不把同一长日志追加到多个入口。
-本次整理前原入口已逐字保留于[历史目录](doc/history/context-checkpoint-20261014/root-skill.md)。
+- 不覆盖其他聊天修改，不移动正在运行的安装、素材或同步服务目录。功能先按原哈希保护，再测试副本/失败/回滚。
+- 代码、对应文档、版本同步；只改文档不抬程序版本。按[日志规范](reference/standards/软件组件/日志系统.md)维护队列、轮转、退出刷写、排障开关与真实进度。
+- 现有原组件DOM/data-test、任务语义、未知结果核销和数据路径按模块约定保留；错误不得变成假成功。
+- 小步开发按项目既有提交/分支约定备份；不新建远端，不自动改变可见性。公开发版按已有授权流程，不把未公开开发包写入公网清单。
 
-<!-- standards-todo-20261023:start -->
-## 2026-10-23 规范待办（先记录，暂停整改）
+## 版本与交付
+四处：desktop/package.json::version、desktop/package-lock.json::version/packages[""].version、sticker_engine/pyproject.toml::project.version、sticker_engine/sticker_engine/cli.py::VERSION。
+普通开发累计约2～3个完成版本再合并公开，非凑版本；功能完成须本设备原位升级并核对实际路径/可见版本/冷重开/数据保留。优先本地构建，不上传再下载。源码、本机、公网版本分开记录，其他设备验收独立。
+更新器红线详见[updater](docs/updater.md)与[规范](reference/standards/软件组件/自适应更新检测.md)：点击重新查新、锁同一目标、旧缓存跨版与重启核对。未验不能勾完成。
 
-- 待办与逐项验收要求：[docs/standards-todo-20261023.md](docs/standards-todo-20261023.md)。
-- 此前已有候选改动回填；仍按条目复核，未宣称完整验收或发布。
-- 本次仅更新开发记录；后续开发先逐项核对，勿重复套用未验收实验副本。
-<!-- standards-todo-20261023:end -->
+## 功能现状与验收入口
+- 资源库8视图与取消目录/单飞/卸载清理：见[资源库重构](docs/resource-library-refactor-067.md)，0.6.7已本机升级。
+- 引擎事件/任务结束状态/反馈复制：见[事件生命周期](docs/engine-event-lifecycle.md)，0.6.9修复主进程真实命令收尾、设置初始化误保存与资源读取错误恢复；本机门槛已验，详见模块。
+- 日志：[logging](docs/logging.md)；反馈：[feedback-service](docs/feedback-service.md)；AI接入：[本地规范](reference/standards/软件组件/AI-Native.md)，接口说明在sticker_engine/sticker_engine/agent/AGENT_PROMPT.md。
+- 启动器：稳定ID sticker-maker / 主程序“表情包一键制作.exe”；[本地适配规范](reference/standards/启动器适配/laoyu-launcher-adapter/SKILL.md)。根描述文件仍为历史0.5.1正式制品，不冒称已登记本开发包；公开发版前须按实际正式包刷新并严格自查。
+- 前端在desktop执行npm.cmd test；后端在sticker_engine用已有Python执行python -m pytest tests -q --ignore=tests/agent。临时数据/APPDATA必须隔离；完整回执见docs/current-state.md，不以mock代替真实安装。
+
+## 红线
+保护角色身份门禁、账号校验、资源库锁、投稿完整性与未知结果核销；已成功/未知投稿不盲重试。人工/AI评分缺失为null，不用质检分替代。作品、原图、评分、账号、设置及待审状态不得为重构而改写。
+签名、更新器、服务端密钥、正式制品只按专门验收流程修改；共享规范中的webhook不复制进客户端/公开源码。
+
+## 历史
+本次整理前入口逐字保留于[历史快照](doc/history/agents-20261026/root-skill-before068.md)，更早历史从该文件进入。旧设备/旧账号的安装说明不充当本设备当前事实。

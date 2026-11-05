@@ -26,3 +26,27 @@ def test_materialization_preserves_uncaptured_local_edits(tmp_path, monkeypatch,
     rt.refresh(capture=False)
     assert (path / 'raw.txt').read_text() == 'local edit'
     assert rt.library.read_work(rt.account_id, first['work_id'])['state'] == 'conflict'
+
+
+def test_runtime_uses_one_existing_stage_and_cleans_it_on_failure(tmp_path, monkeypatch):
+    rt = LibraryRuntime(tmp_path); rt.bind('a@example.com', True)
+    path = rt.output_root / 'episode_one'
+    save_meta(path, EpisodeMeta(album_name='one'))
+    (path / 'raw.txt').write_text('original')
+    first = rt.capture(path)
+    source = tmp_path / 'remote.txt'; source.write_text('remote')
+    revision = rt.library.read_work(rt.account_id, first['work_id'])['revision']
+    rt.library.write_revision(rt.account_id, first['work_id'], revision['metadata'],
+                              {'raw.txt': rt.library.put_file(source)}, parents=[first['revision_id']])
+    original = rt.library.materialize
+
+    def fail_after_copy(account, wid, stage, revision_id):
+        assert stage.is_dir() and not any(stage.iterdir())
+        original(account, wid, stage, revision_id)
+        raise OSError('simulated interruption')
+
+    monkeypatch.setattr(rt.library, 'materialize', fail_after_copy)
+    with pytest.raises(OSError, match='simulated interruption'):
+        rt.refresh(capture=False)
+    assert (path / 'raw.txt').read_text() == 'original'
+    assert not list(rt.output_root.glob('.staging-*'))

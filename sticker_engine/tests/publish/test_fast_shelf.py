@@ -163,6 +163,33 @@ def test_command_dry_run_never_starts_browser_or_intent(tmp_path,monkeypatch):
     h=harness(tmp_path,monkeypatch);out=h.run(args={'dry_run':True})
     assert out['dry_run'] and not h.api.posts and not h.intents
 
+
+def test_command_unrelated_sync_failure_keeps_per_item_intents_and_reports_warning(tmp_path,monkeypatch):
+    h=harness(tmp_path,monkeypatch)
+    sync=lambda *a,**kw:{'source':'api','platform_total':4,'matched':4,'updated':4,
+        'list_complete':False,'unknown_statuses':[],'reason_failures':[],
+        'fresh_shelfable':[str(p) for p in h.eps],
+        'persistence_failures':[{'name':'unrelated','message':'missing parent'}]}
+    results=[]
+    h.cli._run_shelf_passed('local-save-test',{},tmp_path,sync,lambda _:None,
+        result_callback=lambda *a,**kw:results.append(kw))
+    out=results[-1]['data']
+    assert out['published']==3 and len(h.api.posts)==3
+    assert h.finished==[('op-w0',True),('op-w1',True),('op-w2',True)]
+    assert out['warnings'][0]['name']=='unrelated'
+
+
+def test_command_affected_candidate_save_failure_never_writes(tmp_path,monkeypatch):
+    h=harness(tmp_path,monkeypatch)
+    sync=lambda *a,**kw:{'source':'api','platform_total':3,'matched':3,'updated':3,
+        'list_complete':False,'unknown_statuses':[],'reason_failures':[],
+        'fresh_shelfable':[str(p) for p in h.eps],
+        'persistence_failures':[{'name':'作品0','message':'changed revision'}]}
+    results=[]
+    h.cli._run_shelf_passed('local-save-block',{},tmp_path,sync,lambda _:None,
+        result_callback=lambda *a,**kw:results.append((a,kw)))
+    assert results[-1][0][1]=='fail' and not h.api.posts and not h.intents
+
 def test_command_account_gate_skips_foreign_items(tmp_path,monkeypatch):
     h=harness(tmp_path,monkeypatch);h.rt.account_id='other'
     assert h.run()['published']==0 and not h.api.posts

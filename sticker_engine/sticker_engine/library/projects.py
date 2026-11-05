@@ -5,6 +5,7 @@ import copy
 import json
 import uuid
 from pathlib import Path
+from ..media import final_stickers, sticker_type
 
 from ..project import (atomic_json, create_project, file_manifest, folder_name,
                        named_destination, project_directories, read_project,
@@ -258,7 +259,7 @@ class ProjectRuntime(LibraryRuntime):
         # Paths remain stable during the capture hook; generation and rename
         # commands finalize the readable name before returning it to the UI.
         result = seal_project(path)
-        if (path/'最终版').is_dir() and list((path/'最终版').glob('*.png')):
+        if (path/'最终版').is_dir() and final_stickers(path/'最终版'):
             result = update_project(path, lambda d: d['metadata'].update(resource_placeholder=False))
         self._rows_at = 0
         return dict(work_id=meta.work_id, revision_id=result['revision_id'])
@@ -327,7 +328,7 @@ class ProjectRuntime(LibraryRuntime):
             if w['state'] == 'deleted' or w['work_id'] in self.state['hidden']:
                 continue
             p = Path(w['path']); meta = w['revision']['metadata']; data = read_project(p)
-            finals = list((p / '最终版').glob('*.png'))
+            finals = final_stickers(p / '最终版')
             ready = w['state'] == 'available'
             sid = meta.get('platform_item_id')
             if sid and len(platform_ids.get(sid, [])) > 1:
@@ -343,7 +344,7 @@ class ProjectRuntime(LibraryRuntime):
                              and all((p / logical).is_file() for logical in required)),
                              can_shelf=w['state'] in ('available', 'placeholder')
                              and meta.get('platform_status') in SHELFABLE_STATUSES,
-                             sticker_count=len(finals), cover=str(cover) if cover else '',
+                             sticker_type=sticker_type(finals), sticker_count=len(finals), cover=str(cover) if cover else '',
                              complete=bool(finals), missing=w['missing'],
                              project_mode=data['mode'], can_edit_sources=data['mode'] == 'full'))
         self.state['last_rows'] = copy.deepcopy(rows)

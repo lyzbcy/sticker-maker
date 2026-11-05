@@ -7,6 +7,7 @@ import json
 import shutil
 import uuid
 from pathlib import Path
+from ..media import final_stickers, sticker_type
 
 from ..project import (ASSET_DIRS, SOURCE_DIRS, atomic_json, create_project,
                        named_destination, read_characters, read_meanings, read_project,
@@ -296,7 +297,7 @@ def preview_slim(runtime, paths, delete_sources=False):
         for logical, ref in data['files'].items():
             if hash_file(safe_file(path, logical)) != (ref['sha256'], ref['size']):
                 raise ValueError('工程有未保存修改或缺失文件，请先保存后重新预览')
-        if not list((path / '最终版').glob('*.png')):
+        if not final_stickers(path / '最终版'):
             raise ValueError('工程没有最终表情，不能瘦身')
         removals = []
         for p in path.rglob('*'):

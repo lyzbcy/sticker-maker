@@ -542,6 +542,70 @@ def _picked_word(page):
     return None
 
 
+@pytest.mark.parametrize('word', ['女人', '男人', '其他人物'])
+def test_strict_role_selects_only_requested_category(tmp_path, word):
+    ep = make_episode(tmp_path, characters=['星星布丁'])
+    publisher, _, page = _make_publisher(tmp_path)
+    _mock_dt(page, word)
+    publisher._select_role(page, EpisodeAssets.from_dir(ep), target_override=word, strict=True)
+    assert _picked_word(page) == word
+
+
+def test_strict_role_stops_if_selection_cannot_be_confirmed(tmp_path):
+    ep = make_episode(tmp_path)
+    publisher, _, page = _make_publisher(tmp_path)
+    _mock_dt(page, '女人')
+    with pytest.raises(RuntimeError, match='已停止提交'):
+        publisher._select_role(page, EpisodeAssets.from_dir(ep), target_override='男人', strict=True)
+
+
+def test_role_only_rejects_multiple_fields_before_starting_browser(tmp_path):
+    publisher, session, _ = _make_publisher(tmp_path)
+    result = publisher._publish_impl(make_episode(tmp_path), edit=True,
+                                     fix_fields={'role_only_man', 'price'})
+    assert result['success'] is False
+    session.start.assert_not_called()
+
+
+def test_role_only_checks_live_reason_and_changes_no_other_fields(tmp_path, monkeypatch):
+    from sticker_engine.config.series import EpisodeMeta, save_meta
+    from sticker_engine.publish import platform_data
+    ep = make_episode(tmp_path)
+    save_meta(ep, EpisodeMeta(album_name=ep.name, platform_item_id='sid'))
+    publisher, _, page = _make_publisher(tmp_path)
+    publisher._library_runtime = None
+    spies = _patch_all_steps(publisher)
+    spies['_step_open_editor'].return_value = page
+    spies['_step_submit'].return_value = True
+    publisher._verify_form = MagicMock(return_value=[])
+    details = iter([{'Status': 4, 'Reason': json.dumps({'category': ['请只选择【人物角色-男人】']})},
+                    {'Status': 2}])
+    monkeypatch.setattr(platform_data, 'read_detail', lambda *_: next(details))
+    monkeypatch.setattr(platform_data, 'read_json', lambda *_: {'List': []})
+    result = publisher._publish_impl(ep, edit=True, fix_fields={'role_only_man'})
+    assert result['success'] is True
+    spies['_select_role'].assert_called_once_with(page, ANY, target_override='男人', strict=True)
+    for name in ('_step_fill_copyright', '_step_select_categories', '_step_select_price',
+                 '_step_upload_assets', '_step_replace_stickers', '_step_tips'):
+        spies[name].assert_not_called()
+
+
+def test_role_only_rejects_changed_platform_reason(tmp_path, monkeypatch):
+    from sticker_engine.config.series import EpisodeMeta, save_meta
+    from sticker_engine.publish import platform_data
+    ep = make_episode(tmp_path)
+    save_meta(ep, EpisodeMeta(album_name=ep.name, platform_item_id='sid'))
+    publisher, _, _ = _make_publisher(tmp_path)
+    publisher._library_runtime = None
+    spies = _patch_all_steps(publisher)
+    monkeypatch.setattr(platform_data, 'read_detail', lambda *_: {
+        'Status': 4, 'Reason': json.dumps({'category': ['请只选择【人物角色-女人】']})})
+    result = publisher._publish_impl(ep, edit=True, fix_fields={'role_only_man'})
+    assert result['success'] is False
+    spies['_step_open_editor'].assert_not_called()
+    spies['_step_submit'].assert_not_called()
+
+
 def test_select_role_single_character_uses_gender_not_compilation(tmp_path):
     """2026-08-29（69 驳回）：单角色男性（捞鱼）→【男人】（评审F1：按性别不按合辑）。"""
     ep = make_episode(tmp_path, contains_laoyu=True, characters=["捞鱼"])

@@ -6,7 +6,7 @@ const { PythonBridge } = require('./pythonBridge')
 let bridge
 let mainWindow
 let diagnosticLog
-let operationSequence = 0
+const { createCommandRunner } = require('./commandRunner')
 
 // 单实例锁：防止多开（Agent 端口 7432 会冲突，双开还会重复跑引擎）
 // 开发模式用独立 userData（2026-09-03 事故：用户同时开着安装版「表情包一键制作.exe」，
@@ -86,27 +86,13 @@ app.whenReady().then(async () => {
     mainWindow && mainWindow.webContents.send('python-restarting', {})
   })
 
-  ipcMain.handle('python-command', async (event, { cmd, args }) => {
-    const labels = { run:'制作表情', run_batch:'批量制作', publish_episode:'投稿', sync_platform_status:'同步状态', sync_sticker_metrics:'读取单图发送报告', shelf_passed:'一键上架', install_codex:'安装生图组件', install_chromium:'安装浏览器', list_episodes:'读取作品', project_location_inspect:'识别资源位置', project_location_connect:'连接资源' }
-    const tracked = !!labels[cmd] || /^(project_|library_)(?!status)/.test(cmd)
-    const task = { id:String(++operationSequence), command:cmd, startedAt:Date.now(), message:labels[cmd] || '处理资源任务' }
-    const notify = data => { if(tracked && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('task-status', { ...task, ...data }) }
-    notify({ state:'start' })
-    try {
-      const result = await bridge.send(cmd, args, (ev) => {
-        mainWindow && mainWindow.webContents.send('python-progress', ev)
-        notify({ state:'progress', message:ev.message, stage:ev.stage, percent:ev.percent })
-      })
-      diagnosticLog.log({ stage:'command', message:`${cmd} ${result.status || '完成'}，耗时 ${((Date.now()-task.startedAt)/1000).toFixed(1)} 秒` })
-      return result
-    } catch (err) {
-      // 失败原因统一拍平成 errors 数组（此前只有 error 字段，
-      // 前端读 errors[0].message 读不到 → 全显示"未知原因"）
-      return PythonBridge.flattenError(err)
-    } finally {
-      notify({ state:'end' })
-    }
+  const runCommand = createCommandRunner({
+    bridge,
+    emit: (channel, data) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, data) },
+    log: entry => diagnosticLog.log(entry),
+    flattenError: PythonBridge.flattenError,
   })
+  ipcMain.handle('python-command', (_event, { cmd, args }) => runCommand(cmd, args))
 
   ipcMain.handle('python-stop', async (event, targetId) => {
     return bridge.stop(targetId)

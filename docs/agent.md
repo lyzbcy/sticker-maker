@@ -1,3 +1,6 @@
+- [GIF动态投稿0.6.10](dynamic-publish.md)：类型识别、无损上传与校验。
+- [0.6.8引擎事件与反馈交互](engine-event-lifecycle.md)：订阅归属、退出清理、任务结束状态、反馈复制与验收。
+- [0.6.7资源库结构重构与交互修正](resource-library-refactor-067.md)：模块边界、单飞、取消目录与卸载清理。
 - [收益与数据看板、精品重制](analytics-income.md)：0.6.4单图报告与排名；[本轮](single-metrics-20261026.md)。
 > 现状：当前开发导航；版本与运行状态只在current-state.md维护
 > 负责人：捞鱼工作室 / Codex
@@ -14,6 +17,7 @@
 |GIF一键制作、一次生图多帧、离线合成原型|[gif-one-shot.md](gif-one-shot.md)（2026-10-19实验checkpoint，尚未接入正式软件）|
 |开发不变量、测试隔离、缓存/锁的历史坑|[development-invariants.md](../doc/reference/development-invariants.md)|
 |彩底生图、分格、白衣保留、底字、无字封面|[pipeline.md](../doc/reference/pipeline.md)|
+|QQ精选分发、跨日恢复、额度与真实审核回读|[QQ精选分发](qq-selected-distribution.md)|
 |微信投稿、完整性、名称、未知结果核销|[publish.md](../doc/reference/publish.md)、[续接操作](long-task-handoff.md)|
 |规范工程、专辑名目录、旧副本释放、删除原图瘦身|[project-format.md](project-format.md)|
 |跨电脑资源库/设置冲突、空目录清理、人工评分|[desktop-issues.md](desktop-issues.md)、[resource-library.md](../doc/reference/resource-library.md)|
@@ -36,3 +40,5 @@
 - [2026-10-24维护计划与执行记录](maintenance-20261024.md)：当前候选、实际覆盖、未完成验收与回退。
 
 - [0.6.5数据看板20条懒加载与原图分析](analytics-lazy-20261026.md)。
+
+- [精品逐图重构工作流](featured-remake-workflow.md)：按图定制、实际生成、对比确认及原专辑免费重提；本轮用户反馈99%良品率，不作为效果保证。
