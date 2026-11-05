@@ -1,17 +1,17 @@
 {
-  "version": "0.6.6",
-  "downloadUrl": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.6.6/sticker-maker-mac-v0.6.6.zip",
-  "sha256": "69b18b3e31afbeef7de0d927349185b96b18139e3dc21ca10b3a89810ef488d5",
+  "version": "0.6.13",
+  "downloadUrl": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.6.13/sticker-maker-mac-v0.6.13.zip",
+  "sha256": "fc48b912ba157407bd18c5de792747af39851b0461e7fd5194e1a2c27ca1a8f6",
   "platforms": {
-    "mac": {
-      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.6.6/sticker-maker-mac-v0.6.6.zip",
-      "sha256": "69b18b3e31afbeef7de0d927349185b96b18139e3dc21ca10b3a89810ef488d5"
-    },
     "win": {
-      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.6.6/sticker-maker-win-v0.6.6-setup.exe",
-      "sha256": "0b8a028e3d936b3edb3f698007855b581f666761a33859aadb3f3c644767e1ed"
+      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.6.13/sticker-maker-win-v0.6.13-setup.exe",
+      "sha256": "827b8dfbc11cda5a8b0c5e7397e9bf8832bc3edc5f34714938123eb5f9f56a2e"
+    },
+    "mac": {
+      "url": "https://github.com/lyzbcy/sticker-maker/releases/download/v0.6.13/sticker-maker-mac-v0.6.13.zip",
+      "sha256": "fc48b912ba157407bd18c5de792747af39851b0461e7fd5194e1a2c27ca1a8f6"
     }
   },
-  "releaseNotes": "新增收益、单图发送报告与整套排名看板，支持分页、搜索、排序、原图放大与零发送分析；原图按需加载；点击更新及重试时重新查询最新正式版本，校验平台和安装包 SHA-256，避免安装过期缓存。",
-  "lastUpdated": "2026-10-26"
+  "releaseNotes": "支持已有 GIF 动态专辑无损投稿与完整预检；改进资源库交互、任务收尾、设置初始化和反馈复制；修复深目录物化、角色分类修复及上架预检；补齐发行回归发现的 GIF 集成缺失。",
+  "lastUpdated": "2026-11-05"
 }
