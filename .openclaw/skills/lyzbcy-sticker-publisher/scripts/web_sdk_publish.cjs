@@ -10,15 +10,19 @@ function meaning(text) {
 }
 async function inputs(album) {
   const root=album.dir;
+  const priceBeans=album.priceBeans??0;
+  if(![0,10].includes(priceBeans))throw Error('Only free or 10 WeChat Beans is supported');
   const manifest=JSON.parse(await fs.readFile(path.join(root,'成品清单.json'),'utf8'));
   const proof=JSON.parse(await fs.readFile(path.join(root,'头像裁切.json'),'utf8'));
   if(proof.origin!=='current_album_sticker')throw Error('Head must come from this album sticker');
   const names=manifest.files.map(x=>meaning(x.meaning));
-  if(manifest.files.length!==16 || new Set(names).size!==16)throw Error('16 distinct reviewed meanings required');
   const isStatic=manifest.isStatic??album.isStatic??true;
+  const count=manifest.files.length;
+  const validCount=isStatic ? count>=8 && count<=24 : count===16;
+  if(!validCount || new Set(names).size!==count)throw Error(isStatic ? '8–24 distinct reviewed meanings required for a static album' : '16 distinct reviewed meanings required for a dynamic album');
   if(manifest.files.some(x=>path.extname(x.file).toLowerCase()!==(isStatic?'.png':'.gif')))throw Error('Static/dynamic file type mismatch');
   const make=async f=>{const b=await fs.readFile(path.join(root,f));return {name:path.basename(f),mime:path.extname(f).toLowerCase()==='.gif'?'image/gif':'image/png',data:b.toString('base64'),md5:crypto.createHash('md5').update(b).digest('hex'),sha256:crypto.createHash('sha256').update(b).digest('hex')};};
-  return {...album,isStatic,description:(await fs.readFile(path.join(root,'介绍.txt'),'utf8')).trim(),
+  return {...album,priceBeans,isStatic,description:(await fs.readFile(path.join(root,'介绍.txt'),'utf8')).trim(),
     assets:await Promise.all(['横幅/横幅.png','封面/封面.png','图标/图标.png','赞赏图/赞赏引导图.png','赞赏图/赞赏致谢图.png'].map(make)),
     emojis:await Promise.all(manifest.files.map(async(x,i)=>{const image=await make(x.file);if(image.sha256!==x.sha256)throw Error('Sticker changed after visual review: '+x.file);if(!isStatic&&(!x.gif_frames||!x.gif_durations_ms?.length))throw Error('Dynamic timeline evidence missing');return {...image,index:i+1,meaning:names[i],gifFrames:x.gif_frames,gifDurations:x.gif_durations_ms};}))};
 }
@@ -46,13 +50,13 @@ function browserPublish(albums, jobKey) {
     const id=created.data.stickerId;await checkpoint('created',{name:a.name,id});
     const context={cropperData:{},originalFileId:{},originalMd5:{},compressCropInfo:{}};
     for(const e of emojis){context.originalMd5[e.md5]=e.originalMd5;context.originalFileId[e.md5]=e.originalFileId;}
-    const p={rewardInfo:{agreement:true,word:'谢谢你喜欢我~',begPicMediaId:assets[3].FileId,thanksPicMediaId:assets[4].FileId},authorityInfo:{},activityInfo:{},emojiList:emojis.map(({originalMd5,originalFileId,...e})=>e),downloadArea:['DEF'],validArea:['CN'],isFree:true,designerUin:null,name:a.name,description:a.description,copyright:'捞鱼真不吃鱼',isStatic:a.isStatic!==false,styleType:1,character:['日常','软萌可爱'],topic:'万能通用',stickerStyle:['人物角色',a.role],coverPicMediaId:assets[0].FileId,mainIconMediaId:assets[1].FileId,panelIconMediaId:assets[2].FileId,clientContext:JSON.stringify(context),stickerId:id};
-    const verify=async()=>{const r=await sdk.$({stickerId:id});const d=r.data?.draft;if(r.data?.baseResp?.ret!==0||!d)throw Error('Draft read failed');const c=JSON.parse(d.clientContext);if(d.stickerId!==id||d.name!==a.name||d.isStatic!==p.isStatic||d.emojiList.length!==16||JSON.stringify(d.stickerStyle)!==JSON.stringify(p.stickerStyle)||d.emojiList.some((e,i)=>e.meaning!==emojis[i].meaning||e.md5!==emojis[i].md5||c.originalMd5[e.md5]!==emojis[i].originalMd5)||['coverPicMediaId','mainIconMediaId','panelIconMediaId'].some(k=>d[k]!==p[k])||d.rewardInfo.begPicMediaId!==p.rewardInfo.begPicMediaId||d.rewardInfo.thanksPicMediaId!==p.rewardInfo.thanksPicMediaId)throw Error('Exact-ID draft does not match local package');return d;};
+    const p={rewardInfo:{agreement:true,word:'谢谢你喜欢我~',begPicMediaId:assets[3].FileId,thanksPicMediaId:assets[4].FileId},authorityInfo:{},activityInfo:{},emojiList:emojis.map(({originalMd5,originalFileId,...e})=>e),downloadArea:['DEF'],validArea:['CN'],isFree:a.priceBeans!==10,designerUin:null,name:a.name,description:a.description,copyright:'捞鱼真不吃鱼',isStatic:a.isStatic!==false,styleType:1,character:['日常','软萌可爱'],topic:'万能通用',stickerStyle:['人物角色',a.role],coverPicMediaId:assets[0].FileId,mainIconMediaId:assets[1].FileId,panelIconMediaId:assets[2].FileId,clientContext:JSON.stringify(context),stickerId:id};
+    const verify=async()=>{const r=await sdk.$({stickerId:id});const d=r.data?.draft;if(r.data?.baseResp?.ret!==0||!d)throw Error('Draft read failed');const c=JSON.parse(d.clientContext);if(d.stickerId!==id||d.name!==a.name||d.isStatic!==p.isStatic||d.isFree!==p.isFree||d.emojiList.length!==emojis.length||JSON.stringify(d.stickerStyle)!==JSON.stringify(p.stickerStyle)||d.emojiList.some((e,i)=>e.meaning!==emojis[i].meaning||e.md5!==emojis[i].md5||c.originalMd5[e.md5]!==emojis[i].originalMd5)||['coverPicMediaId','mainIconMediaId','panelIconMediaId'].some(k=>d[k]!==p[k])||d.rewardInfo.begPicMediaId!==p.rewardInfo.begPicMediaId||d.rewardInfo.thanksPicMediaId!==p.rewardInfo.thanksPicMediaId)throw Error('Exact-ID draft does not match local package');return d;};
     await checkpoint('save_intent',{name:a.name,id,payload:p});const saved=await sdk.bb(p);if(saved.data?.baseResp?.ret!==0)throw Error('Save rejected '+JSON.stringify(saved));
-    await verify();await checkpoint('submit_intent',{name:a.name,id,verifiedImages:16,verifiedAssets:5});
+    await verify();await checkpoint('submit_intent',{name:a.name,id,verifiedImages:emojis.length,verifiedAssets:5});
     const submitted=await sdk.b9(p);await checkpoint('submit_response',{name:a.name,id,response:submitted});if(submitted.data?.baseResp?.ret!==0)throw Error('Submit outcome requires reconciliation '+JSON.stringify(submitted));
     await verify();const detail=await(await fetch('/cgi-bin/mmemoticon-bin/stikerpage?stikerid='+id+'&f=json')).json();if(detail.StikerID!==id||![2,3].includes(detail.Status))throw Error('Submission pending reconciliation');
-    result.push({name:a.name,id,status:detail.Status,isStatic:p.isStatic,originalImagesMatched:16,animatedImagesMatched:a.isStatic===false?16:undefined,meaningsMatched:16,assetsMatched:5,submitCount:1});await checkpoint('verified',{...result.at(-1)});
+    result.push({name:a.name,id,status:detail.Status,isStatic:p.isStatic,priceBeans:a.priceBeans,originalImagesMatched:emojis.length,animatedImagesMatched:a.isStatic===false?emojis.length:undefined,meaningsMatched:emojis.length,assetsMatched:5,submitCount:1});await checkpoint('verified',{...result.at(-1)});
   }
   const list=await(await fetch('/cgi-bin/mmemoticon-bin/home?lang=zh_CN&f=json')).json();if(list.base_resp?.ret!==0)throw Error('Final list read failed');
   for(const a of result){const rows=list.List.filter(x=>x.Name===a.name);if(rows.length!==1||rows[0].StikerID!==a.id||![2,3].includes(rows[0].Status))throw Error('Final unique-name reconciliation failed');}return result;`;

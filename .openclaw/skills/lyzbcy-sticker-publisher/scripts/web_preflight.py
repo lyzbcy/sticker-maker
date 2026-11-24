@@ -11,7 +11,7 @@ def main():
  prep=json.loads((r/'prep_state.json').read_text(encoding='utf-8'));chars=prep.get('characters',[])
  expected='男人' if chars==['捞鱼'] else ('女人' if len(chars)==1 and chars[0] in ['星星布丁','周三涵','周五涵'] else ('人物合辑' if len(chars)>=2 else None))
  check(expected is not None and a.role==expected,'角色定义与平台性别标签一致')
- files=sorted((r/'最终版').glob('*.png'));check(12<=len(files)<=24,'表情数量12至24');check(len({f.stem for f in files})==len(files) and all(1<=len(f.stem)<=4 for f in files),'含义词唯一且1至4字');check(len({sha(f) for f in files})==len(files),'成品无相同哈希')
+ files=sorted((r/'最终版').glob('*.png'));check(8<=len(files)<=24,'静态专辑表情数量8至24');check(len({f.stem for f in files})==len(files) and all(1<=len(f.stem)<=4 for f in files),'含义词唯一且1至4字');check(len({sha(f) for f in files})==len(files),'成品无相同哈希')
  check(all(re.fullmatch(r'[\u3400-\u9fff]{1,4}',f.stem) for f in files),'平台含义词1至4汉字，不含问号等标点')
  for f in files:
   im=Image.open(f).convert('RGBA');alpha=np.asarray(im)[:,:,3];check(Image.open(f).format=='PNG' and im.width==im.height and 240<=im.width<=360 and f.stat().st_size<=500*1024 and (alpha==0).any() and (alpha>0).any(),'表情尺寸格式透明:'+f.name)
